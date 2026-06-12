@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BB Graphic System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Poppins:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
 :root{
   --bb:#FF1F8E;--bb2:#d4006e;
@@ -13,7 +16,7 @@
   --purple:#a855f7;--teal:#14b8a6;--indigo:#6366f1;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
-body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;}
+body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;min-height:100vh;}
 
 /* ─── LOGIN ────────────────────────────────── */
 #login-screen{
@@ -21,34 +24,33 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   min-height:100vh;padding:20px;
 }
 .login-logo{
-  width:80px;height:80px;background:var(--bb);border-radius:20px;
+  width:72px;height:72px;background:var(--bb);border-radius:18px;
   display:flex;align-items:center;justify-content:center;
-  font-size:32px;font-weight:900;color:#fff;margin-bottom:24px;
-  box-shadow:0 0 40px rgba(255,31,142,.4);
+  font-family:'Poppins',sans-serif;font-size:26px;font-weight:900;color:#fff;margin-bottom:24px;
+  box-shadow:0 0 40px rgba(255,31,142,.4);letter-spacing:-1px;
 }
 .login-box{
-  background:var(--bg2);border:1px solid var(--border);border-radius:16px;
-  padding:40px;width:100%;max-width:380px;
+  background:var(--bg2);border:1px solid var(--border);border-radius:18px;
+  padding:48px 40px 36px;width:100%;max-width:400px;
 }
 .login-box h2{font-size:22px;font-weight:700;margin-bottom:6px;text-align:center;}
 .login-box p{color:var(--muted);font-size:13px;text-align:center;margin-bottom:28px;}
-.pin-display{
-  display:flex;gap:10px;justify-content:center;margin-bottom:24px;
+.login-input{
+  width:100%;background:var(--bg3);border:1px solid transparent;
+  border-radius:10px;padding:16px 18px;color:var(--text);
+  font-family:'Inter',sans-serif;font-size:13px;font-weight:600;
+  text-align:center;letter-spacing:0.18em;text-transform:uppercase;
+  margin-bottom:12px;transition:all .15s;display:block;outline:none;
 }
-.pin-dot{
-  width:14px;height:14px;border-radius:50%;
-  background:var(--bg4);border:2px solid var(--border);
-  transition:all .15s;
+.login-input::placeholder{color:var(--muted);letter-spacing:0.2em;font-weight:500;}
+.login-input:focus{border-color:var(--bb);background:var(--bg4);}
+.login-btn{
+  width:100%;background:var(--bb);color:#fff;border:none;border-radius:10px;
+  padding:16px 18px;font-family:'Inter',sans-serif;font-size:14px;font-weight:800;
+  letter-spacing:0.2em;text-transform:uppercase;cursor:pointer;
+  transition:all .15s;margin-top:4px;
 }
-.pin-dot.filled{background:var(--bb);border-color:var(--bb);}
-.pin-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
-.pin-btn{
-  background:var(--bg3);border:1px solid var(--border);border-radius:10px;
-  padding:16px;font-size:20px;font-weight:600;color:var(--text);cursor:pointer;
-  transition:all .1s;
-}
-.pin-btn:hover{background:var(--bg4);border-color:var(--bb);}
-.pin-btn:active{transform:scale(.95);}
+.login-btn:hover{background:var(--bb2);transform:translateY(-1px);}
 .login-error{
   background:#ef444420;border:1px solid var(--red);border-radius:8px;
   color:var(--red);padding:10px;text-align:center;font-size:13px;
@@ -382,38 +384,21 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <!-- ═══════════════════════════════════════════ LOGIN ══ -->
 <div id="login-screen">
-  <div class="login-logo">G</div>
+  <div class="login-logo">BB</div>
   <div class="login-box">
     <h2>BB Graphic System</h2>
-    <p>Enter your PIN to log in</p>
-    <div class="pin-display" id="pin-display">
-      <div class="pin-dot" id="d0"></div>
-      <div class="pin-dot" id="d1"></div>
-      <div class="pin-dot" id="d2"></div>
-      <div class="pin-dot" id="d3"></div>
-    </div>
-    <div class="pin-grid">
-      <button class="pin-btn" onclick="pinKey('1')">1</button>
-      <button class="pin-btn" onclick="pinKey('2')">2</button>
-      <button class="pin-btn" onclick="pinKey('3')">3</button>
-      <button class="pin-btn" onclick="pinKey('4')">4</button>
-      <button class="pin-btn" onclick="pinKey('5')">5</button>
-      <button class="pin-btn" onclick="pinKey('6')">6</button>
-      <button class="pin-btn" onclick="pinKey('7')">7</button>
-      <button class="pin-btn" onclick="pinKey('8')">8</button>
-      <button class="pin-btn" onclick="pinKey('9')">9</button>
-      <button class="pin-btn" onclick="pinKey('clr')" style="color:var(--muted)">CLR</button>
-      <button class="pin-btn" onclick="pinKey('0')">0</button>
-      <button class="pin-btn" onclick="pinKey('del')" style="font-size:16px">⌫</button>
-    </div>
-    <div class="login-error" id="login-error">Incorrect PIN. Try again.</div>
+    <p>Enter your name and PIN to continue</p>
+    <input type="text" class="login-input" id="login-name" placeholder="YOUR NAME" autocomplete="off" autocapitalize="characters" spellcheck="false">
+    <input type="text" inputmode="numeric" class="login-input" id="login-pin" placeholder="PIN" autocomplete="off" maxlength="6">
+    <button class="login-btn" id="login-btn" onclick="doLogin()">ENTER</button>
+    <div class="login-error" id="login-error">Incorrect name or PIN. Try again.</div>
   </div>
 </div>
 
 <!-- ═══════════════════════════════════════════ APP ══ -->
 <div id="app-screen">
   <div class="topbar">
-    <div class="topbar-logo">G</div>
+    <div class="topbar-logo">BB</div>
     <div class="topbar-title">BB Graphic System</div>
     <div class="topbar-badge" id="active-count-badge">...</div>
     <div class="topbar-right">
@@ -622,7 +607,6 @@ const DESIGNER_PILLARS = [
 let currentUser = null;
 let allProjects  = [];
 let clients      = [];
-let pinBuffer    = '';
 
 // ──────────────────────────────────────── NOISE FILTER ──
 const _NOISE = /failed to fetch|networkerror|network request failed|load failed|net::|the internet connection/i;
@@ -680,38 +664,33 @@ async function sbUpsert(table, body, onConflict){
   if(!r.ok) throw new Error('UPSERT '+table+' → '+r.status);
 }
 
-// ──────────────────────────────────────── PIN LOGIN ──
-function pinKey(k){
-  const err = document.getElementById('login-error');
-  err.style.display='none';
-
-  if(k==='clr'){ pinBuffer=''; updateDots(); return; }
-  if(k==='del'){ pinBuffer=pinBuffer.slice(0,-1); updateDots(); return; }
-  if(pinBuffer.length>=4) return;
-  pinBuffer+=k;
-  updateDots();
-  if(pinBuffer.length===4) setTimeout(tryLogin,100);
-}
-
-function updateDots(){
-  for(let i=0;i<4;i++){
-    document.getElementById('d'+i).classList.toggle('filled', i<pinBuffer.length);
-  }
-}
-
-async function tryLogin(){
-  const user = USERS[pinBuffer];
+// ──────────────────────────────────────── LOGIN ──
+function doLogin(){
+  const nameEl = document.getElementById('login-name');
+  const pinEl  = document.getElementById('login-pin');
+  const errEl  = document.getElementById('login-error');
+  const n = nameEl.value.trim().toUpperCase();
+  const p = pinEl.value.trim();
+  errEl.style.display = 'none';
+  // USERS is keyed by PIN string
+  const user = USERS[p] && USERS[p].name === n ? USERS[p] : null;
   if(!user){
-    document.getElementById('login-error').style.display='block';
-    pinBuffer='';
-    updateDots();
+    errEl.style.display = 'block';
+    pinEl.value = '';
+    pinEl.focus();
     return;
   }
   currentUser = user;
-  pinBuffer='';
-  updateDots();
   logLogin(user);
-  await bootApp();
+  bootApp();
+}
+
+function setupLoginListeners(){
+  ['login-name','login-pin'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+  });
+  setTimeout(() => document.getElementById('login-name')?.focus(), 100);
 }
 
 function logLogin(user){
@@ -730,6 +709,9 @@ function doLogout(){
   currentUser=null;
   document.getElementById('app-screen').style.display='none';
   document.getElementById('login-screen').style.display='flex';
+  document.getElementById('login-pin').value='';
+  document.getElementById('login-name').value='';
+  setTimeout(()=>document.getElementById('login-name')?.focus(),100);
 }
 
 // ──────────────────────────────────────── BOOT APP ──
@@ -1431,6 +1413,9 @@ function esc(s){
 document.querySelectorAll('.modal-overlay').forEach(o=>{
   o.addEventListener('click',e=>{ if(e.target===o) o.classList.remove('open'); });
 });
+
+// Init login
+setupLoginListeners();
 
 // Keyboard shortcut: N = new brief (when logged in)
 document.addEventListener('keydown',e=>{

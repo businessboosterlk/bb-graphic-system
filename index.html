@@ -48,6 +48,7 @@ input,select,textarea{font-family:inherit}
 
 /* ─── LOGIN ────────────────────────────────── */
 .login{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg);z-index:9999}
+.login[hidden]{display:none}
 .login-card{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:56px 48px 40px;width:100%;max-width:440px;box-shadow:0 24px 80px var(--shadow-modal)}
 .login-logo-wrap{text-align:center;margin-bottom:20px}
 .login-logo-img{width:120px;height:auto;display:inline-block}
@@ -787,15 +788,12 @@ function setupLoginListeners(){
 }
 
 function logLogin(user){
-  fetch(SB_URL+'/rest/v1/team_login_logs', {
-    method:'POST', headers:SB_HDR,
-    body:JSON.stringify({
-      team_member_id: user.team_member_id,
-      member_name: user.name,
-      logged_in_at: new Date().toISOString(),
-      app:'graphic-system'
-    })
-  }).catch(()=>{});
+  try{
+    const h={apikey:SB_KEY,Authorization:'Bearer '+SB_KEY,'Content-Type':'application/json'};
+    const body={member_name:user.name,logged_in_at:new Date().toISOString(),app:'graphic-system'};
+    if([4,3,12].includes(user.team_member_id)) body.team_member_id=user.team_member_id;
+    fetch(SB_URL+'/rest/v1/team_login_logs',{method:'POST',headers:h,body:JSON.stringify(body)}).catch(()=>{});
+  }catch(e){}
 }
 
 function doLogout(){

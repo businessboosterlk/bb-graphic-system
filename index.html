@@ -109,7 +109,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .theme-toggle svg{width:18px;height:18px;color:var(--text-2)}
 
 /* CONTENT */
-.content{flex:1;padding:24px;overflow-y:auto}
+.content{flex:1;padding:24px;overflow-y:auto;overflow-x:hidden}
 .content section{display:none}
 .content section.active{display:block}
 
@@ -503,8 +503,7 @@ tr:hover td{background:var(--surface-2)}
       <!-- ═══ PIPELINE ═══ -->
       <section id="section-pipeline">
         <div class="sec-header">
-          <h2>Pipeline</h2>
-          <button class="btn btn-accent" onclick="openAddProject()" style="font-size:14px;padding:12px 24px;font-weight:700;letter-spacing:0.04em">+ Add Post</button>
+          <button class="btn btn-accent" onclick="openAddProject()" style="font-size:14px;padding:12px 24px;font-weight:700;letter-spacing:0.04em">+ Add Project</button>
         </div>
         <div class="filter-bar" id="pipelineFilters">
           <input type="text" id="filterSearch" placeholder="Search projects..." oninput="applyFilters()">
@@ -699,7 +698,7 @@ tr:hover td{background:var(--surface-2)}
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modalAddProject')">Cancel</button>
-      <button class="btn btn-accent" id="btnSaveProject" onclick="saveProject()">Save Brief</button>
+      <button class="btn btn-accent" id="btnSaveProject" onclick="saveProject()">Save Project</button>
     </div>
   </div>
 </div>
@@ -882,7 +881,7 @@ function navigateTo(page){
   // topbar actions per page
   const pa = document.getElementById('pageActions');
   if(page==='pipeline'){
-    pa.innerHTML=`<button class="btn btn-accent" onclick="openAddProject()" style="font-weight:700;letter-spacing:0.04em">+ Add Post</button>`;
+    pa.innerHTML=`<button class="btn btn-accent" onclick="openAddProject()" style="font-weight:700;letter-spacing:0.04em">+ Add Project</button>`;
   } else { pa.innerHTML=''; }
   // refresh section data
   if(page==='dashboard') renderDashboard();
@@ -1156,8 +1155,8 @@ async function saveDetailImage(projId) {
 // ─── ADD / EDIT PROJECT ───
 function openAddProject(){
   editingProjectId = null;
-  document.getElementById('modalAddTitle').textContent = 'New Post';
-  document.getElementById('btnSaveProject').textContent = 'Save Post';
+  document.getElementById('modalAddTitle').textContent = 'New Project';
+  document.getElementById('btnSaveProject').textContent = 'Save Project';
   ['projTitle','projNotes','projImageUrl','projDriveLink','projDimensions'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('projType').value='post';
   document.getElementById('projClient').value='';
@@ -1229,7 +1228,7 @@ async function saveProject(){
     if(Array.isArray(res) && res[0]){
       await sbPost('graphic_stage_history',{ graphic_project_id: res[0].id, stage:'brief', entered_by: currentUser.name, notes:'Brief created' });
     }
-    toast('Post created');
+    toast('Project created');
   }
   clearPendingImg('addProj');
   closeModal('modalAddProject');

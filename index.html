@@ -358,6 +358,32 @@ tr:hover td{background:var(--surface-2)}
 .agent-card .agent-sev.critical{background:var(--red-soft);color:var(--red)}
 .agent-card .agent-time{font-size:0.72rem;color:var(--text-3);margin-left:auto}
 .agent-card .agent-msg{font-size:0.88rem;color:var(--text-2);line-height:1.5}
+/* ═══════════════ WEEKLY PLAN ═══════════════ */
+.wp-board{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:24px}
+.wp-day{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);display:flex;flex-direction:column;min-height:320px}
+.wp-day-header{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.wp-day-header h4{font-size:0.82rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-2)}
+.wp-day-header .wp-date{font-size:0.72rem;color:var(--text-3)}
+.wp-day-header.today{background:var(--accent-soft);border-bottom-color:var(--accent)}
+.wp-day-header.today h4{color:var(--accent)}
+.wp-day-body{padding:8px;flex:1;display:flex;flex-direction:column;gap:6px}
+.wp-task{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 12px;cursor:pointer;transition:all .15s;position:relative}
+.wp-task:hover{border-color:var(--accent);transform:translateY(-1px)}
+.wp-task-client{font-weight:600;font-size:0.85rem;margin-bottom:3px}
+.wp-task-type{font-size:0.75rem;color:var(--text-2);display:flex;align-items:center;gap:6px}
+.wp-task-count{background:var(--accent-soft);color:var(--accent);font-size:0.72rem;font-weight:700;padding:1px 7px;border-radius:10px}
+.wp-task-status{position:absolute;top:8px;right:8px;width:8px;height:8px;border-radius:50%}
+.wp-task-status.planned{background:var(--text-3)}
+.wp-task-status.in_progress{background:var(--blue)}
+.wp-task-status.done{background:var(--green)}
+.wp-task-status.pending{background:var(--amber)}
+.wp-pending-bar{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px 20px;margin-bottom:16px}
+.wp-pending-bar h3{font-size:0.95rem;margin-bottom:12px;color:var(--amber);display:flex;align-items:center;gap:8px}
+.wp-pending-list{display:flex;flex-wrap:wrap;gap:8px}
+.wp-pending-chip{background:var(--amber-soft);border:1px solid rgba(245,158,11,0.2);border-radius:20px;padding:6px 14px;font-size:0.82rem;font-weight:500;color:var(--amber);cursor:pointer;transition:all .15s}
+.wp-pending-chip:hover{background:var(--amber);color:#fff}
+@media(max-width:900px){.wp-board{grid-template-columns:1fr}}
+
 .image-attach-zone{border:2px dashed var(--border-strong);border-radius:var(--r);padding:14px;text-align:center;cursor:pointer;transition:all .15s;margin-top:8px}
 .image-attach-zone:hover,.image-attach-zone.img-drop-hot{border-color:var(--accent);background:var(--accent-soft)}
 .image-attach-hint{font-size:0.78rem;color:var(--text-3)}
@@ -424,6 +450,10 @@ tr:hover td{background:var(--surface-2)}
       <div class="nav-item" data-page="mywork" onclick="navigateTo('mywork')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         My Work
+      </div>
+      <div class="nav-item" data-page="weeklyplan" onclick="navigateTo('weeklyplan')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="9" y1="4" x2="9" y2="22"/></svg>
+        Weekly Plan
       </div>
       <div class="nav-item" data-page="pillars" onclick="navigateTo('pillars')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
@@ -574,6 +604,21 @@ tr:hover td{background:var(--surface-2)}
         <div id="myWorkContent"></div>
       </section>
 
+      <!-- ═══ WEEKLY PLAN ═══ -->
+      <section id="section-weeklyplan">
+        <div class="sec-header">
+          <div style="display:flex;align-items:center;gap:12px">
+            <button class="btn btn-ghost btn-sm" onclick="wpChangeWeek(-1)">&#9664;</button>
+            <h2 id="wpWeekLabel" style="margin:0;white-space:nowrap"></h2>
+            <button class="btn btn-ghost btn-sm" onclick="wpChangeWeek(1)">&#9654;</button>
+            <button class="btn btn-ghost btn-sm" onclick="wpGoToday()">Today</button>
+          </div>
+          <button class="btn btn-accent" onclick="wpOpenAdd()">+ Add Task</button>
+        </div>
+        <div class="wp-board" id="wpBoard"></div>
+        <div id="wpPendingSection"></div>
+      </section>
+
       <!-- ═══ PILLARS ═══ -->
       <section id="section-pillars">
         <div class="sec-header"><h2>Daily Pillars</h2></div>
@@ -704,6 +749,79 @@ tr:hover td{background:var(--surface-2)}
 </div>
 
 <!-- ═══════════════ PROJECT DETAIL MODAL ═══════════════ -->
+<!-- ═══ WEEKLY PLAN MODAL ═══ -->
+<div class="modal-overlay" id="modalWpTask">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2 id="wpModalTitle">Add Task</h2>
+      <button class="modal-close" onclick="closeModal('modalWpTask')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Day *</label>
+          <select id="wpDay">
+            <option value="1">Monday</option>
+            <option value="2">Tuesday</option>
+            <option value="3">Wednesday</option>
+            <option value="4">Thursday</option>
+            <option value="5">Friday</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Client *</label>
+          <select id="wpClient"></select>
+        </div>
+        <div class="form-group">
+          <label>Task Type</label>
+          <select id="wpTaskType">
+            <option value="post">Post Design</option>
+            <option value="story">Story Design</option>
+            <option value="reel_cover">Reel Cover</option>
+            <option value="carousel">Carousel</option>
+            <option value="logo">Logo</option>
+            <option value="banner">Banner</option>
+            <option value="flyer">Flyer</option>
+            <option value="brochure">Brochure</option>
+            <option value="template">Template</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Design Count</label>
+          <input type="number" id="wpCount" min="1" value="1">
+        </div>
+        <div class="form-group">
+          <label>Assigned To</label>
+          <select id="wpAssigned">
+            <option value="">Unassigned</option>
+            <option value="Rukshan">Rukshan</option>
+            <option value="Suhana">Suhana</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select id="wpStatus">
+            <option value="planned">Planned</option>
+            <option value="in_progress">In Progress</option>
+            <option value="done">Done</option>
+            <option value="pending">Pending</option>
+          </select>
+        </div>
+        <div class="form-group full">
+          <label>Notes</label>
+          <input type="text" id="wpNotes" placeholder="e.g. July posts, urgent...">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modalWpTask')">Cancel</button>
+      <button class="btn btn-danger btn-sm" id="wpDeleteBtn" style="display:none" onclick="wpDeleteTask()">Delete</button>
+      <button class="btn btn-accent" onclick="wpSaveTask()">Save</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modalDetail">
   <div class="modal modal-lg">
     <div class="modal-header">
@@ -876,18 +994,21 @@ function navigateTo(page){
   document.querySelectorAll('.content section').forEach(s=>s.classList.remove('active'));
   document.getElementById('section-'+page).classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
-  document.getElementById('topbarTitle').textContent = {dashboard:'Dashboard',pipeline:'Pipeline',clients:'Clients',mywork:'My Work',pillars:'Daily Pillars',archived:'Archived',analytics:'Analytics',agents:'Agents'}[page]||page;
+  document.getElementById('topbarTitle').textContent = {dashboard:'Dashboard',pipeline:'Pipeline',clients:'Clients',mywork:'My Work',weeklyplan:'Weekly Plan',pillars:'Daily Pillars',archived:'Archived',analytics:'Analytics',agents:'Agents'}[page]||page;
   closeSidebar();
   // topbar actions per page
   const pa = document.getElementById('pageActions');
   if(page==='pipeline'){
     pa.innerHTML=`<button class="btn btn-accent" onclick="openAddProject()" style="font-weight:700;letter-spacing:0.04em">+ Add Project</button>`;
+  } else if(page==='weeklyplan'){
+    pa.innerHTML=`<button class="btn btn-accent" onclick="wpOpenAdd()" style="font-weight:700;letter-spacing:0.04em">+ Add Task</button>`;
   } else { pa.innerHTML=''; }
   // refresh section data
   if(page==='dashboard') renderDashboard();
   if(page==='pipeline') renderPipeline();
   if(page==='clients') loadClients();
   if(page==='mywork') renderMyWork();
+  if(page==='weeklyplan') wpLoadWeek();
   if(page==='pillars') renderPillars();
   if(page==='archived') loadArchived();
   if(page==='analytics') renderAnalytics();
@@ -1756,6 +1877,179 @@ async function markAllAgentsRead(){
     await sbPatch('agent_alerts','id=eq.'+a.id,{read_at:new Date().toISOString()});
   }
   loadAgentAlerts();
+}
+
+// ═══════════════════════════════════════
+// WEEKLY PLAN
+// ═══════════════════════════════════════
+const WP_DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+const WP_TYPES = {post:'Post Design',story:'Story Design',reel_cover:'Reel Cover',carousel:'Carousel',logo:'Logo',banner:'Banner',flyer:'Flyer',brochure:'Brochure',template:'Template',other:'Other'};
+let wpWeekStart = null;
+let wpTasks = [];
+let wpEditId = null;
+
+function wpGetMonday(d){
+  const dt = new Date(d);
+  const day = dt.getDay();
+  const diff = dt.getDate() - day + (day===0?-6:1);
+  dt.setDate(diff); dt.setHours(0,0,0,0);
+  return dt;
+}
+
+function wpFmtDate(d){
+  return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'});
+}
+
+function wpChangeWeek(dir){
+  const d = new Date(wpWeekStart);
+  d.setDate(d.getDate() + dir*7);
+  wpWeekStart = d;
+  wpLoadWeek();
+}
+
+function wpGoToday(){
+  wpWeekStart = wpGetMonday(new Date());
+  wpLoadWeek();
+}
+
+async function wpLoadWeek(){
+  if(!wpWeekStart) wpWeekStart = wpGetMonday(new Date());
+  const ws = wpWeekStart.toISOString().slice(0,10);
+  const label = document.getElementById('wpWeekLabel');
+  const fri = new Date(wpWeekStart); fri.setDate(fri.getDate()+4);
+  label.textContent = wpFmtDate(wpWeekStart) + ' — ' + wpFmtDate(fri) + ', ' + wpWeekStart.getFullYear();
+
+  wpTasks = await sbGet('graphic_weekly_plan','?week_start=eq.'+ws+'&order=created_at.asc') || [];
+  wpRender();
+}
+
+function wpRender(){
+  const board = document.getElementById('wpBoard');
+  const today = new Date(); today.setHours(0,0,0,0);
+  const pending = wpTasks.filter(t=>t.status==='pending');
+  const nonPending = wpTasks.filter(t=>t.status!=='pending');
+
+  board.innerHTML = WP_DAYS.map((name,i)=>{
+    const dayNum = i+1;
+    const dayDate = new Date(wpWeekStart); dayDate.setDate(dayDate.getDate()+i);
+    const isToday = dayDate.getTime()===today.getTime();
+    const tasks = nonPending.filter(t=>t.day_of_week===dayNum);
+    const totalDesigns = tasks.reduce((s,t)=>s+(t.design_count||0),0);
+    return `
+      <div class="wp-day">
+        <div class="wp-day-header ${isToday?'today':''}">
+          <h4>${name}</h4>
+          <span class="wp-date">${wpFmtDate(dayDate)}${totalDesigns?' &middot; '+totalDesigns+' designs':''}</span>
+        </div>
+        <div class="wp-day-body">
+          ${tasks.map(t=>wpRenderTask(t)).join('')}
+          ${tasks.length===0?'<div style="padding:16px;text-align:center;color:var(--text-3);font-size:0.78rem">No tasks</div>':''}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const pendSec = document.getElementById('wpPendingSection');
+  if(pending.length>0){
+    pendSec.innerHTML = `
+      <div class="wp-pending-bar">
+        <h3><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> Pending (${pending.length})</h3>
+        <div class="wp-pending-list">
+          ${pending.map(t=>`<div class="wp-pending-chip" onclick="wpOpenEdit(${t.id})">${esc(t.client_name)} — ${WP_TYPES[t.task_type]||t.task_type}${t.design_count>1?' &times;'+t.design_count:''}${t.notes?' ('+esc(t.notes)+')':''}</div>`).join('')}
+        </div>
+      </div>
+    `;
+  } else { pendSec.innerHTML=''; }
+}
+
+function wpRenderTask(t){
+  return `
+    <div class="wp-task" onclick="wpOpenEdit(${t.id})">
+      <div class="wp-task-status ${t.status}"></div>
+      <div class="wp-task-client">${esc(t.client_name)}</div>
+      <div class="wp-task-type">
+        ${WP_TYPES[t.task_type]||t.task_type}
+        <span class="wp-task-count">${t.design_count} design${t.design_count>1?'s':''}</span>
+        ${t.assigned_to?'<span class="badge badge-designer" style="font-size:0.68rem">'+esc(t.assigned_to)+'</span>':''}
+      </div>
+      ${t.notes?'<div style="font-size:0.72rem;color:var(--text-3);margin-top:4px">'+esc(t.notes)+'</div>':''}
+    </div>
+  `;
+}
+
+function wpPopulateClients(){
+  const sel = document.getElementById('wpClient');
+  sel.innerHTML = '<option value="">Select Client</option>';
+  if(Array.isArray(clients)){
+    clients.forEach(c=>{ sel.innerHTML+=`<option value="${esc(c.name)}">${esc(c.name)}</option>`; });
+  }
+}
+
+function wpOpenAdd(prefillDay){
+  wpEditId = null;
+  document.getElementById('wpModalTitle').textContent = 'Add Task';
+  document.getElementById('wpDeleteBtn').style.display = 'none';
+  wpPopulateClients();
+  document.getElementById('wpDay').value = prefillDay || new Date().getDay() || 1;
+  document.getElementById('wpClient').value = '';
+  document.getElementById('wpTaskType').value = 'post';
+  document.getElementById('wpCount').value = 1;
+  document.getElementById('wpAssigned').value = '';
+  document.getElementById('wpStatus').value = 'planned';
+  document.getElementById('wpNotes').value = '';
+  openModal('modalWpTask');
+}
+
+function wpOpenEdit(id){
+  const t = wpTasks.find(x=>x.id===id);
+  if(!t) return;
+  wpEditId = id;
+  document.getElementById('wpModalTitle').textContent = 'Edit Task';
+  document.getElementById('wpDeleteBtn').style.display = '';
+  wpPopulateClients();
+  document.getElementById('wpDay').value = t.day_of_week;
+  document.getElementById('wpClient').value = t.client_name||'';
+  document.getElementById('wpTaskType').value = t.task_type||'post';
+  document.getElementById('wpCount').value = t.design_count||1;
+  document.getElementById('wpAssigned').value = t.assigned_to||'';
+  document.getElementById('wpStatus').value = t.status||'planned';
+  document.getElementById('wpNotes').value = t.notes||'';
+  openModal('modalWpTask');
+}
+
+async function wpSaveTask(){
+  const clientName = document.getElementById('wpClient').value;
+  if(!clientName){ toast('Select a client','error'); return; }
+  const data = {
+    week_start: wpWeekStart.toISOString().slice(0,10),
+    day_of_week: parseInt(document.getElementById('wpDay').value),
+    client_name: clientName,
+    task_type: document.getElementById('wpTaskType').value,
+    design_count: parseInt(document.getElementById('wpCount').value)||1,
+    assigned_to: document.getElementById('wpAssigned').value||null,
+    status: document.getElementById('wpStatus').value,
+    notes: document.getElementById('wpNotes').value||null,
+    updated_at: new Date().toISOString()
+  };
+  if(wpEditId){
+    await sbPatch('graphic_weekly_plan','id=eq.'+wpEditId, data);
+    toast('Task updated');
+  } else {
+    data.created_by = currentUser.name;
+    await sbPost('graphic_weekly_plan', data);
+    toast('Task added');
+  }
+  closeModal('modalWpTask');
+  wpLoadWeek();
+}
+
+async function wpDeleteTask(){
+  if(!wpEditId) return;
+  if(!confirm('Delete this task?')) return;
+  await sbDel('graphic_weekly_plan','id=eq.'+wpEditId);
+  toast('Task deleted');
+  closeModal('modalWpTask');
+  wpLoadWeek();
 }
 </script>
 </body>

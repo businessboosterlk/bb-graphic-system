@@ -103,6 +103,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .hamburger svg{width:24px;height:24px}
 .topbar-title{font-family:'Poppins',sans-serif;font-size:1.1rem;font-weight:600;flex:1}
 .topbar-right{display:flex;align-items:center;gap:12px}
+.topbar-actions{display:flex;gap:10px;align-items:center}
 .theme-toggle{width:36px;height:36px;border-radius:50%;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .2s;border:1px solid var(--border)}
 .theme-toggle:hover{background:var(--surface-3)}
 .theme-toggle svg{width:18px;height:18px;color:var(--text-2)}
@@ -467,6 +468,7 @@ tr:hover td{background:var(--surface-2)}
       </button>
       <div class="topbar-title" id="topbarTitle">Dashboard</div>
       <div class="topbar-right">
+        <div class="topbar-actions" id="pageActions"></div>
         <span style="font-size:13px;color:var(--text-2)" id="topbarGreeting"></span>
         <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
           <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -502,7 +504,7 @@ tr:hover td{background:var(--surface-2)}
       <section id="section-pipeline">
         <div class="sec-header">
           <h2>Pipeline</h2>
-          <button class="btn btn-accent" onclick="openAddProject()">+ Add Brief</button>
+          <button class="btn btn-accent" onclick="openAddProject()" style="font-size:14px;padding:12px 24px;font-weight:700;letter-spacing:0.04em">+ Add Post</button>
         </div>
         <div class="filter-bar" id="pipelineFilters">
           <input type="text" id="filterSearch" placeholder="Search projects..." oninput="applyFilters()">
@@ -877,6 +879,11 @@ function navigateTo(page){
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
   document.getElementById('topbarTitle').textContent = {dashboard:'Dashboard',pipeline:'Pipeline',clients:'Clients',mywork:'My Work',pillars:'Daily Pillars',archived:'Archived',analytics:'Analytics',agents:'Agents'}[page]||page;
   closeSidebar();
+  // topbar actions per page
+  const pa = document.getElementById('pageActions');
+  if(page==='pipeline'){
+    pa.innerHTML=`<button class="btn btn-accent" onclick="openAddProject()" style="font-weight:700;letter-spacing:0.04em">+ Add Post</button>`;
+  } else { pa.innerHTML=''; }
   // refresh section data
   if(page==='dashboard') renderDashboard();
   if(page==='pipeline') renderPipeline();
@@ -1149,8 +1156,8 @@ async function saveDetailImage(projId) {
 // ─── ADD / EDIT PROJECT ───
 function openAddProject(){
   editingProjectId = null;
-  document.getElementById('modalAddTitle').textContent = 'New Brief';
-  document.getElementById('btnSaveProject').textContent = 'Save Brief';
+  document.getElementById('modalAddTitle').textContent = 'New Post';
+  document.getElementById('btnSaveProject').textContent = 'Save Post';
   ['projTitle','projNotes','projImageUrl','projDriveLink','projDimensions'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('projType').value='post';
   document.getElementById('projClient').value='';
@@ -1222,7 +1229,7 @@ async function saveProject(){
     if(Array.isArray(res) && res[0]){
       await sbPost('graphic_stage_history',{ graphic_project_id: res[0].id, stage:'brief', entered_by: currentUser.name, notes:'Brief created' });
     }
-    toast('Brief created');
+    toast('Post created');
   }
   clearPendingImg('addProj');
   closeModal('modalAddProject');

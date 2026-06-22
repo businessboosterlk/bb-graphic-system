@@ -845,7 +845,21 @@ tr:hover td{background:var(--surface-2)}
 // ─── CONFIG ───
 const SB_URL = 'https://yyviiwnqgphyklcoijyd.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5dmlpd25xZ3BoeWtsY29panlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MjE5OTEsImV4cCI6MjA5MTI5Nzk5MX0.I8YiBr-rfLVcc6DE8Z1PxEP2oxXCelv6mxqAY_wY7lc';
-const SB_HDR = {'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=representation'};
+// ── Silent app auth: obtain a real JWT so login-only tables stay readable here ──
+const GAPP = { email:'nirvana@bb-leads.app', pass:'pin2222secure' };
+let GAUTH=null, GEXP=0;
+async function gLogin(){
+  try{
+    const r=await fetch(SB_URL+'/auth/v1/token?grant_type=password',{method:'POST',headers:{'apikey':SB_KEY,'Content-Type':'application/json'},body:JSON.stringify(GAPP)});
+    const d=await r.json();
+    if(d&&d.access_token){ GAUTH=d.access_token; GEXP=Date.now()+((d.expires_in||3600)*1000); return true; }
+  }catch(e){ console.warn('[auth]',e); }
+  GAUTH=null; return false;
+}
+async function gEnsure(){ if(!GAUTH||Date.now()>GEXP-120000) await gLogin(); return GAUTH; }
+function gBearer(){ return 'Bearer '+(GAUTH||SB_KEY); }
+function gHdr(extra){ return Object.assign({'apikey':SB_KEY,'Authorization':gBearer(),'Content-Type':'application/json'}, extra||{}); }
+gLogin();  // start immediately
 
 const USERS = {
   '1031': { name:'THULAIB', role:'head', team_member_id:1, label:'Thulaib (CEO)' },
@@ -868,19 +882,24 @@ let refreshTimer = null;
 
 // ─── SUPABASE HELPERS ───
 async function sbGet(table, query=''){
-  const r = await fetch(SB_URL+'/rest/v1/'+table+query, {headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}});
+  await gEnsure();
+  let r = await fetch(SB_URL+'/rest/v1/'+table+query, {headers:{'apikey':SB_KEY,'Authorization':gBearer()}});
+  if(r.status===401){ await gLogin(); r = await fetch(SB_URL+'/rest/v1/'+table+query, {headers:{'apikey':SB_KEY,'Authorization':gBearer()}}); }
   return r.json();
 }
 async function sbPost(table, data){
-  const r = await fetch(SB_URL+'/rest/v1/'+table, {method:'POST',headers:SB_HDR,body:JSON.stringify(data)});
+  await gEnsure();
+  const r = await fetch(SB_URL+'/rest/v1/'+table, {method:'POST',headers:gHdr({'Prefer':'return=representation'}),body:JSON.stringify(data)});
   return r.json();
 }
 async function sbPatch(table, query, data){
-  const r = await fetch(SB_URL+'/rest/v1/'+table+'?'+query, {method:'PATCH',headers:SB_HDR,body:JSON.stringify(data)});
+  await gEnsure();
+  const r = await fetch(SB_URL+'/rest/v1/'+table+'?'+query, {method:'PATCH',headers:gHdr({'Prefer':'return=representation'}),body:JSON.stringify(data)});
   return r.json();
 }
 async function sbDel(table, query){
-  const r = await fetch(SB_URL+'/rest/v1/'+table+'?'+query, {method:'DELETE',headers:SB_HDR});
+  await gEnsure();
+  const r = await fetch(SB_URL+'/rest/v1/'+table+'?'+query, {method:'DELETE',headers:gHdr()});
   return r.ok;
 }
 

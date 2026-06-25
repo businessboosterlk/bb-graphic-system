@@ -983,7 +983,7 @@ function showApp(){
   document.getElementById('topbarGreeting').textContent = 'Hey, ' + currentUser.label.split(' ')[0];
   loadAll();
   loadAgentAlerts();
-  refreshTimer = setInterval(loadAll, 30000);
+  refreshTimer = setInterval(()=>{ if(!document.hidden) loadAll(); }, 180000);
 }
 
 // check session on load

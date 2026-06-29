@@ -179,6 +179,15 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .badge-stage{background:var(--accent-soft);color:var(--accent)}
 .badge-deadline{font-size:0.72rem;color:var(--text-3);display:flex;align-items:center;gap:3px}
 .badge-deadline.overdue{color:var(--red)}
+/* Quick-add bar + one-tap stage advance (frictionless logging) */
+.qa-header{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.qa-bar{display:flex;gap:8px;align-items:center;flex:1;min-width:280px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:5px 6px}
+.qa-bar input{flex:1;min-width:140px;background:transparent;border:none;color:var(--text);font-size:0.9rem;padding:6px}
+.qa-bar input:focus{outline:none}
+.qa-bar select{width:150px;height:34px;font-size:0.82rem}
+.k-advance{margin-top:8px;width:100%;background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent);border-radius:var(--r-sm);padding:7px;font-size:0.76rem;font-weight:700;cursor:pointer;transition:all .15s}
+.k-advance:hover{background:var(--accent);color:#fff}
+.k-doneflag{margin-top:8px;text-align:center;font-size:0.72rem;font-weight:700;color:var(--green);background:var(--green-soft);border-radius:var(--r-sm);padding:6px}
 
 /* ═══════════════ ACTIVITY FEED ═══════════════ */
 .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:18px 20px;margin-bottom:20px}
@@ -532,8 +541,13 @@ tr:hover td{background:var(--surface-2)}
 
       <!-- ═══ PIPELINE ═══ -->
       <section id="section-pipeline">
-        <div class="sec-header">
-          <button class="btn btn-accent" onclick="openAddProject()" style="font-size:14px;padding:12px 24px;font-weight:700;letter-spacing:0.04em">+ Add Project</button>
+        <div class="sec-header qa-header">
+          <div class="qa-bar">
+            <input type="text" id="qaTitle" placeholder="+ Quick add a brief — type a title, press Enter" autocomplete="off" onkeydown="if(event.key==='Enter')quickAddProject()">
+            <select id="qaClient"><option value="">Client (optional)</option></select>
+            <button class="btn btn-accent" onclick="quickAddProject()">Add brief</button>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="openAddProject()" title="Open the full brief form with all fields">Full form</button>
         </div>
         <div class="filter-bar" id="pipelineFilters">
           <input type="text" id="filterSearch" placeholder="Search projects..." oninput="applyFilters()">
@@ -1068,6 +1082,7 @@ function renderCurrentPage(){
 function populateClientDropdowns(){
   const opts = clients.map(c=>`<option value="${c.id}" data-name="${esc(c.name)}">${esc(c.name)}</option>`).join('');
   document.getElementById('projClient').innerHTML = '<option value="">Select Client</option>'+opts;
+  const qa=document.getElementById('qaClient'); if(qa) qa.innerHTML='<option value="">Client (optional)</option>'+opts;
   document.getElementById('filterClient').innerHTML = '<option value="">All Clients</option>'+clients.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
 }
 
@@ -1167,6 +1182,9 @@ function renderKCard(p){
         ${p.assigned_designer?`<span class="badge badge-designer">${esc(p.assigned_designer)}</span>`:''}
         ${p.deadline?`<span class="badge-deadline ${isOd?'overdue':''}">${isOd?'OVERDUE — ':''}${fmtDate(p.deadline)}</span>`:''}
       </div>
+      ${(()=>{ const i=STAGES.indexOf(p.current_stage); return (i>=0 && i<STAGES.length-1)
+        ? `<button class="k-advance" onclick="event.stopPropagation();quickMove(${p.id},'${STAGES[i+1]}')">Move to ${esc(STAGE_LABELS[STAGES[i+1]])} &#9654;</button>`
+        : `<div class="k-doneflag">&#10003; Approved</div>`; })()}
     </div>
   `;
 }
@@ -1373,6 +1391,40 @@ async function saveProject(){
   clearPendingImg('addProj');
   closeModal('modalAddProject');
   await loadAll();
+}
+
+// One-tap quick add: just a title (client optional). Everything else defaults,
+// so logging a new brief takes seconds instead of a 10-field form.
+async function quickAddProject(){
+  const el = document.getElementById('qaTitle');
+  const title = (el.value||'').trim();
+  if(!title){ toast('Type a title first','error'); el.focus(); return; }
+  const clientSel = document.getElementById('qaClient');
+  const clientId = clientSel.value ? parseInt(clientSel.value) : null;
+  const clientName = clientId ? clientSel.options[clientSel.selectedIndex].dataset.name : null;
+  const now = new Date();
+  const data = {
+    title,
+    client_id: clientId,
+    client_name: clientName,
+    type: 'post',
+    priority: 'normal',
+    current_stage: 'brief',
+    created_by: currentUser.name,
+    target_year: now.getFullYear(),
+    target_month: now.getMonth()+1,
+    updated_at: now.toISOString()
+  };
+  const res = await sbPost('graphic_projects', data);
+  if(Array.isArray(res) && res[0]){
+    await sbPost('graphic_stage_history',{ graphic_project_id: res[0].id, stage:'brief', entered_by: currentUser.name, notes:'Quick added' });
+    el.value=''; clientSel.value='';
+    toast('Brief added — '+title);
+    await loadAll();
+    el.focus();
+  } else {
+    toast('Could not add — try Full form','error');
+  }
 }
 
 // ═══════════════════════════════════════

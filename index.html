@@ -2071,5 +2071,89 @@ async function wpDeleteTask(){
   wpLoadWeek();
 }
 </script>
+
+<!-- ============================================================
+     BB GRAPHIC SENTINEL — boot health-check + global error capture
+     Mirrors the Video/SMM watchdog. INSERT-only into system_bug_log
+     (no schema change). Hardened: network blips are filtered, core
+     tables are probed with the app's authenticated session (gBearer),
+     and a 0-row core read is re-verified before it is ever flagged.
+     ============================================================ -->
+<script>
+(function(){
+  'use strict';
+  var APP='graphic-system';
+  var URL='https://yyviiwnqgphyklcoijyd.supabase.co';
+  var KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5dmlpd25xZ3BoeWtsY29panlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MjE5OTEsImV4cCI6MjA5MTI5Nzk5MX0.I8YiBr-rfLVcc6DE8Z1PxEP2oxXCelv6mxqAY_wY7lc';
+  // Core = shared reference tables that should never be empty. graphic_projects is
+  // intentionally NON-core: it can legitimately be near-empty (low logging adoption),
+  // so it must never trip the empty_core alarm.
+  var TABLES=[
+    {name:'clients',core:true},
+    {name:'team_members',core:true},
+    {name:'graphic_projects',core:false},
+    {name:'graphic_stage_history',core:false},
+    {name:'graphic_project_comments',core:false}
+  ];
+  var _seen={}, _issues=[], DEDUPE_MS=10*60*1000;
+  var _NOISE=/failed to fetch|networkerror|network request failed|load failed|the internet connection appears to be offline|net::/i;
+
+  function who(){ try{ return (typeof currentUser!=='undefined' && currentUser && currentUser.name) ? currentUser.name : 'anon'; }catch(e){ return 'anon'; } }
+  function isAdminViewer(){ var u=who(); return u==='THULAIB'||u==='SHIARA'; }
+  // Probe exactly the way the app reads: authenticated JWT when present, anon fallback.
+  function authHeader(){ try{ if(typeof gBearer==='function') return gBearer(); }catch(e){} return 'Bearer '+KEY; }
+  function ensureAuth(){ try{ if(typeof gEnsure==='function') return gEnsure(); }catch(e){} return Promise.resolve(); }
+
+  function report(issue){
+    try{
+      var key=(issue.category||'')+'|'+(issue.table_name||'')+'|'+(issue.message||'').slice(0,120);
+      var now=Date.now();
+      if(_seen[key] && (now-_seen[key])<DEDUPE_MS) return;
+      _seen[key]=now; _issues.push(issue);
+      console.error('[BB Graphic Sentinel]', issue.category, issue.table_name||'', issue.message, issue.detail||'');
+      fetch(URL+'/rest/v1/system_bug_log',{method:'POST',headers:{'apikey':KEY,'Authorization':authHeader(),'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify({app:APP,severity:issue.severity||'error',category:issue.category||null,table_name:issue.table_name||null,message:(issue.message||'').slice(0,500),detail:(issue.detail||'').slice(0,2000),user_name:who(),url:location.href.slice(0,300),user_agent:(navigator.userAgent||'').slice(0,300)})}).catch(function(){});
+      renderBanner();
+    }catch(e){}
+  }
+  window.bbGraphicSentinelReport=report;
+
+  function headCount(table){
+    return ensureAuth().then(function(){
+      return fetch(URL+'/rest/v1/'+table+'?select=id&limit=1',{method:'GET',headers:{'apikey':KEY,'Authorization':authHeader(),'Prefer':'count=exact','Range':'0-0'}}).then(function(r){
+        var cr=r.headers.get('content-range'); var total=null;
+        if(cr&&cr.indexOf('/')>-1){ var t=cr.split('/')[1]; total=(t==='*')?null:parseInt(t,10); }
+        return r.text().then(function(body){ return {ok:r.ok,status:r.status,count:total,body:body}; });
+      });
+    }).catch(function(e){ return {ok:false,status:0,count:null,body:String(e&&e.message||e)}; });
+  }
+  function checkHealth(){
+    TABLES.forEach(function(t){ headCount(t.name).then(function(res){
+      if(!res.ok){ var cat=res.status===404?'table_missing':(res.status===401||res.status===403?'db_permission':'network'); report({severity:'error',category:cat,table_name:t.name,message:'read failed (HTTP '+res.status+')',detail:(res.body||'').slice(0,300)}); return; }
+      if(t.core && res.count===0){
+        // Re-verify once: a single transient 0 (blip mid-auth) must not create a bug row.
+        headCount(t.name).then(function(res2){ if(res2.ok && res2.count===0){ report({severity:'warning',category:'empty_core',table_name:t.name,message:'returned 0 rows — likely a permissions (RLS) block',detail:'Core reference table should never be empty. Check RLS policy for the authenticated/anon role.'}); } });
+      }
+    }); });
+  }
+  window.bbGraphicSentinelCheck=checkHealth;
+
+  function renderBanner(){
+    if(!isAdminViewer() || !_issues.length) return;
+    var el=document.getElementById('bbGfxSentinelBanner');
+    if(!el){ el=document.createElement('div'); el.id='bbGfxSentinelBanner'; el.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:linear-gradient(90deg,#7f1d1d,#b91c1c);color:#fff;font:600 12.5px/1.4 system-ui,sans-serif;padding:9px 16px;box-shadow:0 2px 14px rgba(0,0,0,.4);display:flex;align-items:center;gap:12px'; document.body.appendChild(el); }
+    var top=_issues.slice(-3).map(function(i){ return (i.table_name?i.table_name+': ':'')+i.message; }).join('  ·  ');
+    el.innerHTML='<span style="font-size:15px">⚠️</span><span style="flex:1">Graphic system issue ('+_issues.length+'): '+top+'</span><button id="bbGfxSentHide" style="background:none;border:none;color:#fff;opacity:.7;font-size:17px;cursor:pointer;line-height:1">×</button>';
+    var h=document.getElementById('bbGfxSentHide'); if(h) h.onclick=function(){ el.remove(); };
+  }
+
+  window.addEventListener('error',function(e){ if(!e) return; var msg=e.message||'script error'; var detail=(e.filename?e.filename+':'+e.lineno+':'+e.colno:'')+(e.error&&e.error.stack?'\n'+e.error.stack:''); report({severity:'error',category:'js_error',message:msg.slice(0,200),detail:detail.slice(0,800)}); });
+  window.addEventListener('unhandledrejection',function(e){ var r=e&&e.reason; if(!r) return; var msg=(r.message||r.msg||(typeof r==='string'?r:JSON.stringify(r))||'unhandled promise rejection'); if(_NOISE.test(String(msg))) return; var code=r.code?(' ['+r.code+']'):''; report({severity:'error',category:'promise_rejection',message:('unhandled: '+msg+code).slice(0,200),detail:(r.stack||'').slice(0,800)}); });
+
+  // Run once the app is up (user logged in / session restored), then probe.
+  var _tries=0;
+  function waitAndRun(){ _tries++; if(who()!=='anon'){ setTimeout(checkHealth,800); return; } if(_tries<40) setTimeout(waitAndRun,500); }
+  if(document.readyState==='complete') waitAndRun(); else window.addEventListener('load',waitAndRun);
+})();
+</script>
 </body>
 </html>

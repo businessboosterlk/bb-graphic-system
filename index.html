@@ -1496,7 +1496,7 @@ async function quickAddProject(){
   if(Array.isArray(res) && res[0]){
     await sbPost('graphic_stage_history',{ graphic_project_id: res[0].id, stage:'brief', entered_by: currentUser.name, notes:'Quick added' });
     el.value=''; clientSel.value='';
-    toast('Post added —'+title);
+    toast((data.type==='story'?'Story':'Post')+' added — '+title);
     await loadAll();
     el.focus();
   } else {

@@ -152,6 +152,11 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .filter-bar input,.filter-bar select{height:36px;font-size:0.82rem}
 .filter-bar input[type="text"]{min-width:180px;flex:0 1 220px}
 .filter-bar select{min-width:120px}
+.bulk-table{width:100%;border-collapse:collapse;font-size:0.82rem}
+.bulk-table th{text-align:left;padding:6px 8px;font-size:0.72rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;border-bottom:1px solid var(--border)}
+.bulk-table td{padding:4px 4px}
+.bulk-table input,.bulk-table select{width:100%;height:32px;font-size:0.8rem;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);padding:0 6px}
+.bulk-table .btn-rm{background:none;border:none;color:var(--red);cursor:pointer;font-size:1.1rem;padding:4px}
 
 /* ═══════════════ KANBAN ═══════════════ */
 .kanban{display:flex;gap:12px;overflow-x:auto;padding-bottom:12px;min-height:400px}
@@ -543,11 +548,11 @@ tr:hover td{background:var(--surface-2)}
       <section id="section-pipeline">
         <div class="sec-header qa-header">
           <div class="qa-bar">
-            <input type="text" id="qaTitle" placeholder="+ Quick add a brief — type a title, press Enter" autocomplete="off" onkeydown="if(event.key==='Enter')quickAddProject()">
+            <input type="text" id="qaTitle" placeholder="+ Quick add a post — type a title, press Enter" autocomplete="off" onkeydown="if(event.key==='Enter')quickAddProject()">
             <select id="qaClient"><option value="">Client (optional)</option></select>
-            <button class="btn btn-accent" onclick="quickAddProject()">Add brief</button>
+            <button class="btn btn-accent" onclick="quickAddProject()">Add Post</button>
           </div>
-          <button class="btn btn-ghost btn-sm" onclick="openAddProject()" title="Open the full brief form with all fields">Full form</button>
+          <button class="btn btn-ghost btn-sm" onclick="openAddProject()" title="Open the full post form with all fields">Full form</button>
         </div>
         <div class="filter-bar" id="pipelineFilters">
           <input type="text" id="filterSearch" placeholder="Search projects..." oninput="applyFilters()">
@@ -628,6 +633,22 @@ tr:hover td{background:var(--surface-2)}
             <button class="btn btn-ghost btn-sm" onclick="wpGoToday()">Today</button>
           </div>
           <button class="btn btn-accent" onclick="wpOpenAdd()">+ Add Task</button>
+          <button class="btn btn-ghost" onclick="wpOpenBulk()">Bulk Add</button>
+        </div>
+        <div class="filter-bar" id="wpFilters">
+          <select id="wpFilterDesigner" onchange="wpRender()">
+            <option value="">All Designers</option>
+            <option value="Rukshan">Rukshan</option>
+            <option value="Suhana">Suhana</option>
+          </select>
+          <select id="wpFilterClient" onchange="wpRender()"></select>
+          <select id="wpFilterStatus" onchange="wpRender()">
+            <option value="">All Statuses</option>
+            <option value="planned">Planned</option>
+            <option value="in_progress">In Progress</option>
+            <option value="done">Done</option>
+            <option value="pending">Pending</option>
+          </select>
         </div>
         <div class="wp-board" id="wpBoard"></div>
         <div id="wpPendingSection"></div>
@@ -836,6 +857,54 @@ tr:hover td{background:var(--surface-2)}
   </div>
 </div>
 
+<!-- Bulk Add Modal (Pipeline) -->
+<div class="modal-overlay" id="modalBulkPipeline">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h2>Bulk Add Posts</h2>
+      <button class="modal-close" onclick="closeModal('modalBulkPipeline')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--text-2);font-size:0.82rem;margin-bottom:12px">Add multiple posts at once. Fill each row and click Save All.</p>
+      <div style="overflow-x:auto">
+        <table class="bulk-table" id="bulkTable">
+          <thead><tr><th>Title *</th><th>Client</th><th>Type</th><th>Designer</th><th>Priority</th><th>Deadline</th><th></th></tr></thead>
+          <tbody id="bulkRows"></tbody>
+        </table>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="bulkAddRow()" style="margin-top:8px">+ Add Row</button>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modalBulkPipeline')">Cancel</button>
+      <button class="btn btn-accent" onclick="bulkSaveAll()">Save All</button>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk Add Modal (Weekly Plan) -->
+<div class="modal-overlay" id="modalWpBulk">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h2>Bulk Add Weekly Tasks</h2>
+      <button class="modal-close" onclick="closeModal('modalWpBulk')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--text-2);font-size:0.82rem;margin-bottom:12px">Add multiple tasks at once for this week.</p>
+      <div style="overflow-x:auto">
+        <table class="bulk-table" id="wpBulkTable">
+          <thead><tr><th>Day</th><th>Client *</th><th>Type</th><th>Count</th><th>Designer</th><th></th></tr></thead>
+          <tbody id="wpBulkRows"></tbody>
+        </table>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="wpBulkAddRow()" style="margin-top:8px">+ Add Row</button>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modalWpBulk')">Cancel</button>
+      <button class="btn btn-accent" onclick="wpBulkSaveAll()">Save All</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modalDetail">
   <div class="modal modal-lg">
     <div class="modal-header">
@@ -1032,7 +1101,7 @@ function navigateTo(page){
   // topbar actions per page
   const pa = document.getElementById('pageActions');
   if(page==='pipeline'){
-    pa.innerHTML=`<button class="btn btn-accent" onclick="openAddProject()" style="font-weight:700;letter-spacing:0.04em">+ Add Project</button>`;
+    pa.innerHTML=`<button class="btn btn-ghost" onclick="openBulkPipeline()" style="font-weight:600">Bulk Add</button><button class="btn btn-accent" onclick="openAddProject()" style="font-weight:700;letter-spacing:0.04em">+ Add Post</button>`;
   } else if(page==='weeklyplan'){
     pa.innerHTML=`<button class="btn btn-accent" onclick="wpOpenAdd()" style="font-weight:700;letter-spacing:0.04em">+ Add Task</button>`;
   } else { pa.innerHTML=''; }
@@ -1215,6 +1284,11 @@ async function onDrop(e,el){
 // Filters
 function getFilteredProjects(){
   let f = projects.filter(p=>!p.is_archived);
+  // Role-based: designers see only their projects by default
+  if(currentUser && currentUser.role==='designer'){
+    const dName = currentUser.name==='RUKSHAN'?'Rukshan':currentUser.name==='SUHANA'?'Suhana':'';
+    f = f.filter(p=>p.assigned_designer===dName);
+  }
   const s = (document.getElementById('filterSearch')?.value||'').toLowerCase();
   const cl = document.getElementById('filterClient')?.value||'';
   const ds = document.getElementById('filterDesigner')?.value||'';
@@ -1994,11 +2068,38 @@ async function wpLoadWeek(){
   wpRender();
 }
 
+function wpGetFiltered(){
+  let f = wpTasks;
+  // Role-based: designers see only their tasks
+  if(currentUser && currentUser.role==='designer'){
+    const dName = currentUser.name==='RUKSHAN'?'Rukshan':currentUser.name==='SUHANA'?'Suhana':'';
+    f = f.filter(t=>t.assigned_to===dName);
+  }
+  // Filters (heads only see filter bar, but apply if set)
+  const fd = document.getElementById('wpFilterDesigner')?.value||'';
+  const fc = document.getElementById('wpFilterClient')?.value||'';
+  const fs = document.getElementById('wpFilterStatus')?.value||'';
+  if(fd) f=f.filter(t=>t.assigned_to===fd);
+  if(fc) f=f.filter(t=>t.client_name===fc);
+  if(fs) f=f.filter(t=>t.status===fs);
+  return f;
+}
 function wpRender(){
   const board = document.getElementById('wpBoard');
   const today = new Date(); today.setHours(0,0,0,0);
-  const pending = wpTasks.filter(t=>t.status==='pending');
-  const nonPending = wpTasks.filter(t=>t.status!=='pending');
+  // Hide filters for designers (they only see their own)
+  const filterBar = document.getElementById('wpFilters');
+  if(filterBar && currentUser && currentUser.role==='designer') filterBar.style.display='none';
+  // Populate client filter
+  const cSel = document.getElementById('wpFilterClient');
+  if(cSel && !cSel.dataset.loaded){
+    cSel.innerHTML='<option value="">All Clients</option>';
+    if(Array.isArray(clients)) clients.forEach(c=>{cSel.innerHTML+=`<option value="${esc(c.name)}">${esc(c.name)}</option>`;});
+    cSel.dataset.loaded='1';
+  }
+  const filtered = wpGetFiltered();
+  const pending = filtered.filter(t=>t.status==='pending');
+  const nonPending = filtered.filter(t=>t.status!=='pending');
 
   board.innerHTML = WP_DAYS.map((name,i)=>{
     const dayNum = i+1;
@@ -2120,6 +2221,112 @@ async function wpDeleteTask(){
   await sbDel('graphic_weekly_plan','id=eq.'+wpEditId);
   toast('Task deleted');
   closeModal('modalWpTask');
+  wpLoadWeek();
+}
+
+// ═══════════════════════════════════════
+// BULK ADD — PIPELINE
+// ═══════════════════════════════════════
+let bulkRowCount = 0;
+function openBulkPipeline(){
+  bulkRowCount=0;
+  document.getElementById('bulkRows').innerHTML='';
+  for(let i=0;i<3;i++) bulkAddRow();
+  openModal('modalBulkPipeline');
+}
+function bulkAddRow(){
+  bulkRowCount++;
+  const clientOpts = clients.map(c=>`<option value="${c.id}" data-name="${esc(c.name)}">${esc(c.name)}</option>`).join('');
+  const tr = document.createElement('tr');
+  tr.innerHTML=`
+    <td><input type="text" class="bk-title" placeholder="Post title"></td>
+    <td><select class="bk-client"><option value="">—</option>${clientOpts}</select></td>
+    <td><select class="bk-type"><option value="post">Post</option><option value="story">Story</option><option value="reel_cover">Reel Cover</option><option value="carousel">Carousel</option><option value="logo">Logo</option><option value="banner">Banner</option><option value="flyer">Flyer</option><option value="brochure">Brochure</option><option value="other">Other</option></select></td>
+    <td><select class="bk-designer"><option value="">—</option><option value="Rukshan">Rukshan</option><option value="Suhana">Suhana</option></select></td>
+    <td><select class="bk-priority"><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></td>
+    <td><input type="date" class="bk-deadline"></td>
+    <td><button class="btn-rm" onclick="this.closest('tr').remove()">&times;</button></td>
+  `;
+  document.getElementById('bulkRows').appendChild(tr);
+}
+async function bulkSaveAll(){
+  const rows = document.querySelectorAll('#bulkRows tr');
+  let count=0;
+  for(const row of rows){
+    const title = row.querySelector('.bk-title').value.trim();
+    if(!title) continue;
+    const clientSel = row.querySelector('.bk-client');
+    const clientId = clientSel.value ? parseInt(clientSel.value) : null;
+    const clientName = clientSel.value ? clientSel.options[clientSel.selectedIndex].dataset.name : null;
+    const data = {
+      title,
+      client_id: clientId,
+      client_name: clientName,
+      type: row.querySelector('.bk-type').value,
+      assigned_designer: row.querySelector('.bk-designer').value||null,
+      priority: row.querySelector('.bk-priority').value,
+      deadline: row.querySelector('.bk-deadline').value||null,
+      current_stage: 'brief',
+      target_month: new Date().getMonth()+1,
+      target_year: new Date().getFullYear(),
+      created_by: currentUser.name,
+    };
+    const res = await sbPost('graphic_projects', data);
+    if(Array.isArray(res)&&res[0]){
+      await sbPost('graphic_stage_history',{graphic_project_id:res[0].id, stage:'brief', entered_by:currentUser.name, notes:'Bulk added'});
+      count++;
+    }
+  }
+  if(count===0){ toast('No posts to add — fill at least one title','error'); return; }
+  toast(count+' post'+(count>1?'s':'')+' added');
+  closeModal('modalBulkPipeline');
+  await loadAll();
+}
+
+// ═══════════════════════════════════════
+// BULK ADD — WEEKLY PLAN
+// ═══════════════════════════════════════
+function wpOpenBulk(){
+  document.getElementById('wpBulkRows').innerHTML='';
+  for(let i=0;i<3;i++) wpBulkAddRow();
+  openModal('modalWpBulk');
+}
+function wpBulkAddRow(){
+  const clientOpts = clients.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
+  const tr = document.createElement('tr');
+  tr.innerHTML=`
+    <td><select class="wbk-day"><option value="1">Mon</option><option value="2">Tue</option><option value="3">Wed</option><option value="4">Thu</option><option value="5">Fri</option></select></td>
+    <td><select class="wbk-client"><option value="">—</option>${clientOpts}</select></td>
+    <td><select class="wbk-type"><option value="post">Post</option><option value="story">Story</option><option value="reel_cover">Reel Cover</option><option value="carousel">Carousel</option><option value="logo">Logo</option><option value="banner">Banner</option><option value="other">Other</option></select></td>
+    <td><input type="number" class="wbk-count" min="1" value="1" style="width:60px"></td>
+    <td><select class="wbk-designer"><option value="">—</option><option value="Rukshan">Rukshan</option><option value="Suhana">Suhana</option></select></td>
+    <td><button class="btn-rm" onclick="this.closest('tr').remove()">&times;</button></td>
+  `;
+  document.getElementById('wpBulkRows').appendChild(tr);
+}
+async function wpBulkSaveAll(){
+  const rows = document.querySelectorAll('#wpBulkRows tr');
+  let count=0;
+  for(const row of rows){
+    const clientName = row.querySelector('.wbk-client').value;
+    if(!clientName) continue;
+    const data = {
+      week_start: wpWeekStart.toISOString().slice(0,10),
+      day_of_week: parseInt(row.querySelector('.wbk-day').value),
+      client_name: clientName,
+      task_type: row.querySelector('.wbk-type').value,
+      design_count: parseInt(row.querySelector('.wbk-count').value)||1,
+      assigned_to: row.querySelector('.wbk-designer').value||null,
+      status: 'planned',
+      created_by: currentUser.name,
+      updated_at: new Date().toISOString()
+    };
+    await sbPost('graphic_weekly_plan', data);
+    count++;
+  }
+  if(count===0){ toast('No tasks to add — select a client for at least one row','error'); return; }
+  toast(count+' task'+(count>1?'s':'')+' added');
+  closeModal('modalWpBulk');
   wpLoadWeek();
 }
 </script>

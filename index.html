@@ -697,7 +697,7 @@ tr:hover td{background:var(--surface-2)}
 <div class="modal-overlay" id="modalAddProject">
   <div class="modal modal-md">
     <div class="modal-header">
-      <h2 id="modalAddTitle">New Brief</h2>
+      <h2 id="modalAddTitle">New Post</h2>
       <button class="modal-close" onclick="closeModal('modalAddProject')">&times;</button>
     </div>
     <div class="modal-body">
@@ -780,7 +780,7 @@ tr:hover td{background:var(--surface-2)}
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modalAddProject')">Cancel</button>
-      <button class="btn btn-accent" id="btnSaveProject" onclick="saveProject()">Save Project</button>
+      <button class="btn btn-accent" id="btnSaveProject" onclick="saveProject()">Save Post</button>
     </div>
   </div>
 </div>
@@ -1389,8 +1389,8 @@ async function saveDetailImage(projId) {
 // ─── ADD / EDIT PROJECT ───
 function openAddProject(){
   editingProjectId = null;
-  document.getElementById('modalAddTitle').textContent = 'New Project';
-  document.getElementById('btnSaveProject').textContent = 'Save Project';
+  document.getElementById('modalAddTitle').textContent = 'New Post';
+  document.getElementById('btnSaveProject').textContent = 'Save Post';
   ['projTitle','projNotes','projImageUrl','projDriveLink','projDimensions'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('projType').value='post';
   document.getElementById('projClient').value='';
@@ -1460,9 +1460,9 @@ async function saveProject(){
     data.target_year = new Date().getFullYear();
     const res = await sbPost('graphic_projects', data);
     if(Array.isArray(res) && res[0]){
-      await sbPost('graphic_stage_history',{ graphic_project_id: res[0].id, stage:'brief', entered_by: currentUser.name, notes:'Brief created' });
+      await sbPost('graphic_stage_history',{ graphic_project_id: res[0].id, stage:'brief', entered_by: currentUser.name, notes:'Post created' });
     }
-    toast('Project created');
+    toast('Post created');
   }
   clearPendingImg('addProj');
   closeModal('modalAddProject');
@@ -1495,7 +1495,7 @@ async function quickAddProject(){
   if(Array.isArray(res) && res[0]){
     await sbPost('graphic_stage_history',{ graphic_project_id: res[0].id, stage:'brief', entered_by: currentUser.name, notes:'Quick added' });
     el.value=''; clientSel.value='';
-    toast('Brief added — '+title);
+    toast('Post added —'+title);
     await loadAll();
     el.focus();
   } else {

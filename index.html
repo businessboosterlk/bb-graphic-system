@@ -1705,31 +1705,94 @@ async function showClientDetail(clientId, clientName){
   detailView.style.display = 'block';
   document.getElementById('clientDetailName').textContent = clientName;
 
-  const cp = await sbGet('graphic_projects','?client_id=eq.'+clientId+'&is_archived=eq.false&order=created_at.desc');
-  const clientProjects = Array.isArray(cp)?cp:[];
+  const client = clients.find(c=>c.id===clientId);
+  const monthlyPosts = client?.monthly_posts||0;
 
-  if(clientProjects.length===0){
-    document.getElementById('clientDetailProjects').innerHTML = emptyHTML('No active projects for this client');
-    return;
+  // Get ALL projects for this client (not just active) for the quarterly view
+  const allCP = await sbGet('graphic_projects','?client_id=eq.'+clientId+'&order=created_at.desc');
+  const allProjects = Array.isArray(allCP)?allCP:[];
+  const activeProjects = allProjects.filter(p=>!p.is_archived);
+
+  // Quarterly content plan
+  const now = new Date();
+  const year = now.getFullYear();
+  const curMonth = now.getMonth()+1;
+  const qStart = curMonth<=3?1:curMonth<=6?4:curMonth<=9?7:10;
+  const qNum = Math.ceil(curMonth/3);
+  const MONTH_NAMES = ['','January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  let qHTML = `<div class="panel" style="margin-bottom:20px">
+    <h3 style="color:var(--accent);font-weight:700;margin-bottom:12px">Q${qNum} GRAPHIC PLAN — ${year}</h3>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">`;
+
+  for(let i=0;i<3;i++){
+    const m = qStart+i;
+    const monthProjects = allProjects.filter(p=>p.target_month===m && p.target_year===year);
+    const posts = monthProjects.filter(p=>p.type==='post'||!p.type);
+    const stories = monthProjects.filter(p=>p.type==='story');
+    const others = monthProjects.filter(p=>p.type&&p.type!=='post'&&p.type!=='story');
+    const approved = monthProjects.filter(p=>p.current_stage==='approved').length;
+    const inPipeline = monthProjects.filter(p=>p.current_stage!=='approved'&&!p.is_archived).length;
+    const remaining = Math.max(0, monthlyPosts - approved);
+    const pct = monthlyPosts>0?Math.min(100,Math.round(approved/monthlyPosts*100)):0;
+    const isCurrentMonth = m===curMonth;
+
+    qHTML += `<div style="background:var(--surface-2);border-radius:var(--r);padding:14px;border:1px solid ${isCurrentMonth?'var(--accent)':'var(--border)'}">
+      <div style="font-size:0.72rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.08em;font-weight:700;margin-bottom:8px">${MONTH_NAMES[m]} ${year}</div>
+      <div style="display:flex;align-items:baseline;gap:2px;margin-bottom:10px">
+        <span style="font-family:Poppins;font-size:1.8rem;font-weight:800;color:var(--text)">${approved}</span>
+        <span style="font-size:0.9rem;color:var(--text-3)">/${monthlyPosts}</span>
+      </div>
+      <div style="font-size:0.78rem;color:var(--text-2);line-height:1.8">
+        <div style="display:flex;justify-content:space-between"><span>Posts</span><span style="font-weight:600">${posts.length}</span></div>
+        <div style="display:flex;justify-content:space-between"><span>Stories</span><span style="font-weight:600">${stories.length}</span></div>
+        <div style="display:flex;justify-content:space-between"><span>Other</span><span style="font-weight:600">${others.length}</span></div>
+        <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:4px;margin-top:4px"><span>In pipeline</span><span style="font-weight:600;color:var(--accent)">${inPipeline}</span></div>
+        <div style="display:flex;justify-content:space-between"><span>Remaining</span><span style="font-weight:600;color:${remaining>0?'var(--red)':'var(--green)'}">${remaining}</span></div>
+      </div>
+      <div style="margin-top:8px;height:6px;background:var(--surface);border-radius:3px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${pct>=100?'var(--green)':'var(--accent)'};border-radius:3px;transition:width 0.3s"></div>
+      </div>
+    </div>`;
   }
 
-  let html = '';
-  STAGES.forEach(stage=>{
-    const stageProjects = clientProjects.filter(p=>p.current_stage===stage);
-    if(stageProjects.length===0) return;
-    html += `<div class="work-group"><div class="work-group-header"><span class="badge badge-stage">${STAGE_LABELS[stage]}</span> ${stageProjects.length} projects</div>`;
-    stageProjects.forEach(p=>{
-      html += `<div class="work-item" onclick="openProjectDetail(${p.id})" style="cursor:pointer">
-        <div class="work-item-info">
-          <div class="work-item-title">${esc(p.title)}</div>
-          <div class="work-item-sub">${esc(p.type||'post')} &middot; ${esc(p.assigned_designer||'Unassigned')} &middot; Due ${fmtDate(p.deadline)}</div>
-        </div>
-        <span class="badge badge-priority-${p.priority||'normal'}">${esc(p.priority||'normal')}</span>
-      </div>`;
+  // Mini bar chart
+  qHTML += `</div>
+    <div style="display:flex;justify-content:center;gap:24px;margin-top:16px;align-items:flex-end;height:80px">`;
+  for(let i=0;i<3;i++){
+    const m = qStart+i;
+    const approved = allProjects.filter(p=>p.target_month===m&&p.target_year===year&&p.current_stage==='approved').length;
+    const barH = monthlyPosts>0?Math.round((approved/monthlyPosts)*70):0;
+    qHTML += `<div style="text-align:center">
+      <div style="font-size:0.72rem;color:var(--text-3);margin-bottom:4px">${approved}/${monthlyPosts}</div>
+      <div style="width:40px;height:${Math.max(barH,4)}px;background:${approved>=monthlyPosts?'var(--green)':'var(--accent)'};border-radius:4px 4px 0 0;${barH===0?'border:1px dashed var(--border);background:none':''}"></div>
+    </div>`;
+  }
+  qHTML += `</div></div>`;
+
+  // Active projects by stage
+  let projHTML = '';
+  if(activeProjects.length===0){
+    projHTML = emptyHTML('No active projects for this client');
+  } else {
+    STAGES.forEach(stage=>{
+      const stageProjects = activeProjects.filter(p=>p.current_stage===stage);
+      if(stageProjects.length===0) return;
+      projHTML += `<div class="work-group"><div class="work-group-header"><span class="badge badge-stage">${STAGE_LABELS[stage]}</span> ${stageProjects.length} projects</div>`;
+      stageProjects.forEach(p=>{
+        projHTML += `<div class="work-item" onclick="openProjectDetail(${p.id})" style="cursor:pointer">
+          <div class="work-item-info">
+            <div class="work-item-title">${esc(p.title)}</div>
+            <div class="work-item-sub">${esc(p.type||'post')} &middot; ${esc(p.assigned_designer||'Unassigned')} &middot; Due ${fmtDate(p.deadline)}</div>
+          </div>
+          <span class="badge badge-priority-${p.priority||'normal'}">${esc(p.priority||'normal')}</span>
+        </div>`;
+      });
+      projHTML += '</div>';
     });
-    html += '</div>';
-  });
-  document.getElementById('clientDetailProjects').innerHTML = html;
+  }
+
+  document.getElementById('clientDetailProjects').innerHTML = qHTML + projHTML;
 }
 
 function closeClientDetail(){

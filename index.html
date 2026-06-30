@@ -548,9 +548,10 @@ tr:hover td{background:var(--surface-2)}
       <section id="section-pipeline">
         <div class="sec-header qa-header">
           <div class="qa-bar">
-            <input type="text" id="qaTitle" placeholder="+ Quick add a post — type a title, press Enter" autocomplete="off" onkeydown="if(event.key==='Enter')quickAddProject()">
+            <input type="text" id="qaTitle" placeholder="+ Quick add — type a title, press Enter" autocomplete="off" onkeydown="if(event.key==='Enter')quickAddProject()">
+            <select id="qaType"><option value="post">Post</option><option value="story">Story</option></select>
             <select id="qaClient"><option value="">Client (optional)</option></select>
-            <button class="btn btn-accent" onclick="quickAddProject()">Add Post</button>
+            <button class="btn btn-accent" onclick="quickAddProject()">Add</button>
           </div>
           <button class="btn btn-ghost btn-sm" onclick="openAddProject()" title="Open the full post form with all fields">Full form</button>
         </div>
@@ -1397,7 +1398,7 @@ function openAddProject(){
   document.getElementById('projDesigner').value='';
   document.getElementById('projPriority').value='normal';
   document.getElementById('projDeadline').value='';
-  document.getElementById('projTargetMonth').value = '';
+  document.getElementById('projTargetMonth').value = new Date().getMonth()+1;
   openModal('modalAddProject');
   clearPendingImg('addProj');
   setupImageHost('addProj', null);
@@ -1443,7 +1444,7 @@ async function saveProject(){
     assigned_designer: designerName,
     priority: document.getElementById('projPriority').value,
     deadline: document.getElementById('projDeadline').value||null,
-    target_month: targetMonth ? parseInt(targetMonth) : null,
+    target_month: targetMonth ? parseInt(targetMonth) : new Date().getMonth()+1,
     dimensions: document.getElementById('projDimensions').value||null,
     brief_notes: document.getElementById('projNotes').value||null,
     image_url: PENDING_IMG['addProj'] || document.getElementById('projImageUrl').value||null,
@@ -1451,13 +1452,13 @@ async function saveProject(){
     updated_at: new Date().toISOString()
   };
 
+  data.target_year = new Date().getFullYear();
   if(editingProjectId){
     await sbPatch('graphic_projects','id=eq.'+editingProjectId, data);
-    toast('Project updated');
+    toast('Post updated');
   } else {
     data.current_stage = 'brief';
     data.created_by = currentUser.name;
-    data.target_year = new Date().getFullYear();
     const res = await sbPost('graphic_projects', data);
     if(Array.isArray(res) && res[0]){
       await sbPost('graphic_stage_history',{ graphic_project_id: res[0].id, stage:'brief', entered_by: currentUser.name, notes:'Post created' });
@@ -1483,7 +1484,7 @@ async function quickAddProject(){
     title,
     client_id: clientId,
     client_name: clientName,
-    type: 'post',
+    type: document.getElementById('qaType')?.value||'post',
     priority: 'normal',
     current_stage: 'brief',
     created_by: currentUser.name,
@@ -1761,24 +1762,31 @@ async function showClientDetail(clientId, clientName){
     const posts = monthProjects.filter(p=>p.type==='post'||!p.type);
     const stories = monthProjects.filter(p=>p.type==='story');
     const others = monthProjects.filter(p=>p.type&&p.type!=='post'&&p.type!=='story');
-    const approved = monthProjects.filter(p=>p.current_stage==='approved').length;
+    const postsDone = posts.filter(p=>p.current_stage==='approved').length;
+    const storiesDone = stories.filter(p=>p.current_stage==='approved').length;
+    const monthlyStories = client.monthly_stories||0;
     const inPipeline = monthProjects.filter(p=>p.current_stage!=='approved'&&!p.is_archived).length;
-    const remaining = Math.max(0, monthlyPosts - approved);
-    const pct = monthlyPosts>0?Math.min(100,Math.round(approved/monthlyPosts*100)):0;
+    const totalTarget = monthlyPosts + monthlyStories;
+    const totalDone = postsDone + storiesDone;
+    const pct = totalTarget>0?Math.min(100,Math.round(totalDone/totalTarget*100)):0;
     const isCurrentMonth = m===curMonth;
+
+    // Readiness status
+    function readiness(done, target){ if(!target) return done>0?done+' done':'—'; if(done>=target) return '✅ Ready'; if(done>0) return '⚠️ '+done+'/'+target; return '🔴 Not started'; }
+    const postStatus = readiness(postsDone, monthlyPosts);
+    const storyStatus = readiness(storiesDone, monthlyStories);
 
     qHTML += `<div style="background:var(--surface-2);border-radius:var(--r);padding:14px;border:1px solid ${isCurrentMonth?'var(--accent)':'var(--border)'}">
       <div style="font-size:0.72rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.08em;font-weight:700;margin-bottom:8px">${MONTH_NAMES[m]} ${year}</div>
       <div style="display:flex;align-items:baseline;gap:2px;margin-bottom:10px">
-        <span style="font-family:Poppins;font-size:1.8rem;font-weight:800;color:var(--text)">${approved}</span>
-        <span style="font-size:0.9rem;color:var(--text-3)">/${monthlyPosts}</span>
+        <span style="font-family:Poppins;font-size:1.8rem;font-weight:800;color:var(--text)">${totalDone}</span>
+        <span style="font-size:0.9rem;color:var(--text-3)">/${totalTarget||'—'}</span>
       </div>
       <div style="font-size:0.78rem;color:var(--text-2);line-height:1.8">
-        <div style="display:flex;justify-content:space-between"><span>Posts</span><span style="font-weight:600">${posts.length}</span></div>
-        <div style="display:flex;justify-content:space-between"><span>Stories</span><span style="font-weight:600">${stories.length}</span></div>
-        <div style="display:flex;justify-content:space-between"><span>Other</span><span style="font-weight:600">${others.length}</span></div>
+        <div style="display:flex;justify-content:space-between"><span>Posts</span><span style="font-weight:600">${postStatus}</span></div>
+        <div style="display:flex;justify-content:space-between"><span>Stories</span><span style="font-weight:600">${storyStatus}</span></div>
+        ${others.length?`<div style="display:flex;justify-content:space-between"><span>Other</span><span style="font-weight:600">${others.length}</span></div>`:''}
         <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:4px;margin-top:4px"><span>In pipeline</span><span style="font-weight:600;color:var(--accent)">${inPipeline}</span></div>
-        <div style="display:flex;justify-content:space-between"><span>Remaining</span><span style="font-weight:600;color:${remaining>0?'var(--red)':'var(--green)'}">${remaining}</span></div>
       </div>
       <div style="margin-top:8px;height:6px;background:var(--surface);border-radius:3px;overflow:hidden">
         <div style="height:100%;width:${pct}%;background:${pct>=100?'var(--green)':'var(--accent)'};border-radius:3px;transition:width 0.3s"></div>

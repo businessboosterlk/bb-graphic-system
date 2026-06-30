@@ -597,12 +597,14 @@ tr:hover td{background:var(--surface-2)}
         <div class="sec-header">
           <h2>Clients</h2>
           <div class="flex gap-2">
-            <select id="clientMonthFilter" onchange="loadClients()" style="height:36px;font-size:0.82rem">
-              <option value="">Current Month</option>
-              <option value="1">January</option><option value="2">February</option><option value="3">March</option>
-              <option value="4">April</option><option value="5">May</option><option value="6">June</option>
-              <option value="7">July</option><option value="8">August</option><option value="9">September</option>
-              <option value="10">October</option><option value="11">November</option><option value="12">December</option>
+            <select id="clientQuarterFilter" onchange="loadClients()" style="height:36px;font-size:0.82rem">
+              <option value="">Current Quarter</option>
+              <option value="1">Q1 (Jan–Mar)</option>
+              <option value="2">Q2 (Apr–Jun)</option>
+              <option value="3">Q3 (Jul–Sep)</option>
+              <option value="4">Q4 (Oct–Dec)</option>
+            </select>
+            <select id="clientYearFilter" onchange="loadClients()" style="height:36px;font-size:0.82rem">
             </select>
           </div>
         </div>
@@ -1665,15 +1667,32 @@ async function addComment(projId){
 // ═══════════════════════════════════════
 // CLIENTS
 // ═══════════════════════════════════════
+function getClientQuarter(){
+  const qVal = document.getElementById('clientQuarterFilter')?.value;
+  const yVal = document.getElementById('clientYearFilter')?.value;
+  const now = new Date();
+  const year = yVal ? parseInt(yVal) : now.getFullYear();
+  const q = qVal ? parseInt(qVal) : Math.ceil((now.getMonth()+1)/3);
+  const qStart = (q-1)*3+1;
+  return { q, year, months: [qStart, qStart+1, qStart+2] };
+}
+
 async function loadClients(){
   if(!clients.length) return;
-  const monthVal = document.getElementById('clientMonthFilter')?.value;
-  const targetMonth = monthVal ? parseInt(monthVal) : new Date().getMonth()+1;
-  const targetYear = new Date().getFullYear();
+  // Populate year dropdown if empty
+  const ySel = document.getElementById('clientYearFilter');
+  if(ySel && !ySel.dataset.loaded){
+    const curY = new Date().getFullYear();
+    ySel.innerHTML = `<option value="${curY}">${curY}</option><option value="${curY-1}">${curY-1}</option>`;
+    ySel.dataset.loaded='1';
+  }
 
-  // Get all approved posts for this month
-  const approved = await sbGet('graphic_projects','?current_stage=eq.approved&target_year=eq.'+targetYear+'&target_month=eq.'+targetMonth+'&select=client_id');
-  const approvedArr = Array.isArray(approved)?approved:[];
+  const { q, year, months } = getClientQuarter();
+  const qLabel = 'Q'+q;
+
+  // Get all projects for this quarter
+  const qProjects = await sbGet('graphic_projects','?target_year=eq.'+year+'&target_month=in.('+months.join(',')+')&select=client_id,type,current_stage,is_archived,target_month');
+  const qArr = Array.isArray(qProjects)?qProjects:[];
 
   const grid = document.getElementById('clientGrid');
   const detailView = document.getElementById('clientDetailView');
@@ -1682,8 +1701,14 @@ async function loadClients(){
 
   grid.innerHTML = clients.map(c=>{
     const monthlyPosts = c.monthly_posts||0;
-    const doneCount = approvedArr.filter(p=>p.client_id===c.id).length;
-    const pct = monthlyPosts>0 ? Math.min(100, Math.round(doneCount/monthlyPosts*100)) : 0;
+    const quarterTarget = monthlyPosts * 3;
+    const cp = qArr.filter(p=>p.client_id===c.id);
+    const posts = cp.filter(p=>p.type==='post'||!p.type);
+    const stories = cp.filter(p=>p.type==='story');
+    const others = cp.filter(p=>p.type&&p.type!=='post'&&p.type!=='story');
+    const approvedCount = cp.filter(p=>p.current_stage==='approved').length;
+    const inPipeline = cp.filter(p=>p.current_stage!=='approved'&&!p.is_archived).length;
+    const pct = quarterTarget>0 ? Math.min(100, Math.round(approvedCount/quarterTarget*100)) : 0;
     const healthCls = c.health==='healthy'?'healthy':c.health==='at-risk'?'at-risk':'critical';
     return `
       <div class="client-card" onclick="showClientDetail(${c.id},'${esc(c.name)}')">
@@ -1692,8 +1717,15 @@ async function loadClients(){
           <div class="health-dot ${healthCls}" title="${esc(c.health||'unknown')}"></div>
         </div>
         <div class="client-meta">${esc(c.package||'—')} &middot; ${esc(c.industry||'')}</div>
+        <div style="display:flex;gap:8px;margin:8px 0;font-size:0.78rem">
+          <span style="color:var(--accent);font-weight:600">${posts.length} posts</span>
+          <span style="color:var(--pink);font-weight:600">${stories.length} stories</span>
+          ${others.length?`<span style="color:var(--blue);font-weight:600">${others.length} other</span>`:''}
+          <span style="color:var(--green);font-weight:600;margin-left:auto">${approvedCount} done</span>
+          ${inPipeline?`<span style="color:var(--amber);font-weight:600">${inPipeline} active</span>`:''}
+        </div>
         <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
-        <div class="progress-label"><span>${doneCount} / ${monthlyPosts} posts</span><span>${pct}%</span></div>
+        <div class="progress-label"><span>${approvedCount} / ${quarterTarget} ${qLabel} target</span><span>${pct}%</span></div>
       </div>
     `;
   }).join('');
@@ -1714,11 +1746,9 @@ async function showClientDetail(clientId, clientName){
   const activeProjects = allProjects.filter(p=>!p.is_archived);
 
   // Quarterly content plan
-  const now = new Date();
-  const year = now.getFullYear();
-  const curMonth = now.getMonth()+1;
-  const qStart = curMonth<=3?1:curMonth<=6?4:curMonth<=9?7:10;
-  const qNum = Math.ceil(curMonth/3);
+  const { q: qNum, year, months: qMonths } = getClientQuarter();
+  const qStart = qMonths[0];
+  const curMonth = new Date().getMonth()+1;
   const MONTH_NAMES = ['','January','February','March','April','May','June','July','August','September','October','November','December'];
 
   let qHTML = `<div class="panel" style="margin-bottom:20px">

@@ -871,7 +871,7 @@ tr:hover td{background:var(--surface-2)}
       <p style="color:var(--text-2);font-size:0.82rem;margin-bottom:12px">Add multiple posts at once. Fill each row and click Save All.</p>
       <div style="overflow-x:auto">
         <table class="bulk-table" id="bulkTable">
-          <thead><tr><th>Title *</th><th>Client</th><th>Type</th><th>Designer</th><th>Priority</th><th>Deadline</th><th></th></tr></thead>
+          <thead><tr><th>Title *</th><th>Client</th><th>Type</th><th>Designer</th><th>Priority</th><th>Deadline</th><th>Image</th><th></th></tr></thead>
           <tbody id="bulkRows"></tbody>
         </table>
       </div>
@@ -973,15 +973,18 @@ async function sbGet(table, query=''){
   if(r.status===401){ await gLogin(); r = await fetch(SB_URL+'/rest/v1/'+table+query, {headers:{'apikey':SB_KEY,'Authorization':gBearer()}}); }
   return r.json();
 }
-async function sbPost(table, data){
+async function sbPost(table, data, returning){
   await gEnsure();
-  const r = await fetch(SB_URL+'/rest/v1/'+table, {method:'POST',headers:gHdr({'Prefer':'return=representation'}),body:JSON.stringify(data)});
+  // returning='id' → server echoes only the id, never big columns (e.g. base64 image_url)
+  const q = returning==='id' ? '?select=id' : '';
+  const r = await fetch(SB_URL+'/rest/v1/'+table+q, {method:'POST',headers:gHdr({'Prefer':'return=representation'}),body:JSON.stringify(data)});
   return r.json();
 }
 async function sbPatch(table, query, data){
   await gEnsure();
-  const r = await fetch(SB_URL+'/rest/v1/'+table+'?'+query, {method:'PATCH',headers:gHdr({'Prefer':'return=representation'}),body:JSON.stringify(data)});
-  return r.json();
+  // return=minimal → server does not echo the row back (saves stay fast even with image_url present)
+  const r = await fetch(SB_URL+'/rest/v1/'+table+'?'+query, {method:'PATCH',headers:gHdr({'Prefer':'return=minimal'}),body:JSON.stringify(data)});
+  return r.ok;
 }
 async function sbDel(table, query){
   await gEnsure();
@@ -1069,7 +1072,13 @@ function showApp(){
   document.getElementById('topbarGreeting').textContent = 'Hey, ' + currentUser.label.split(' ')[0];
   loadAll();
   loadAgentAlerts();
-  refreshTimer = setInterval(()=>{ if(!document.hidden) loadAll(); }, 180000);
+  refreshTimer = setInterval(()=>{
+    // Never auto-reload while a modal is open or a save is running — it would wipe in-progress edits
+    if(document.hidden) return;
+    if(document.querySelector('.modal-overlay.open')) return;
+    if(window.__gdSaving) return;
+    loadAll();
+  }, 180000);
 }
 
 // check session on load
@@ -1124,19 +1133,59 @@ function toggleSidebar(){ document.getElementById('sidebar').classList.toggle('o
 function closeSidebar(){ document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebarOverlay').classList.remove('show'); }
 
 // ─── LOAD ALL DATA ───
+// Columns for the board — everything EXCEPT image_url (base64 blobs are loaded lazily per card)
+const PROJ_LIST_COLS = 'id,title,client_id,client_name,assigned_designer,assigned_designer_id,current_stage,priority,deadline,brief_notes,drive_link,dimensions,type,target_month,target_year,is_archived,created_by,created_at,updated_at';
+let IMG_IDS = new Set();   // ids of projects that HAVE an image
+const IMG_CACHE = {};      // id → image_url, filled on demand
+
 async function loadAll(){
   try{
-    const [p, c, h] = await Promise.all([
-      sbGet('graphic_projects','?order=created_at.desc&is_archived=eq.false'),
+    const [p, c, h, imgs] = await Promise.all([
+      sbGet('graphic_projects','?order=created_at.desc&is_archived=eq.false&select='+PROJ_LIST_COLS),
       sbGet('clients','?order=name.asc'),
-      sbGet('graphic_stage_history','?order=entered_at.desc&limit=50')
+      sbGet('graphic_stage_history','?order=entered_at.desc&limit=50'),
+      sbGet('graphic_projects','?is_archived=eq.false&image_url=not.is.null&select=id')
     ]);
     projects = Array.isArray(p)?p:[];
     clients = Array.isArray(c)?c:[];
     stageHistory = Array.isArray(h)?h:[];
+    IMG_IDS = new Set(Array.isArray(imgs)?imgs.map(x=>x.id):[]);
     populateClientDropdowns();
     renderCurrentPage();
   } catch(e){ console.error('loadAll error',e); }
+}
+
+// ─── LAZY THUMBNAILS (load each card's base64 image only when it scrolls into view) ───
+let _thumbObserver = null;
+function observeLazyThumbs(){
+  if(!('IntersectionObserver' in window)) return;
+  if(!_thumbObserver){
+    _thumbObserver = new IntersectionObserver((entries)=>{
+      entries.forEach(en=>{
+        if(!en.isIntersecting) return;
+        const el = en.target; _thumbObserver.unobserve(el);
+        const pid = el.dataset.pid;
+        if(IMG_CACHE[pid]){ el.src = IMG_CACHE[pid]; return; }
+        sbGet('graphic_projects','?id=eq.'+pid+'&select=image_url').then(r=>{
+          const url = (Array.isArray(r)&&r[0])?r[0].image_url:null;
+          if(url){ IMG_CACHE[pid]=url; el.src=url; } else { el.style.display='none'; }
+        }).catch(()=>{});
+      });
+    }, {rootMargin:'250px'});
+  }
+  document.querySelectorAll('img.lazy-thumb:not([src])').forEach(el=>_thumbObserver.observe(el));
+}
+
+// Fetch one project's image_url on demand (for detail/edit views), caching the result.
+async function ensureProjectImage(p){
+  if(!p) return null;
+  if(p.image_url !== undefined && p.image_url !== null) return p.image_url;
+  if(IMG_CACHE[p.id]){ p.image_url = IMG_CACHE[p.id]; return p.image_url; }
+  if(!IMG_IDS.has(p.id)){ p.image_url = null; return null; }
+  const r = await sbGet('graphic_projects','?id=eq.'+p.id+'&select=image_url');
+  const url = (Array.isArray(r)&&r[0])?r[0].image_url:null;
+  IMG_CACHE[p.id] = url; p.image_url = url;
+  return url;
 }
 
 function renderCurrentPage(){
@@ -1239,13 +1288,16 @@ function renderPipeline(){
       </div>
     `;
   }).join('');
+  requestAnimationFrame(observeLazyThumbs);
 }
 
 function renderKCard(p){
   const isOd = isOverdue(p);
+  const hasImg = (p.image_url!==undefined && p.image_url!==null) || IMG_IDS.has(p.id) || IMG_CACHE[p.id];
+  const cachedSrc = (p.image_url && p.image_url!==undefined) ? p.image_url : (IMG_CACHE[p.id]||'');
   return `
     <div class="k-card" draggable="true" data-id="${p.id}" ondragstart="onDragStart(event,${p.id})" ondragend="onDragEnd(event)" onclick="openProjectDetail(${p.id})">
-      ${p.image_url?`<img class="k-card-thumb" src="${esc(p.image_url)}" alt="" onerror="this.style.display='none'">`:''}
+      ${hasImg?`<img class="k-card-thumb lazy-thumb" data-pid="${p.id}"${cachedSrc?` src="${esc(cachedSrc)}"`:''} alt="" onerror="this.style.display='none'">`:''}
       <div class="k-card-title">${esc(p.title)}</div>
       <div class="k-card-client">${esc(p.client_name||'No client')}</div>
       <div class="k-card-meta">
@@ -1340,16 +1392,43 @@ function setupImageHost(hostId, hostTextarea) {
   });
 }
 
+// Downscale + compress an image data URL so we never store multi-MB base64 blobs in the DB.
+// A post preview needs ~200 KB, not 5 MB — keeps uploads, saves and the board fast.
+function compressImageDataUrl(dataUrl, maxDim = 1400, quality = 0.82) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+      if (!w || !h) { resolve(dataUrl); return; }
+      if (w > maxDim || h > maxDim) {
+        if (w >= h) { h = Math.round(h * maxDim / w); w = maxDim; }
+        else { w = Math.round(w * maxDim / h); h = maxDim; }
+      }
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const out = canvas.toDataURL('image/jpeg', quality);
+        // Only use the compressed version if it is actually smaller
+        resolve(out && out.length < dataUrl.length ? out : dataUrl);
+      } catch (e) { resolve(dataUrl); }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 function readImageFile(file, hostId) {
-  if (file.size > 5 * 1024 * 1024) { toast('Image too large (max 5 MB)', 'error'); return; }
+  if (file.size > 15 * 1024 * 1024) { toast('Image too large (max 15 MB)', 'error'); return; }
   if (PENDING_IMG[hostId]) { toast('Replaced previous image', 'info'); }
   const r = new FileReader();
   r.onerror = () => toast('Could not read image file', 'error');
-  r.onload = ev => {
-    PENDING_IMG[hostId] = ev.target.result;
+  r.onload = async ev => {
+    const compressed = await compressImageDataUrl(ev.target.result);
+    PENDING_IMG[hostId] = compressed;
     const pv = document.getElementById(hostId + '-preview');
     if (pv) {
-      pv.innerHTML = `<div class="image-preview-wrap"><img class="image-preview" src="${ev.target.result}"><div class="image-preview-remove" onclick="clearPendingImg('${hostId}')" title="Remove image">×</div></div>`;
+      pv.innerHTML = `<div class="image-preview-wrap"><img class="image-preview" src="${compressed}"><div class="image-preview-remove" onclick="clearPendingImg('${hostId}')" title="Remove image">×</div></div>`;
     }
     if (hostId === 'detailImg') {
       const btn = document.getElementById('btnSaveDetailImg');
@@ -1381,9 +1460,11 @@ async function saveDetailImage(projId) {
   const img = PENDING_IMG['detailImg'];
   if (!img) return;
   await sbPatch('graphic_projects', 'id=eq.' + projId, { image_url: img, updated_at: new Date().toISOString() });
+  IMG_IDS.add(projId); IMG_CACHE[projId] = img;
+  const pp = projects.find(x=>x.id===projId); if(pp) pp.image_url = img;
   clearPendingImg('detailImg');
   toast('Image saved!', 'success');
-  await loadAll();
+  renderCurrentPage();
   openProjectDetail(projId);
 }
 
@@ -1404,7 +1485,7 @@ function openAddProject(){
   setupImageHost('addProj', null);
 }
 
-function openEditProject(id){
+async function openEditProject(id){
   const p = projects.find(x=>x.id===id);
   if(!p) return;
   editingProjectId = id;
@@ -1419,9 +1500,12 @@ function openEditProject(id){
   document.getElementById('projTargetMonth').value = p.target_month||'';
   document.getElementById('projDimensions').value = p.dimensions||'';
   document.getElementById('projNotes').value = p.brief_notes||'';
-  document.getElementById('projImageUrl').value = p.image_url||'';
   document.getElementById('projDriveLink').value = p.drive_link||'';
+  document.getElementById('projImageUrl').value = '';
+  clearPendingImg('addProj');
   openModal('modalAddProject');
+  // load existing image (base64 is not preloaded with the board) so a plain save never wipes it
+  ensureProjectImage(p).then(url=>{ if(editingProjectId===id) document.getElementById('projImageUrl').value = url||''; });
 }
 
 async function saveProject(){
@@ -1447,21 +1531,27 @@ async function saveProject(){
     target_month: targetMonth ? parseInt(targetMonth) : new Date().getMonth()+1,
     dimensions: document.getElementById('projDimensions').value||null,
     brief_notes: document.getElementById('projNotes').value||null,
-    image_url: PENDING_IMG['addProj'] || document.getElementById('projImageUrl').value||null,
     drive_link: document.getElementById('projDriveLink').value||null,
     updated_at: new Date().toISOString()
   };
 
+  // Image: only send it when there's a new/known value — never overwrite an existing image with null.
+  const newImg = PENDING_IMG['addProj'] || document.getElementById('projImageUrl').value.trim();
+
   data.target_year = new Date().getFullYear();
   if(editingProjectId){
+    if(newImg) data.image_url = newImg;   // omit when empty → preserves existing image
     await sbPatch('graphic_projects','id=eq.'+editingProjectId, data);
+    if(newImg){ IMG_IDS.add(editingProjectId); IMG_CACHE[editingProjectId] = newImg; }
     toast('Post updated');
   } else {
+    data.image_url = newImg || null;
     data.current_stage = 'brief';
     data.created_by = currentUser.name;
-    const res = await sbPost('graphic_projects', data);
+    const res = await sbPost('graphic_projects', data, 'id');
     if(Array.isArray(res) && res[0]){
-      await sbPost('graphic_stage_history',{ graphic_project_id: res[0].id, stage:'brief', entered_by: currentUser.name, notes:'Post created' });
+      if(newImg){ IMG_IDS.add(res[0].id); IMG_CACHE[res[0].id] = newImg; }
+      await sbPost('graphic_stage_history',{ graphic_project_id: res[0].id, stage:'brief', entered_by: currentUser.name, notes:'Post created' }, 'id');
     }
     toast('Post created');
   }
@@ -1510,6 +1600,9 @@ async function quickAddProject(){
 async function openProjectDetail(id){
   const p = projects.find(x=>x.id===id);
   if(!p) return;
+
+  // fetch the (base64) image on demand — it is not loaded with the board
+  await ensureProjectImage(p);
 
   // load comments and history
   const [comments, history] = await Promise.all([
@@ -1649,6 +1742,7 @@ async function updateImage(id){
   await sbPatch('graphic_projects','id=eq.'+id, { image_url: url||null, updated_at: new Date().toISOString() });
   const p = projects.find(x=>x.id===id);
   if(p) p.image_url = url||null;
+  if(url){ IMG_IDS.add(id); IMG_CACHE[id] = url; } else { IMG_IDS.delete(id); delete IMG_CACHE[id]; }
   toast('Image updated');
   closeModal('modalDetail');
   openProjectDetail(id);
@@ -2346,38 +2440,67 @@ function bulkAddRow(){
     <td><select class="bk-designer"><option value="">—</option><option value="Rukshan">Rukshan</option><option value="Suhana">Suhana</option></select></td>
     <td><select class="bk-priority"><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></td>
     <td><input type="date" class="bk-deadline"></td>
+    <td style="text-align:center;white-space:nowrap">
+      <label class="bk-img-label" title="Attach image" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px">
+        <span class="bk-img-icon" style="font-size:1.1rem">📷</span>
+        <img class="bk-img-thumb" style="display:none;width:26px;height:26px;object-fit:cover;border-radius:4px;border:1px solid var(--border)">
+        <input type="file" accept="image/*" class="bk-file" style="display:none" onchange="bulkRowImg(this)">
+      </label>
+    </td>
     <td><button class="btn-rm" onclick="this.closest('tr').remove()">&times;</button></td>
   `;
   document.getElementById('bulkRows').appendChild(tr);
 }
+function bulkRowImg(input){
+  const tr = input.closest('tr');
+  const file = input.files && input.files[0];
+  if(!file){ return; }
+  if(file.size > 15*1024*1024){ toast('Image too large (max 15 MB)','error'); input.value=''; return; }
+  const r = new FileReader();
+  r.onerror = ()=> toast('Could not read image','error');
+  r.onload = async ev=>{
+    const compressed = await compressImageDataUrl(ev.target.result);
+    tr._img = compressed;
+    const thumb = tr.querySelector('.bk-img-thumb');
+    const icon = tr.querySelector('.bk-img-icon');
+    if(thumb){ thumb.src = compressed; thumb.style.display=''; }
+    if(icon){ icon.textContent = '✓'; icon.style.color = 'var(--green)'; }
+  };
+  r.readAsDataURL(file);
+}
 async function bulkSaveAll(){
   const rows = document.querySelectorAll('#bulkRows tr');
   let count=0;
-  for(const row of rows){
-    const title = row.querySelector('.bk-title').value.trim();
-    if(!title) continue;
-    const clientSel = row.querySelector('.bk-client');
-    const clientId = clientSel.value ? parseInt(clientSel.value) : null;
-    const clientName = clientSel.value ? clientSel.options[clientSel.selectedIndex].dataset.name : null;
-    const data = {
-      title,
-      client_id: clientId,
-      client_name: clientName,
-      type: row.querySelector('.bk-type').value,
-      assigned_designer: row.querySelector('.bk-designer').value||null,
-      priority: row.querySelector('.bk-priority').value,
-      deadline: row.querySelector('.bk-deadline').value||null,
-      current_stage: 'brief',
-      target_month: new Date().getMonth()+1,
-      target_year: new Date().getFullYear(),
-      created_by: currentUser.name,
-    };
-    const res = await sbPost('graphic_projects', data);
-    if(Array.isArray(res)&&res[0]){
-      await sbPost('graphic_stage_history',{graphic_project_id:res[0].id, stage:'brief', entered_by:currentUser.name, notes:'Bulk added'});
-      count++;
+  window.__gdSaving = true;
+  try {
+    for(const row of rows){
+      const title = row.querySelector('.bk-title').value.trim();
+      if(!title) continue;
+      const clientSel = row.querySelector('.bk-client');
+      const clientId = clientSel.value ? parseInt(clientSel.value) : null;
+      const clientName = clientSel.value ? clientSel.options[clientSel.selectedIndex].dataset.name : null;
+      const data = {
+        title,
+        client_id: clientId,
+        client_name: clientName,
+        type: row.querySelector('.bk-type').value,
+        assigned_designer: row.querySelector('.bk-designer').value||null,
+        priority: row.querySelector('.bk-priority').value,
+        deadline: row.querySelector('.bk-deadline').value||null,
+        image_url: row._img || null,
+        current_stage: 'brief',
+        target_month: new Date().getMonth()+1,
+        target_year: new Date().getFullYear(),
+        created_by: currentUser.name,
+      };
+      const res = await sbPost('graphic_projects', data, 'id');
+      if(Array.isArray(res)&&res[0]){
+        if(row._img){ IMG_IDS.add(res[0].id); IMG_CACHE[res[0].id] = row._img; }
+        await sbPost('graphic_stage_history',{graphic_project_id:res[0].id, stage:'brief', entered_by:currentUser.name, notes:'Bulk added'}, 'id');
+        count++;
+      }
     }
-  }
+  } finally { window.__gdSaving = false; }
   if(count===0){ toast('No posts to add — fill at least one title','error'); return; }
   toast(count+' post'+(count>1?'s':'')+' added');
   closeModal('modalBulkPipeline');

@@ -2402,6 +2402,9 @@ async function wpSaveTask(){
     await sbPatch('graphic_weekly_plan','id=eq.'+wpEditId, data);
     toast('Task updated');
   } else {
+    // Dedup check
+    const dup = wpTasks.some(t=>t.week_start===data.week_start && t.day_of_week===data.day_of_week && t.client_name===data.client_name && t.task_type===data.task_type && (t.assigned_to||null)===(data.assigned_to||null));
+    if(dup){ toast('This task already exists for this day','error'); return; }
     data.created_by = currentUser.name;
     await sbPost('graphic_weekly_plan', data);
     toast('Task added');
@@ -2530,17 +2533,24 @@ function wpBulkAddRow(){
 }
 async function wpBulkSaveAll(){
   const rows = document.querySelectorAll('#wpBulkRows tr');
-  let count=0;
+  let count=0, skipped=0;
+  const ws = wpWeekStart.toISOString().slice(0,10);
   for(const row of rows){
     const clientName = row.querySelector('.wbk-client').value;
     if(!clientName) continue;
+    const dayVal = parseInt(row.querySelector('.wbk-day').value);
+    const typeVal = row.querySelector('.wbk-type').value;
+    const assignedVal = row.querySelector('.wbk-designer').value||null;
+    // Dedup: skip if same week+day+client+type+designer already exists
+    const exists = wpTasks.some(t=>t.week_start===ws && t.day_of_week===dayVal && t.client_name===clientName && t.task_type===typeVal && (t.assigned_to||null)===(assignedVal||null));
+    if(exists){ skipped++; continue; }
     const data = {
-      week_start: wpWeekStart.toISOString().slice(0,10),
-      day_of_week: parseInt(row.querySelector('.wbk-day').value),
+      week_start: ws,
+      day_of_week: dayVal,
       client_name: clientName,
-      task_type: row.querySelector('.wbk-type').value,
+      task_type: typeVal,
       design_count: parseInt(row.querySelector('.wbk-count').value)||1,
-      assigned_to: row.querySelector('.wbk-designer').value||null,
+      assigned_to: assignedVal,
       status: 'planned',
       created_by: currentUser.name,
       updated_at: new Date().toISOString()
@@ -2548,8 +2558,10 @@ async function wpBulkSaveAll(){
     await sbPost('graphic_weekly_plan', data);
     count++;
   }
-  if(count===0){ toast('No tasks to add — select a client for at least one row','error'); return; }
-  toast(count+' task'+(count>1?'s':'')+' added');
+  if(count===0 && skipped===0){ toast('No tasks to add — select a client for at least one row','error'); return; }
+  let msg = count+' task'+(count!==1?'s':'')+' added';
+  if(skipped) msg += ', '+skipped+' duplicate'+(skipped!==1?'s':'')+' skipped';
+  toast(msg);
   closeModal('modalWpBulk');
   wpLoadWeek();
 }

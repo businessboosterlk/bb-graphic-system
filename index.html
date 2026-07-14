@@ -9,17 +9,19 @@
 <style>
 /* ═══════════════ CSS VARIABLES ═══════════════ */
 :root{
-  --bg:#0a0a0f;--surface:#14141d;--surface-2:#1d1d2a;--surface-3:#262635;
-  --border:rgba(255,255,255,0.06);--border-strong:rgba(255,255,255,0.12);
-  --accent:#FF1F8E;--accent-2:#d4006e;--accent-glow:rgba(255,31,142,0.15);--accent-soft:rgba(255,31,142,0.08);
-  --text:#f1f5f9;--text-2:#94a3b8;--text-3:#64748b;
+  --bg:#0c0d10;--surface:#16171c;--surface-2:#1c1d23;--surface-3:#24252d;
+  --border:rgba(255,255,255,0.07);--border-strong:rgba(255,255,255,0.13);
+  --accent:#FF1F8E;--accent-2:#d4006e;--accent-glow:rgba(255,31,142,0.22);--accent-soft:rgba(255,31,142,0.10);
+  --text:#f4f5f7;--text-2:#aeb0ba;--text-3:#7c7e8a;
   --green:#22c55e;--green-soft:rgba(34,197,94,0.12);
   --red:#ef4444;--red-soft:rgba(239,68,68,0.12);
   --amber:#f59e0b;--amber-soft:rgba(245,158,11,0.12);
   --blue:#3b82f6;--blue-soft:rgba(59,130,246,0.12);
   --purple:#a855f7;--teal:#14b8a6;--indigo:#6366f1;
   --shadow-modal:rgba(0,0,0,0.5);--shadow-soft:rgba(0,0,0,0.25);
-  --r:8px;--r-sm:6px;
+  --shadow-xs:0 1px 2px rgba(0,0,0,.4);--shadow:0 4px 14px rgba(0,0,0,.45);--shadow-md:0 10px 30px rgba(0,0,0,.5);--shadow-lg:0 24px 60px rgba(0,0,0,.6);
+  --ease:cubic-bezier(.16,1,.3,1);--t-fast:.15s;--t:.25s;
+  --r:16px;--r-md:12px;--r-sm:9px;
   --sidebar-w:232px;--topbar-h:60px;
 }
 [data-theme="light"]{
@@ -1850,7 +1852,7 @@ async function showClientDetail(clientId, clientName){
   const monthlyPosts = client?.monthly_posts||0;
 
   // Get ALL projects for this client (not just active) for the quarterly view
-  const allCP = await sbGet('graphic_projects','?client_id=eq.'+clientId+'&order=created_at.desc');
+  const allCP = await sbGet('graphic_projects','?client_id=eq.'+clientId+'&order=created_at.desc&select='+PROJ_LIST_COLS+',completed_at');
   const allProjects = scopedProjects(Array.isArray(allCP)?allCP:[]);
   const activeProjects = allProjects.filter(p=>!p.is_archived);
 
@@ -2088,7 +2090,7 @@ async function restoreProject(id){
 // ═══════════════════════════════════════
 async function renderAnalytics(){
   // Get all projects including archived
-  let allProjects = await sbGet('graphic_projects','?order=created_at.desc');
+  let allProjects = await sbGet('graphic_projects','?order=created_at.desc&select='+PROJ_LIST_COLS+',completed_at');
   if(!Array.isArray(allProjects)) allProjects = [];
   allProjects = scopedProjects(allProjects);
 
@@ -2654,5 +2656,32 @@ async function wpBulkSaveAll(){
   if(document.readyState==='complete') waitAndRun(); else window.addEventListener('load',waitAndRun);
 })();
 </script>
+<style id="v2skin">
+/* ═══ V2 SKIN — HD/BSWL elevation + radius on the Graphic System. Keeps the pink accent. Cascade-final. ═══ */
+::selection{background:var(--accent);color:#fff}
+*:focus-visible{outline:none;box-shadow:0 0 0 3px var(--accent-glow);border-radius:var(--r-sm)}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:var(--surface-3);border-radius:99px;border:2px solid var(--bg)}::-webkit-scrollbar-track{background:transparent}
+.sidebar{box-shadow:var(--shadow-xs)}
+.nav-item{border-radius:var(--r-md);padding:10px 12px;font-weight:600;transition:background var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
+.nav-item.active{position:relative;font-weight:700}
+.nav-item.active::before{content:"";position:absolute;left:0;top:9px;bottom:9px;width:3px;border-radius:99px;background:var(--accent)}
+.topbar{background:color-mix(in srgb,var(--bg) 78%,transparent);backdrop-filter:saturate(160%) blur(14px);-webkit-backdrop-filter:saturate(160%) blur(14px)}
+.topbar-title{font-family:'Poppins',sans-serif;font-weight:800;letter-spacing:-.02em}
+.stat-card{border-radius:var(--r);box-shadow:var(--shadow-xs);transition:transform var(--t-fast) var(--ease),box-shadow var(--t) var(--ease)}
+.stat-card:hover{transform:translateY(-2px);box-shadow:var(--shadow)}
+.stat-card .stat-value{font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.btn{border-radius:var(--r-sm);transition:transform var(--t-fast) var(--ease),box-shadow var(--t) var(--ease),filter var(--t-fast)}
+.btn-accent{background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 82%,#fff),var(--accent) 55%,var(--accent-2));box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 6px 18px var(--accent-glow)}
+.btn-accent:hover{filter:brightness(1.06);transform:translateY(-1px);box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 10px 26px var(--accent-glow)}
+.btn:active{transform:scale(.97)}
+.btn-ghost{box-shadow:var(--shadow-xs)}.btn-ghost:hover{border-color:var(--border-strong);transform:translateY(-1px)}
+.modal{border-radius:var(--r);box-shadow:var(--shadow-lg)}
+.k-card{border-radius:var(--r-md);box-shadow:var(--shadow-xs)}
+.k-card:hover{border-color:var(--accent);box-shadow:var(--shadow-md)}
+.kanban-col-header{border-radius:var(--r-md) var(--r-md) 0 0}
+.kanban-cards{border-radius:0 0 var(--r-md) var(--r-md)}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)!important;box-shadow:0 0 0 3px var(--accent-glow)}
+@media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.06s!important}}
+</style>
 </body>
 </html>

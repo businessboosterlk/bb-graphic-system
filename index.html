@@ -562,7 +562,7 @@ tr:hover td{background:var(--surface-2)}
           <select id="filterClient" onchange="applyFilters()"><option value="">All Clients</option></select>
           <select id="filterDesigner" onchange="applyFilters()">
             <option value="">All Designers</option>
-            <option value="Rukshan">Rukshan</option>
+            <option value="Dinuka">Dinuka</option>
             <option value="Suhana">Suhana</option>
           </select>
           <select id="filterType" onchange="applyFilters()">
@@ -643,7 +643,7 @@ tr:hover td{background:var(--surface-2)}
         <div class="filter-bar" id="wpFilters">
           <select id="wpFilterDesigner" onchange="wpRender()">
             <option value="">All Designers</option>
-            <option value="Rukshan">Rukshan</option>
+            <option value="Dinuka">Dinuka</option>
             <option value="Suhana">Suhana</option>
           </select>
           <select id="wpFilterClient" onchange="wpRender()"></select>
@@ -732,7 +732,7 @@ tr:hover td{background:var(--surface-2)}
           <label>Designer</label>
           <select id="projDesigner">
             <option value="">Unassigned</option>
-            <option value="4" data-name="Rukshan">Rukshan</option>
+            <option value="16" data-name="Dinuka">Dinuka</option>
             <option value="3" data-name="Suhana">Suhana</option>
           </select>
         </div>
@@ -835,7 +835,7 @@ tr:hover td{background:var(--surface-2)}
           <label>Assigned To</label>
           <select id="wpAssigned">
             <option value="">Unassigned</option>
-            <option value="Rukshan">Rukshan</option>
+            <option value="Dinuka">Dinuka</option>
             <option value="Suhana">Suhana</option>
           </select>
         </div>
@@ -952,7 +952,7 @@ gLogin();  // start immediately
 const USERS = {
   '1031': { name:'THULAIB', role:'head', team_member_id:1, label:'Thulaib (CEO)' },
   '1006': { name:'SHIARA', role:'head', team_member_id:2, label:'Shiara (COO)' },
-  '4444': { name:'RUKSHAN', role:'designer', team_member_id:4, label:'Rukshan' },
+  '2323': { name:'DINUKA', role:'designer', team_member_id:16, label:'Dinuka' },
   '3333': { name:'SUHANA', role:'designer', team_member_id:3, label:'Suhana' },
   '2222': { name:'NIRVANA', role:'brief', team_member_id:12, label:'Nirvana (SMM)' },
 };
@@ -1137,7 +1137,7 @@ function closeSidebar(){ document.getElementById('sidebar').classList.remove('op
 // ─── DESIGNER SCOPE ───
 function designerScope(){
   if(!currentUser || currentUser.role!=='designer') return null;
-  const map = {RUKSHAN:'Rukshan',SUHANA:'Suhana'};
+  const map = {DINUKA:'Dinuka',SUHANA:'Suhana'};
   return map[currentUser.name]||null;
 }
 function designerScopeId(){
@@ -2007,7 +2007,7 @@ const PILLAR_ITEMS = [
 
 async function renderPillars(){
   const container = document.getElementById('pillarsContent');
-  const designers = ['RUKSHAN','SUHANA'];
+  const designers = ['DINUKA','SUHANA'];
   // Only show if user is designer or head
   const showFor = currentUser.role==='designer' ? [currentUser.name] : designers;
 
@@ -2446,7 +2446,7 @@ function bulkAddRow(){
     <td><input type="text" class="bk-title" placeholder="Post title"></td>
     <td><select class="bk-client"><option value="">—</option>${clientOpts}</select></td>
     <td><select class="bk-type"><option value="post">Post</option><option value="story">Story</option><option value="reel_cover">Reel Cover</option><option value="carousel">Carousel</option><option value="logo">Logo</option><option value="banner">Banner</option><option value="flyer">Flyer</option><option value="brochure">Brochure</option><option value="other">Other</option></select></td>
-    <td><select class="bk-designer"><option value="">—</option><option value="Rukshan">Rukshan</option><option value="Suhana">Suhana</option></select></td>
+    <td><select class="bk-designer"><option value="">—</option><option value="Dinuka">Dinuka</option><option value="Suhana">Suhana</option></select></td>
     <td><select class="bk-priority"><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></td>
     <td><input type="date" class="bk-deadline"></td>
     <td style="text-align:center;white-space:nowrap">
@@ -2532,7 +2532,7 @@ function wpBulkAddRow(){
     <td><select class="wbk-client"><option value="">—</option>${clientOpts}</select></td>
     <td><select class="wbk-type"><option value="post">Post</option><option value="story">Story</option><option value="reel_cover">Reel Cover</option><option value="carousel">Carousel</option><option value="logo">Logo</option><option value="banner">Banner</option><option value="other">Other</option></select></td>
     <td><input type="number" class="wbk-count" min="1" value="1" style="width:60px"></td>
-    <td><select class="wbk-designer"><option value="">—</option><option value="Rukshan">Rukshan</option><option value="Suhana">Suhana</option></select></td>
+    <td><select class="wbk-designer"><option value="">—</option><option value="Dinuka">Dinuka</option><option value="Suhana">Suhana</option></select></td>
     <td><button class="btn-rm" onclick="this.closest('tr').remove()">&times;</button></td>
   `;
   document.getElementById('wpBulkRows').appendChild(tr);

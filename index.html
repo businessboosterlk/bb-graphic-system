@@ -560,11 +560,7 @@ tr:hover td{background:var(--surface-2)}
         <div class="filter-bar" id="pipelineFilters">
           <input type="text" id="filterSearch" placeholder="Search projects..." oninput="applyFilters()">
           <select id="filterClient" onchange="applyFilters()"><option value="">All Clients</option></select>
-          <select id="filterDesigner" onchange="applyFilters()">
-            <option value="">All Designers</option>
-            <option value="Dinuka">Dinuka</option>
-            <option value="Suhana">Suhana</option>
-          </select>
+          <select id="filterDesigner" onchange="applyFilters()" data-designers="All Designers"></select>
           <select id="filterType" onchange="applyFilters()">
             <option value="">All Types</option>
             <option value="post">Post</option>
@@ -641,11 +637,7 @@ tr:hover td{background:var(--surface-2)}
           <button class="btn btn-ghost" onclick="wpOpenBulk()">Bulk Add</button>
         </div>
         <div class="filter-bar" id="wpFilters">
-          <select id="wpFilterDesigner" onchange="wpRender()">
-            <option value="">All Designers</option>
-            <option value="Dinuka">Dinuka</option>
-            <option value="Suhana">Suhana</option>
-          </select>
+          <select id="wpFilterDesigner" onchange="wpRender()" data-designers="All Designers"></select>
           <select id="wpFilterClient" onchange="wpRender()"></select>
           <select id="wpFilterStatus" onchange="wpRender()">
             <option value="">All Statuses</option>
@@ -730,11 +722,7 @@ tr:hover td{background:var(--surface-2)}
         </div>
         <div class="form-group">
           <label>Designer</label>
-          <select id="projDesigner">
-            <option value="">Unassigned</option>
-            <option value="16" data-name="Dinuka">Dinuka</option>
-            <option value="3" data-name="Suhana">Suhana</option>
-          </select>
+          <select id="projDesigner" data-designers="Unassigned"></select>
         </div>
         <div class="form-group">
           <label>Priority</label>
@@ -833,11 +821,7 @@ tr:hover td{background:var(--surface-2)}
         </div>
         <div class="form-group">
           <label>Assigned To</label>
-          <select id="wpAssigned">
-            <option value="">Unassigned</option>
-            <option value="Dinuka">Dinuka</option>
-            <option value="Suhana">Suhana</option>
-          </select>
+          <select id="wpAssigned" data-designers="Unassigned"></select>
         </div>
         <div class="form-group">
           <label>Status</label>
@@ -933,6 +917,14 @@ tr:hover td{background:var(--surface-2)}
 // ─── CONFIG ───
 const SB_URL = 'https://yyviiwnqgphyklcoijyd.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5dmlpd25xZ3BoeWtsY29panlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MjE5OTEsImV4cCI6MjA5MTI5Nzk5MX0.I8YiBr-rfLVcc6DE8Z1PxEP2oxXCelv6mxqAY_wY7lc';
+/* GUARD-ALLOW L-015 — ACCEPTED RISK, signed off by Thulaib 2026-08-14.
+   This is a shared APP credential, not a per-user secret: it is how every BB
+   single-file system reads login-only tables, and it grants exactly what this
+   app's own tables already allow. It is published in a public repo, so treat it
+   as public. It is NOT a substitute for real auth.
+   This marker is a DEFERRAL WITH AN OWNER, not a fix. The real fix is the
+   role-floor project (per-user Supabase Auth). See L-GFX-006 and L-GFX-012 in
+   LANDMINES.md. Revisit before any further non-staff login is added. */
 // ── Silent app auth: obtain a real JWT so login-only tables stay readable here ──
 const GAPP = { email:'nirvana@bb-leads.app', password:'pin2222secure' };
 let GAUTH=null, GEXP=0;
@@ -952,10 +944,36 @@ gLogin();  // start immediately
 const USERS = {
   '1031': { name:'THULAIB', role:'head', team_member_id:1, label:'Thulaib (CEO)' },
   '1006': { name:'SHIARA', role:'head', team_member_id:2, label:'Shiara (COO)' },
-  '2323': { name:'DINUKA', role:'designer', team_member_id:16, label:'Dinuka' },
   '3333': { name:'SUHANA', role:'designer', team_member_id:3, label:'Suhana' },
+  '5555': { name:'ABILASHAN', role:'designer', team_member_id:null, label:'Abilashan' },
   '2222': { name:'NIRVANA', role:'brief', team_member_id:12, label:'Nirvana (SMM)' },
 };
+
+/* ─── THE ONE DESIGNER LIST ───────────────────────────────────────────
+   Every designer dropdown in this app renders from this array at boot.
+   To add or remove a designer, EDIT HERE ONLY. Hand-editing the <option>
+   lists is what left Rukshan haunting the system after 28 July. L-GFX-009.
+   `freelancer:true` marks someone who takes overflow work but is NOT one of
+   the staff designers in the Client Allocation Master.
+   team_member_id may stay null until the team_members row exists; the app
+   stores and filters on the NAME, which is what every scope check uses. */
+const DESIGNERS = [
+  { name:'SUHANA',    label:'Suhana',    team_member_id:3,    freelancer:false },
+  { name:'ABILASHAN', label:'Abilashan', team_member_id:null, freelancer:true  },
+];
+
+/* Fill every <select data-designers="placeholder"> from DESIGNERS. Keeps the
+   current selection if it is still valid. Safe to call repeatedly. */
+function fillDesignerSelects(root){
+  (root||document).querySelectorAll('select[data-designers]').forEach(sel=>{
+    const keep = sel.value;
+    sel.innerHTML = '<option value="">'+esc(sel.dataset.designers)+'</option>'+
+      DESIGNERS.map(d=>'<option value="'+esc(d.label)+'" data-id="'+
+        (d.team_member_id==null?'':d.team_member_id)+'">'+esc(d.label)+
+        (d.freelancer?' (freelance)':'')+'</option>').join('');
+    if(keep) sel.value = keep;
+  });
+}
 
 const STAGES = ['brief','in_progress','first_draft','revisions','head_review','sent_to_client','client_changes','approved'];
 const STAGE_LABELS = {brief:'Brief',in_progress:'In Progress',first_draft:'First Draft',revisions:'Revisions',head_review:'Head Review',sent_to_client:'Sent to Client',client_changes:'Client Changes',approved:'Approved'};
@@ -1085,6 +1103,7 @@ function showApp(){
 
 // check session on load
 (function(){
+  fillDesignerSelects();
   const saved = sessionStorage.getItem('bbgfx_user');
   if(saved){ currentUser = JSON.parse(saved); showApp(); }
 })();
@@ -1137,8 +1156,8 @@ function closeSidebar(){ document.getElementById('sidebar').classList.remove('op
 // ─── DESIGNER SCOPE ───
 function designerScope(){
   if(!currentUser || currentUser.role!=='designer') return null;
-  const map = {DINUKA:'Dinuka',SUHANA:'Suhana'};
-  return map[currentUser.name]||null;
+  const d = DESIGNERS.find(x=>x.name===currentUser.name);
+  return d ? d.label : null;
 }
 function designerScopeId(){
   if(!currentUser || currentUser.role!=='designer') return null;
@@ -1151,25 +1170,45 @@ function scopedProjects(list){
 
 // ─── LOAD ALL DATA ───
 // Columns for the board — everything EXCEPT image_url (base64 blobs are loaded lazily per card)
+/* Only the columns the UI actually renders. Keeps `mrr` and `contact` out of
+   the browser entirely, which matters now that freelancers have logins. */
+const CLIENT_LIST_COLS = 'id,name,package,industry,health,monthly_posts';
 const PROJ_LIST_COLS = 'id,title,client_id,client_name,assigned_designer,assigned_designer_id,current_stage,priority,deadline,brief_notes,drive_link,dimensions,type,target_month,target_year,is_archived,created_by,created_at,updated_at';
 let IMG_IDS = new Set();   // ids of projects that HAVE an image
 const IMG_CACHE = {};      // id → image_url, filled on demand
 
+/* L-GFX-008 — this used to be one Promise.all. That is all-or-nothing: a single
+   dropped query threw to the catch and left EVERY list unassigned, so `clients`
+   went to 0 and the Add Task dropdown showed only "Select Client" with nothing
+   said to the user. It hit the team twice (2026-06-22, 2026-08-10).
+   Now: each list is assigned only on its OWN success, everything else keeps its
+   last known good value, and a failed read is announced instead of swallowed. */
 async function loadAll(){
-  try{
-    const [p, c, h, imgs] = await Promise.all([
-      sbGet('graphic_projects','?order=created_at.desc&is_archived=eq.false&select='+PROJ_LIST_COLS),
-      sbGet('clients','?order=name.asc'),
-      sbGet('graphic_stage_history','?order=entered_at.desc&limit=50'),
-      sbGet('graphic_projects','?is_archived=eq.false&image_url=not.is.null&select=id')
-    ]);
-    projects = Array.isArray(p)?p:[];
-    clients = Array.isArray(c)?c:[];
-    stageHistory = Array.isArray(h)?h:[];
-    IMG_IDS = new Set(Array.isArray(imgs)?imgs.map(x=>x.id):[]);
-    populateClientDropdowns();
-    renderCurrentPage();
-  } catch(e){ console.error('loadAll error',e); }
+  const res = await Promise.allSettled([
+    sbGet('graphic_projects','?order=created_at.desc&is_archived=eq.false&select='+PROJ_LIST_COLS),
+    sbGet('clients','?order=name.asc&select='+CLIENT_LIST_COLS),
+    sbGet('graphic_stage_history','?order=entered_at.desc&limit=50'),
+    sbGet('graphic_projects','?is_archived=eq.false&image_url=not.is.null&select=id')
+  ]);
+  const failed = [];
+  // a PostgREST error comes back as an OBJECT, not an array — treat that as failure too
+  const take = (r, label, current) => {
+    if(r.status==='fulfilled' && Array.isArray(r.value)) return r.value;
+    failed.push(label);
+    console.error('loadAll ['+label+']', r.reason || r.value);
+    return current;
+  };
+  projects     = take(res[0], 'projects', projects);
+  clients      = take(res[1], 'clients',  clients);
+  stageHistory = take(res[2], 'history',  stageHistory);
+  if(res[3].status==='fulfilled' && Array.isArray(res[3].value))
+    IMG_IDS = new Set(res[3].value.map(x=>x.id));
+  else { failed.push('images'); console.error('loadAll [images]', res[3].reason || res[3].value); }
+
+  if(failed.length) toast('Could not refresh '+failed.join(', ')+'. Showing last known data.','error');
+
+  populateClientDropdowns();
+  renderCurrentPage();
 }
 
 // ─── LAZY THUMBNAILS (load each card's base64 image only when it scrolls into view) ───
@@ -1488,7 +1527,7 @@ function openAddProject(){
   ['projTitle','projNotes','projImageUrl','projDriveLink','projDimensions'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('projType').value='post';
   document.getElementById('projClient').value='';
-  document.getElementById('projDesigner').value = designerScopeId()||'';
+  document.getElementById('projDesigner').value = designerScope()||'';
   document.getElementById('projPriority').value='normal';
   document.getElementById('projDeadline').value='';
   document.getElementById('projTargetMonth').value = new Date().getMonth()+1;
@@ -1506,7 +1545,7 @@ async function openEditProject(id){
   document.getElementById('projTitle').value = p.title||'';
   document.getElementById('projType').value = p.type||'post';
   document.getElementById('projClient').value = p.client_id||'';
-  document.getElementById('projDesigner').value = p.assigned_designer_id||'';
+  document.getElementById('projDesigner').value = p.assigned_designer||'';
   document.getElementById('projPriority').value = p.priority||'normal';
   document.getElementById('projDeadline').value = p.deadline||'';
   document.getElementById('projTargetMonth').value = p.target_month||'';
@@ -1527,8 +1566,11 @@ async function saveProject(){
   const designerSel = document.getElementById('projDesigner');
   const clientId = clientSel.value ? parseInt(clientSel.value) : null;
   const clientName = clientId ? clientSel.options[clientSel.selectedIndex].dataset.name : null;
-  const designerId = designerSel.value ? parseInt(designerSel.value) : designerScopeId();
-  const designerName = designerSel.value ? designerSel.options[designerSel.selectedIndex].dataset.name : designerScope();
+  const designerOpt = designerSel.value ? designerSel.options[designerSel.selectedIndex] : null;
+  const designerName = designerSel.value || designerScope();
+  const designerId = designerOpt
+    ? (designerOpt.dataset.id ? parseInt(designerOpt.dataset.id) : null)
+    : designerScopeId();
   const targetMonth = document.getElementById('projTargetMonth').value;
 
   const data = {
@@ -1618,11 +1660,17 @@ async function openProjectDetail(id){
   // fetch the (base64) image on demand — it is not loaded with the board
   await ensureProjectImage(p);
 
-  // load comments and history
-  const [comments, history] = await Promise.all([
+  // load comments and history — same L-GFX-008 rule as loadAll: one dead read
+  // must not stop the modal opening. Before this, a failed comments fetch made
+  // clicking a card do nothing at all, with no message.
+  const _d = await Promise.allSettled([
     sbGet('graphic_project_comments','?graphic_project_id=eq.'+id+'&order=created_at.desc'),
     sbGet('graphic_stage_history','?graphic_project_id=eq.'+id+'&order=entered_at.desc')
   ]);
+  const _took = [];
+  const comments = (_d[0].status==='fulfilled' && Array.isArray(_d[0].value)) ? _d[0].value : (_took.push('comments'), []);
+  const history  = (_d[1].status==='fulfilled' && Array.isArray(_d[1].value)) ? _d[1].value : (_took.push('history'), []);
+  if(_took.length) toast('Could not load '+_took.join(' and ')+' for this post.','error');
 
   document.getElementById('detailTitle').innerHTML = `
     ${esc(p.title)}
@@ -2007,7 +2055,7 @@ const PILLAR_ITEMS = [
 
 async function renderPillars(){
   const container = document.getElementById('pillarsContent');
-  const designers = ['DINUKA','SUHANA'];
+  const designers = DESIGNERS.map(d=>d.name);
   // Only show if user is designer or head
   const showFor = currentUser.role==='designer' ? [currentUser.name] : designers;
 
@@ -2446,7 +2494,7 @@ function bulkAddRow(){
     <td><input type="text" class="bk-title" placeholder="Post title"></td>
     <td><select class="bk-client"><option value="">—</option>${clientOpts}</select></td>
     <td><select class="bk-type"><option value="post">Post</option><option value="story">Story</option><option value="reel_cover">Reel Cover</option><option value="carousel">Carousel</option><option value="logo">Logo</option><option value="banner">Banner</option><option value="flyer">Flyer</option><option value="brochure">Brochure</option><option value="other">Other</option></select></td>
-    <td><select class="bk-designer"><option value="">—</option><option value="Dinuka">Dinuka</option><option value="Suhana">Suhana</option></select></td>
+    <td><select class="bk-designer" data-designers="—"></select></td>
     <td><select class="bk-priority"><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></td>
     <td><input type="date" class="bk-deadline"></td>
     <td style="text-align:center;white-space:nowrap">
@@ -2458,6 +2506,7 @@ function bulkAddRow(){
     </td>
     <td><button class="btn-rm" onclick="this.closest('tr').remove()">&times;</button></td>
   `;
+  fillDesignerSelects(tr);
   document.getElementById('bulkRows').appendChild(tr);
 }
 function bulkRowImg(input){
@@ -2532,9 +2581,10 @@ function wpBulkAddRow(){
     <td><select class="wbk-client"><option value="">—</option>${clientOpts}</select></td>
     <td><select class="wbk-type"><option value="post">Post</option><option value="story">Story</option><option value="reel_cover">Reel Cover</option><option value="carousel">Carousel</option><option value="logo">Logo</option><option value="banner">Banner</option><option value="other">Other</option></select></td>
     <td><input type="number" class="wbk-count" min="1" value="1" style="width:60px"></td>
-    <td><select class="wbk-designer"><option value="">—</option><option value="Dinuka">Dinuka</option><option value="Suhana">Suhana</option></select></td>
+    <td><select class="wbk-designer" data-designers="—"></select></td>
     <td><button class="btn-rm" onclick="this.closest('tr').remove()">&times;</button></td>
   `;
+  fillDesignerSelects(tr);
   document.getElementById('wpBulkRows').appendChild(tr);
 }
 async function wpBulkSaveAll(){

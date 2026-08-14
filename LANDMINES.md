@@ -85,7 +85,7 @@ silently to anon reads and every authenticated-only table starts returning 401.
 This is the role-floor (Mold 6) item. **Not to be touched without Thulaib's
 per-system go.** Related: L-CC-001 in the Command Centre register.
 
-## L-GFX-012 · the live system FAILS BB's own quality gate · OPEN · BLOCKS DEPLOY
+## L-GFX-012 · the live system FAILS BB's own quality gate · DEFERRED 2026-08-14 (GUARD-ALLOW)
 `guard.py` was updated on this machine (mtime 2026-08-12 11:00) and now hard-fails
 rule **L-015, a live credential written into a page that ships**:
 
@@ -102,12 +102,13 @@ Practical effect: by BB's own rules this system cannot ship until the credential
 is removed or an explicit `GUARD-ALLOW L-015` exemption is written in (guard
 honours that marker within 2500 characters of the hit — see guard.py line 171).
 
-Deciding this is Thulaib's, not mine. The options are: accept the exemption
-marker and keep shipping, or do the role-floor work. Adding freelancer logins
+**Thulaib chose the exemption on 2026-08-14 (Option A) so the team was not
+blocked.** A `GUARD-ALLOW L-015` block now sits above `GAPP` and guard passes.
+It is a DEFERRAL WITH AN OWNER, not a fix. The real fix is the role-floor work. Adding freelancer logins
 (Abilashan) raises the stakes, since more people now hold a login that rides on
 one shared password published in a public repo.
 
-## L-GFX-008 · one failed query empties EVERY list · FIXED (pending deploy) · SECOND OCCURRENCE
+## L-GFX-008 · one failed query empties EVERY list · FIXED + LIVE 2026-08-14 (`9d7f6c4`) · SECOND OCCURRENCE
 Reported from the field 2026-08-10: Suhana cannot pick a client when adding a
 Weekly Plan or Pipeline task. Second time this symptom has hit. First time was
 2026-06-22 (see "why it came back" below).
@@ -204,7 +205,7 @@ fabricated measurements ("captured live", "measured") for tests that were never
 run. Corrected 2026-08-10. **A register entry must say what was SEEN. If it was
 reasoned from reading code, it must say so.**
 
-## L-GFX-009 · the designer list was hardcoded in EIGHT places · FIXED (pending deploy)
+## L-GFX-009 · the designer list was hardcoded in EIGHT places · FIXED + LIVE 2026-08-14 (`9d7f6c4`)
 Adding or removing a designer meant hand-editing 8 separate spots: three filter
 dropdowns (565, 646, 838), the assign dropdown (735, keyed on team_member_id),
 `USERS` (955), the private map in `designerScope()` (1140), the Daily Pillars
@@ -241,3 +242,28 @@ skeleton's own model (`DB._d`, `CFG`, `signIn`, `invBalance`, `spread`). This
 app's state is live Supabase, so a harness here must stub `sbPost`/`sbPatch`/
 `sbDel` to record-and-refuse, snapshot the in-memory arrays, and restore —
 otherwise the harness writes to live client data.
+
+---
+
+## ROSTER as deployed 2026-08-14 (`9d7f6c4`)
+Graphic designers in the system are **Suhana** (staff, `team_member_id` 3) and
+**Abilashan** (freelancer, PIN 5555, `team_member_id` null).
+
+**Open discrepancy, raised with Thulaib and not resolved:** the Client Allocation
+Master PDF he supplied the same day lists **Farhath** with 10 clients / 112 posts
+as one of two staff designers, and does not mention Abilashan. Thulaib then said
+twice that the two designers are Suhana and Abilashan. The app follows his spoken
+instruction; the PDF has not been reissued. If Farhath is real, he is one line in
+`DESIGNERS` plus a `USERS` entry.
+
+**PINs 5555 (Abilashan) was chosen by me as a placeholder and never confirmed.**
+
+## PENDING DB WRITES — approved by nobody yet, deliberately NOT run
+None of these were executed. The app change went live without them, which is safe
+because scoping runs on the NAME, not `team_member_id`.
+- `team_members`: no row for ABILASHAN. Add one (role 'Graphic Designer').
+- `team_members` id 16 DINUKA still `active = true`.
+- `team_members` id 4 RUKSHAN still `active = true`, replaced 28 July, and still
+  holds 27 `graphic_weekly_plan` rows.
+- `graphic_projects` 438 and 439 still `assigned_designer = 'Dinuka'` with
+  `client_name` NULL. Both are Waverley by title.

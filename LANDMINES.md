@@ -243,6 +243,63 @@ app's state is live Supabase, so a harness here must stub `sbPost`/`sbPatch`/
 `sbDel` to record-and-refuse, snapshot the in-memory arrays, and restore —
 otherwise the harness writes to live client data.
 
+## L-GFX-013 · THE REAL CAUSE of the empty client dropdown · FIXED + LIVE 2026-08-20 (`a940b20`)
+A temporal dead zone error on the session-restore path.
+
+The restore block sat at line ~1247 and called `showApp()` -> `loadAll()`.
+`loadAll`'s first statement reads `PROJ_LIST_COLS`, a **`const` declared ~80
+lines BELOW it** (line 1329). A `const` is unreachable until its own line
+executes, so every session restore threw:
+
+```
+ReferenceError: Cannot access 'PROJ_LIST_COLS' before initialization
+    at loadAll  <- showApp  <- the boot IIFE
+```
+
+`loadAll` never ran at all. `clients` stayed `[]`. Add Task had nothing to pick.
+
+**Why it read as random, and why it survived two investigations:**
+
+| path | what happens | result |
+|---|---|---|
+| Sign in fresh | `attemptLogin()` calls `showApp()` long after the script finished evaluating | **works** |
+| **Reload with a saved session** | boot block runs mid-script, const not initialised yet | **empty board** |
+
+Live since `1d64713` (2 July), when `PROJ_LIST_COLS` was introduced. Captured
+from the live browser console on 2026-08-20, not reasoned from source.
+
+**Honest correction to L-GFX-008.** The `Promise.allSettled` work in `9d7f6c4`
+fixed a real and separate failure mode, but it was NOT what Suhana hit and it did
+not fix this. The throw happened inside the old `try/catch` and became one
+`console.error` nobody reads. **Making failures visible is what surfaced this**,
+which is the entire argument for not swallowing errors.
+
+**Fix:** the session-restore block moved to the very END of the script, below
+every declaration it touches, with a comment telling the next person not to move
+it back. It is now wrapped in `try/catch` so a failed restore clears the bad
+session and lands the person on the login door instead of a half-opened app.
+
+**Verified on the LIVE site**, real reload with a saved session, nothing stubbed:
+restored as Suhana, 24 clients, 362 projects, Add Task 24 clients, Add Post 24
+clients, zero console errors.
+
+**THE RULE THIS LEAVES:** in a single-file app, anything that RUNS at parse time
+must sit below everything it reads. Function declarations hoist; `const` and
+`let` do not. Grep for top-level IIFEs and check what they call.
+
+## L-GFX-014 · walkthrough · LIVE 2026-08-20 (`47a5902`)
+Six cards on first sign-in, greeting by name, skippable, and reopenable forever
+from the sidebar. Prior art was the gym member app, NOT BSWL, whose student app
+has one static "Getting started" row with no state.
+
+Numbers in the copy are READ from the app (`9 pages` off the nav, `8 columns`
+off `STAGES`, client count off the loaded list) because the gym build once said
+"four screens" of a five screen app.
+
+**Still owed, per the onboarding standard:** a walkthrough TEACHES, a checklist
+CHANGES BEHAVIOUR, and they are two different things. The derived first-week
+checklist is NOT built here and was deliberately not faked.
+
 ---
 
 ## ROSTER as deployed 2026-08-14 (`9d7f6c4`)

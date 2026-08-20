@@ -300,6 +300,58 @@ off `STAGES`, client count off the loaded list) because the gym build once said
 CHANGES BEHAVIOUR, and they are two different things. The derived first-week
 checklist is NOT built here and was deliberately not faked.
 
+## L-GFX-015 · the whole app was 158px wide on a phone · FIXED 2026-08-20
+`.main` (line 133) carries BOTH `margin-left:var(--sidebar-w)` and
+`max-width:calc(100vw - var(--sidebar-w))`. The 900px breakpoint reset the
+margin but **not the max-width**, so on a 390px screen every page was capped at
+390-232 = 158px and the active section rendered at **126px**.
+
+The sidebar is `position:fixed` (line 107) and never in flow, so that cap bought
+nothing at any width.
+
+Measured on the LIVE build BEFORE this work, so it is pre-existing, not a
+regression: `content_width 158, section_width 126, sidebar_x -232`.
+
+Fix: `.main{margin-left:0;max-width:100vw}` inside the 900px breakpoint.
+After: every one of the 8 pages measures **358px** at a 390px viewport, page
+`scrollWidth` still 390, no sideways scroll.
+
+**This is why the phone experience felt cramped everywhere, not just on one
+page.** Any future `max-width` tied to `--sidebar-w` must be reset at the same
+breakpoint that hides the sidebar.
+
+## L-GFX-016 · week keys are stored as SUNDAY, not Monday · OPEN · DO NOT "FIX" CASUALLY
+`wpWeekStart` is a local Monday, but every read and write uses
+`wpWeekStart.toISOString().slice(0,10)`. `toISOString()` converts to UTC, and
+Sri Lanka is UTC+5:30, so **Monday 17 Aug local becomes 2026-08-16, a Sunday.**
+Verified: `wpWeekStart_local "Mon Aug 17 2026"`, key used `2026-08-16`, and every
+existing row in `graphic_weekly_plan` carries the Sunday key.
+
+Nothing is broken today because loading, saving and the new carry-over all use
+the same shifted key, so the app is internally consistent. It matters because:
+1. Anyone running the app in a different timezone computes a different key.
+2. Any agent or SQL that writes a proper Monday key creates rows the app cannot
+   see.
+
+**Changing the key format orphans every existing row.** It needs a data
+migration, exactly like the Video System did in `1081365` ("migrate week keys to
+Monday and remove the compatibility path") after `5da80a6` ("fix 16 UTC date
+bugs"). Do it deliberately or not at all.
+
+## L-GFX-017 · two "+ Add Task" buttons on the Weekly Plan · OPEN (cosmetic)
+One in the topbar page-action slot (set in `navigateTo`, ~line 1120) and one in
+the section header. Confirmed on the live build before this work, so it is
+pre-existing. Harmless, both call `wpOpenAdd()`, but it looks unfinished.
+
+## L-GFX-018 · guard.py does not check CSS · OPEN
+While building the weekly grid an edit left a CSS comment unterminated
+(`/* WELCOME WALKTHROUGH` with no `*/`), which silently swallowed the entire
+`.gd-wrap` rule set. **`guard.py` passed**, because it only parses JavaScript.
+
+Caught by counting `/*` against `*/` inside every `<style>` block: 38 vs 37.
+That check is now part of the build routine for this system. Same family as
+[[checks-must-watch-the-right-surface]]: ask what the checker actually READ.
+
 ---
 
 ## ROSTER as deployed 2026-08-14 (`9d7f6c4`)

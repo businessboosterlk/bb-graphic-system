@@ -1244,12 +1244,7 @@ function showApp(){
   }, 180000);
 }
 
-// check session on load
-(function(){
-  fillDesignerSelects();
-  const saved = sessionStorage.getItem('bbgfx_user');
-  if(saved){ currentUser = JSON.parse(saved); showApp(); }
-})();
+// (session restore now runs at the END of this script — see L-GFX-013)
 
 // ─── THEME ───
 function toggleTheme(){
@@ -2774,6 +2769,33 @@ async function wpBulkSaveAll(){
   closeModal('modalWpBulk');
   wpLoadWeek();
 }
+
+/* ══ SESSION RESTORE — MUST BE THE LAST THING IN THIS SCRIPT ══════════
+   L-GFX-013. This used to sit around line 1247, roughly 80 lines ABOVE the
+   `const PROJ_LIST_COLS` that loadAll() reads on its first line. A const is in
+   its temporal dead zone until its own line runs, so restoring a session threw
+   "Cannot access 'PROJ_LIST_COLS' before initialization", loadAll never ran,
+   and the client dropdown was empty. Signing in fresh worked; RELOADING did
+   not, which is why it read as random.
+
+   If you add anything here, it must stay below every declaration it touches.
+   Do not move this block back up. */
+(function(){
+  fillDesignerSelects();
+  let saved = null;
+  try{ saved = sessionStorage.getItem('bbgfx_user'); }catch(e){}
+  if(saved){
+    try{ currentUser = JSON.parse(saved); showApp(); }
+    catch(e){
+      /* A restore that fails must not leave a half-open app. Send them to the
+         login door instead, and say why. */
+      console.error('session restore failed', e);
+      try{ sessionStorage.removeItem('bbgfx_user'); }catch(_){}
+      currentUser = null;
+      toast('Could not restore your session. Please sign in again.','error');
+    }
+  }
+})();
 </script>
 
 <!-- ============================================================

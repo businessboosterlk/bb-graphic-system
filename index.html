@@ -945,7 +945,9 @@ const USERS = {
   '1031': { name:'THULAIB', role:'head', team_member_id:1, label:'Thulaib (CEO)' },
   '1006': { name:'SHIARA', role:'head', team_member_id:2, label:'Shiara (COO)' },
   '3333': { name:'SUHANA', role:'designer', team_member_id:3, label:'Suhana' },
-  '5555': { name:'ABILASHAN', role:'designer', team_member_id:null, label:'Abilashan' },
+  '4444': { name:'FARHATH', role:'designer', team_member_id:null, label:'Farhath' },
+  '6666': { name:'AMJATH', role:'designer', team_member_id:null, label:'Amjath' },
+  '7777': { name:'ZULFA', role:'designer', team_member_id:null, label:'Zulfa' },
   '2222': { name:'NIRVANA', role:'brief', team_member_id:12, label:'Nirvana (SMM)' },
 };
 
@@ -958,8 +960,10 @@ const USERS = {
    team_member_id may stay null until the team_members row exists; the app
    stores and filters on the NAME, which is what every scope check uses. */
 const DESIGNERS = [
-  { name:'SUHANA',    label:'Suhana',    team_member_id:3,    freelancer:false },
-  { name:'ABILASHAN', label:'Abilashan', team_member_id:null, freelancer:true  },
+  { name:'SUHANA',  label:'Suhana',  team_member_id:3,    freelancer:false },
+  { name:'FARHATH', label:'Farhath', team_member_id:null, freelancer:false },
+  { name:'AMJATH',  label:'Amjath',  team_member_id:null, freelancer:false },
+  { name:'ZULFA',   label:'Zulfa',   team_member_id:null, freelancer:false },
 ];
 
 /* Fill every <select data-designers="placeholder"> from DESIGNERS. Keeps the
@@ -970,7 +974,7 @@ function fillDesignerSelects(root){
     sel.innerHTML = '<option value="">'+esc(sel.dataset.designers)+'</option>'+
       DESIGNERS.map(d=>'<option value="'+esc(d.label)+'" data-id="'+
         (d.team_member_id==null?'':d.team_member_id)+'">'+esc(d.label)+
-        (d.freelancer?' (freelance)':'')+'</option>').join('');
+        (d.freelancer?' (freelance)':'')+'</option>').join('');   /* no freelancers on the roster today */
     if(keep) sel.value = keep;
   });
 }
@@ -1163,7 +1167,17 @@ function designerScopeId(){
   if(!currentUser || currentUser.role!=='designer') return null;
   return currentUser.team_member_id||null;
 }
+/* OPEN ACCESS (Thulaib, 2026-08-20). Every designer sees every client and all
+   work, and can add work for any client. This deliberately reverses the
+   per-designer filter from 8aeb61c. Kept as a function, not deleted, so the
+   shared views keep one obvious place to re-narrow if that ever changes.
+   designerScope() still exists and is still used — but only to DEFAULT a new
+   task to the person adding it, never to hide anything from them. */
 function scopedProjects(list){
+  return list;
+}
+/* The one place a personal filter is still correct: the My Work page. */
+function onlyMine(list){
   const d = designerScope();
   return d ? list.filter(p=>p.assigned_designer===d) : list;
 }
@@ -1850,8 +1864,7 @@ async function loadClients(){
   // Get all projects for this quarter
   const qProjects = await sbGet('graphic_projects','?target_year=eq.'+year+'&target_month=in.('+months.join(',')+')&select=client_id,type,current_stage,is_archived,target_month,assigned_designer');
   let qArr = Array.isArray(qProjects)?qProjects:[];
-  const dScope = designerScope();
-  if(dScope) qArr = qArr.filter(p=>p.assigned_designer===dScope);
+  /* open access — the client page shows every client's work to everyone */
 
   const grid = document.getElementById('clientGrid');
   const detailView = document.getElementById('clientDetailView');
@@ -2003,7 +2016,7 @@ function renderMyWork(){
   const container = document.getElementById('myWorkContent');
   if(!currentUser){container.innerHTML=emptyHTML('Please log in');return;}
 
-  const myProjects = scopedProjects(projects.filter(p=>!p.is_archived));
+  const myProjects = onlyMine(projects.filter(p=>!p.is_archived));
 
   if(myProjects.length===0){
     container.innerHTML = emptyHTML('No projects assigned','Take a break or check the pipeline');
@@ -2322,9 +2335,8 @@ async function wpLoadWeek(){
 
 function wpGetFiltered(){
   let f = wpTasks;
-  // Role-based: designers see only their tasks
-  const dScope = designerScope();
-  if(dScope) f = f.filter(t=>t.assigned_to===dScope);
+  /* open access — everyone sees the whole week. Use the Designer filter above
+     to narrow it to one person on purpose. */
   const fd = document.getElementById('wpFilterDesigner')?.value||'';
   const fc = document.getElementById('wpFilterClient')?.value||'';
   const fs = document.getElementById('wpFilterStatus')?.value||'';
@@ -2338,7 +2350,9 @@ function wpRender(){
   const today = new Date(); today.setHours(0,0,0,0);
   // Hide filters for designers (they only see their own)
   const filterBar = document.getElementById('wpFilters');
-  if(filterBar && currentUser && currentUser.role==='designer') filterBar.style.display='none';
+  /* designers get the filters too now — they can see everyone, so they need
+     a way to narrow it down */
+  if(filterBar) filterBar.style.display='';
   // Populate client filter
   const cSel = document.getElementById('wpFilterClient');
   if(cSel && !cSel.dataset.loaded){

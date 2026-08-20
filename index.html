@@ -1088,9 +1088,9 @@ const USERS = {
   '1031': { name:'THULAIB', role:'head', team_member_id:1, label:'Thulaib (CEO)' },
   '1006': { name:'SHIARA', role:'head', team_member_id:2, label:'Shiara (COO)' },
   '3333': { name:'SUHANA', role:'designer', team_member_id:3, label:'Suhana' },
-  '4444': { name:'FARHATH', role:'designer', team_member_id:null, label:'Farhath' },
-  '6666': { name:'AMJATH', role:'designer', team_member_id:null, label:'Amjath' },
-  '7777': { name:'ZULFA', role:'designer', team_member_id:null, label:'Zulfa' },
+  '4444': { name:'FARHATH', role:'designer', team_member_id:17, label:'Farhath' },
+  '6666': { name:'AMJATH', role:'designer', team_member_id:18, label:'Amjath' },
+  '7777': { name:'ZULFA', role:'designer', team_member_id:19, label:'Zulfa' },
   '2222': { name:'NIRVANA', role:'brief', team_member_id:12, label:'Nirvana (SMM)' },
 };
 
@@ -1103,10 +1103,10 @@ const USERS = {
    team_member_id may stay null until the team_members row exists; the app
    stores and filters on the NAME, which is what every scope check uses. */
 const DESIGNERS = [
-  { name:'SUHANA',  label:'Suhana',  team_member_id:3,    freelancer:false },
-  { name:'FARHATH', label:'Farhath', team_member_id:null, freelancer:false },
-  { name:'AMJATH',  label:'Amjath',  team_member_id:null, freelancer:false },
-  { name:'ZULFA',   label:'Zulfa',   team_member_id:null, freelancer:false },
+  { name:'SUHANA',  label:'Suhana',  team_member_id:3,  freelancer:false },
+  { name:'FARHATH', label:'Farhath', team_member_id:17, freelancer:false },
+  { name:'AMJATH',  label:'Amjath',  team_member_id:18, freelancer:false },
+  { name:'ZULFA',   label:'Zulfa',   team_member_id:19, freelancer:false },
 ];
 
 /* Fill every <select data-designers="placeholder"> from DESIGNERS. Keeps the
@@ -2336,7 +2336,10 @@ async function togglePillar(who, item, done){
 // ═══════════════════════════════════════
 async function loadArchived(){
   const search = (document.getElementById('archivedSearch')?.value||'').toLowerCase();
-  let archived = await sbGet('graphic_projects','?is_archived=eq.true&order=updated_at.desc');
+  /* L-GFX-002: never select * here. This table stores base64 images, and the
+     table below renders six fields and never touches the image. Without the
+     column list, archiving the board would drag every image across the wire. */
+  let archived = await sbGet('graphic_projects','?is_archived=eq.true&order=updated_at.desc&select='+PROJ_LIST_COLS+',completed_at');
   if(!Array.isArray(archived)) archived = [];
   if(search) archived = archived.filter(p=>(p.title||'').toLowerCase().includes(search)||(p.client_name||'').toLowerCase().includes(search));
 

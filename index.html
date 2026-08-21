@@ -1410,6 +1410,8 @@ function onlyMine(list){
 /* Only the columns the UI actually renders. Keeps `mrr` and `contact` out of
    the browser entirely, which matters now that freelancers have logins. */
 const CLIENT_LIST_COLS = 'id,name,package,industry,health,monthly_posts';
+/* thumb_url is deliberately NOT in this list. It is small, but 360 of them
+   still add up, so the board fetches each one lazily as a card scrolls in. */
 const PROJ_LIST_COLS = 'id,title,client_id,client_name,assigned_designer,assigned_designer_id,current_stage,priority,deadline,brief_notes,drive_link,dimensions,type,target_month,target_year,is_archived,created_by,created_at,updated_at';
 let IMG_IDS = new Set();   // ids of projects that HAVE an image
 const IMG_CACHE = {};      // id → image_url, filled on demand
@@ -1459,8 +1461,12 @@ function observeLazyThumbs(){
         const el = en.target; _thumbObserver.unobserve(el);
         const pid = el.dataset.pid;
         if(IMG_CACHE[pid]){ el.src = IMG_CACHE[pid]; return; }
-        sbGet('graphic_projects','?id=eq.'+pid+'&select=image_url').then(r=>{
-          const url = (Array.isArray(r)&&r[0])?r[0].image_url:null;
+        /* L-GFX-005: ask for the small thumbnail first. `image_url` is only the
+           fallback for rows uploaded before thumb_url existed, and PostgREST
+           returns both in one round trip either way. */
+        sbGet('graphic_projects','?id=eq.'+pid+'&select=thumb_url,image_url').then(r=>{
+          const row = (Array.isArray(r)&&r[0])?r[0]:null;
+          const url = row ? (row.thumb_url || row.image_url) : null;
           if(url){ IMG_CACHE[pid]=url; el.src=url; } else { el.style.display='none'; }
         }).catch(()=>{});
       });
@@ -1650,6 +1656,9 @@ function applyFilters(){ renderPipeline(); }
 
 // ─── IMAGE PASTE / DRAG-DROP ───
 const PENDING_IMG = {};
+/* L-GFX-005: the small board copy, made at the same moment as the big one so
+   the two can never drift apart. */
+const PENDING_THUMB = {};
 
 function setupImageHost(hostId, hostTextarea) {
   const ta = hostTextarea ? document.getElementById(hostTextarea) : null;
@@ -1706,6 +1715,14 @@ function compressImageDataUrl(dataUrl, maxDim = 1400, quality = 0.82) {
   });
 }
 
+/* L-GFX-005. A board thumbnail never needs to be 1400px. This makes a small
+   one at upload time so the board fetches ~20 KB a card instead of ~240 KB.
+   Same canvas path as compressImageDataUrl, just a smaller box and lower
+   quality, because it is rendered about 200px wide. */
+function makeThumbDataUrl(dataUrl, maxDim = 360, quality = 0.62){
+  return compressImageDataUrl(dataUrl, maxDim, quality);
+}
+
 function readImageFile(file, hostId) {
   if (file.size > 15 * 1024 * 1024) { toast('Image too large (max 15 MB)', 'error'); return; }
   if (PENDING_IMG[hostId]) { toast('Replaced previous image', 'info'); }
@@ -1714,6 +1731,7 @@ function readImageFile(file, hostId) {
   r.onload = async ev => {
     const compressed = await compressImageDataUrl(ev.target.result);
     PENDING_IMG[hostId] = compressed;
+    PENDING_THUMB[hostId] = await makeThumbDataUrl(ev.target.result);
     const pv = document.getElementById(hostId + '-preview');
     if (pv) {
       pv.innerHTML = `<div class="image-preview-wrap"><img class="image-preview" src="${compressed}"><div class="image-preview-remove" onclick="clearPendingImg('${hostId}')" title="Remove image">×</div></div>`;
@@ -1728,6 +1746,7 @@ function readImageFile(file, hostId) {
 
 function clearPendingImg(hostId) {
   delete PENDING_IMG[hostId];
+  delete PENDING_THUMB[hostId];
   const pv = document.getElementById(hostId + '-preview');
   if (pv) pv.innerHTML = '';
   const f = document.getElementById(hostId + '-file');
@@ -1747,8 +1766,9 @@ function handleFileSelect(input, hostId) {
 async function saveDetailImage(projId) {
   const img = PENDING_IMG['detailImg'];
   if (!img) return;
-  await sbPatch('graphic_projects', 'id=eq.' + projId, { image_url: img, updated_at: new Date().toISOString() });
-  IMG_IDS.add(projId); IMG_CACHE[projId] = img;
+  const th = PENDING_THUMB['detailImg'] || null;
+  await sbPatch('graphic_projects', 'id=eq.' + projId, { image_url: img, thumb_url: th, updated_at: new Date().toISOString() });
+  IMG_IDS.add(projId); IMG_CACHE[projId] = th || img;
   const pp = projects.find(x=>x.id===projId); if(pp) pp.image_url = img;
   clearPendingImg('detailImg');
   toast('Image saved!', 'success');
@@ -1828,15 +1848,17 @@ async function saveProject(){
 
   // Image: only send it when there's a new/known value — never overwrite an existing image with null.
   const newImg = PENDING_IMG['addProj'] || document.getElementById('projImageUrl').value.trim();
+  const newThumb = PENDING_THUMB['addProj'] || null;
 
   data.target_year = new Date().getFullYear();
   if(editingProjectId){
-    if(newImg) data.image_url = newImg;   // omit when empty → preserves existing image
+    if(newImg){ data.image_url = newImg; data.thumb_url = newThumb; }   // omit when empty → preserves existing image
     await sbPatch('graphic_projects','id=eq.'+editingProjectId, data);
-    if(newImg){ IMG_IDS.add(editingProjectId); IMG_CACHE[editingProjectId] = newImg; }
+    if(newImg){ IMG_IDS.add(editingProjectId); IMG_CACHE[editingProjectId] = newThumb || newImg; }
     toast('Post updated');
   } else {
     data.image_url = newImg || null;
+    data.thumb_url = newThumb;
     data.current_stage = 'brief';
     data.created_by = currentUser.name;
     const res = await sbPost('graphic_projects', data, 'id');
@@ -2910,6 +2932,7 @@ function bulkRowImg(input){
   r.onload = async ev=>{
     const compressed = await compressImageDataUrl(ev.target.result);
     tr._img = compressed;
+    tr._thumb = await makeThumbDataUrl(ev.target.result);
     const thumb = tr.querySelector('.bk-img-thumb');
     const icon = tr.querySelector('.bk-img-icon');
     if(thumb){ thumb.src = compressed; thumb.style.display=''; }
@@ -2917,9 +2940,25 @@ function bulkRowImg(input){
   };
   r.readAsDataURL(file);
 }
+/* L-GFX-010. The key a duplicate is judged on. Deliberately does NOT include
+   designer or priority: the same post for the same client in the same month is
+   the same post, whoever it was handed to. */
+function bulkKey(title, clientName, month, year){
+  return [String(title||'').trim().toLowerCase(),
+          String(clientName||'').trim().toLowerCase(),
+          month, year].join('|');
+}
+
 async function bulkSaveAll(){
   const rows = document.querySelectorAll('#bulkRows tr');
-  let count=0;
+  let count=0, skipped=0;
+  const month = new Date().getMonth()+1, year = new Date().getFullYear();
+  /* Seed from what is already on the board, then keep adding to it as we go.
+     The second half is what the weekly plan guard is missing: 346 rows came
+     from 17 titles, which is a Save pressed more than once, not 346 typos. */
+  const seen = new Set((projects||[])
+    .filter(p=>!p.is_archived)
+    .map(p=>bulkKey(p.title, p.client_name, p.target_month, p.target_year)));
   window.__gdSaving = true;
   try {
     for(const row of rows){
@@ -2928,6 +2967,9 @@ async function bulkSaveAll(){
       const clientSel = row.querySelector('.bk-client');
       const clientId = clientSel.value ? parseInt(clientSel.value) : null;
       const clientName = clientSel.value ? clientSel.options[clientSel.selectedIndex].dataset.name : null;
+      const k = bulkKey(title, clientName, month, year);
+      if(seen.has(k)){ skipped++; continue; }
+      seen.add(k);
       const data = {
         title,
         client_id: clientId,
@@ -2937,21 +2979,25 @@ async function bulkSaveAll(){
         priority: row.querySelector('.bk-priority').value,
         deadline: row.querySelector('.bk-deadline').value||null,
         image_url: row._img || null,
+        thumb_url: row._thumb || null,
         current_stage: 'brief',
-        target_month: new Date().getMonth()+1,
-        target_year: new Date().getFullYear(),
+        target_month: month,
+        target_year: year,
         created_by: currentUser.name,
       };
       const res = await sbPost('graphic_projects', data, 'id');
       if(Array.isArray(res)&&res[0]){
-        if(row._img){ IMG_IDS.add(res[0].id); IMG_CACHE[res[0].id] = row._img; }
+        if(row._img){ IMG_IDS.add(res[0].id); IMG_CACHE[res[0].id] = row._thumb || row._img; }
         await sbPost('graphic_stage_history',{graphic_project_id:res[0].id, stage:'brief', entered_by:currentUser.name, notes:'Bulk added'}, 'id');
         count++;
       }
     }
   } finally { window.__gdSaving = false; }
-  if(count===0){ toast('No posts to add — fill at least one title','error'); return; }
-  toast(count+' post'+(count>1?'s':'')+' added');
+  if(count===0 && skipped===0){ toast('No posts to add — fill at least one title','error'); return; }
+  if(count===0){ toast('Nothing added — all '+skipped+' were already on the board','error'); closeModal('modalBulkPipeline'); return; }
+  let msg = count+' post'+(count!==1?'s':'')+' added';
+  if(skipped) msg += ', '+skipped+' duplicate'+(skipped!==1?'s':'')+' skipped';
+  toast(msg);
   closeModal('modalBulkPipeline');
   await loadAll();
 }

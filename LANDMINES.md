@@ -352,6 +352,51 @@ Caught by counting `/*` against `*/` inside every `<style>` block: 38 vs 37.
 That check is now part of the build routine for this system. Same family as
 [[checks-must-watch-the-right-surface]]: ask what the checker actually READ.
 
+## BOARD CLEARED 2026-08-20 for the September restart
+
+Thulaib's call. `graphic_projects` 363 -> 0, `graphic_stage_history` 439 -> 0,
+`graphic_project_comments` 0 -> 0. **`graphic_weekly_plan` (137 rows) was NOT
+touched** and still holds the live week.
+
+Backed up first and verified against the live tables, not assumed:
+`~/Downloads/bb-graphic-backup-20260820-2231/` — 363 rows, 361 images, 86.7 MB,
+plus a RESTORE-README.md with the exact restore command.
+
+**A caught failure worth keeping.** The first backup of `graphic_projects`
+returned a 100-byte file that `json.load` happily parsed. It was
+`{"code":"57014","message":"canceling statement due to statement timeout"}` —
+a 4-key error object, so a naive `len()` reported "4 rows". A single request for
+87 MB exceeds the statement timeout. Fixed by paginating in batches of 10.
+**Counting the rows caught it. An exit code would not have.**
+
+### What this RESOLVES
+
+- **L-GFX-001** (86 MB of base64 in a text column) — the data is gone.
+  `graphic_projects` is **1512 kB**, down from 91 MB. Autovacuum reclaimed it on
+  its own at 05:01 UTC, so no VACUUM FULL was needed.
+- **L-GFX-004** (the 86 KB compression claim) — moot, no images left. The band
+  table stands as the record of what compression really produced.
+- **L-GFX-005** (thumbnails fetch full-size originals) — no thumbnails to fetch.
+  **The underlying fault is NOT fixed.** There is still no thumbnail column, so
+  this returns as soon as the team uploads designs again. Keep it OPEN.
+- **L-GFX-010** (346 duplicate SQUARE 1 AI rows) — gone. **The bulk-add path
+  still has no dedup guard**, so it can happen again. Keep it OPEN.
+
+### Measured after
+
+| | before | after |
+|---|---|---|
+| `loadAll()` median | 591 ms (362 projects) | **285 ms** |
+| `graphic_projects` on disk | 91 MB | **1512 kB** |
+| board | 362 cards | 0, empty states on every page |
+| clients | 24 | **24, untouched** |
+| console errors | 0 | 0 |
+
+**Still true and still owed:** L-GFX-005 and L-GFX-010 are dormant, not fixed.
+The first bulk add of September can recreate both. A thumbnail column or the
+Storage bucket, and a dedup guard on `graphic_projects` bulk add, are the real
+fixes.
+
 ---
 
 ## ROSTER as deployed 2026-08-14 (`9d7f6c4`)

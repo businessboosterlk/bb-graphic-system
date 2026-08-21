@@ -60,7 +60,7 @@ The 8 images over 1 MB are the pre-compression ones named in the old note.
 The other 353 average roughly 200 KB, not 86 KB. Quote the band table, never
 the 86 KB figure.
 
-## L-GFX-005 · thumbnails fetch the full-size original · OPEN
+## L-GFX-005 · thumbnails fetch the full-size original · FIXED + LIVE 2026-08-20 (`941a87a`)
 There is no thumbnail column. `observeLazyThumbs()` (lines 1177-1194) fetches
 the **whole** base64 image per card to fill an `img.lazy-thumb`, with
 `rootMargin:250px`, and caches every one in `IMG_CACHE` for the session.
@@ -224,7 +224,7 @@ Side fix that came free: the edit form set `projDesigner.value` from
 designer rendered as "Unassigned". The select is now keyed on the NAME (the
 value every filter and scope check already used), with the id in `data-id`.
 
-## L-GFX-010 · 346 duplicate projects from one bulk add · OPEN
+## L-GFX-010 · 346 duplicate projects from one bulk add · FIXED + LIVE 2026-08-20 (`941a87a`)
 `SQUARE 1 AI` holds 346 active projects created on 2026-07-02 by SUHANA from
 **17 distinct titles** — roughly 20 copies of each. They are 346 of the 362
 projects on the entire board and a large share of the 86 MB in L-GFX-001.
@@ -421,3 +421,35 @@ because scoping runs on the NAME, not `team_member_id`.
   holds 27 `graphic_weekly_plan` rows.
 - `graphic_projects` 438 and 439 still `assigned_designer = 'Dinuka'` with
   `client_name` NULL. Both are Waverley by title.
+
+---
+
+## 2026-08-20 · both regrowth traps disarmed (`941a87a`)
+
+**L-GFX-010, dedup on projects bulk add.** Key is title + client + target month
++ year, lowercased and trimmed. It deliberately excludes designer and priority:
+the same post for the same client in the same month is the same post, whoever it
+was handed to. It checks BOTH what is already on the board AND what has already
+been added inside the same batch. The in-batch half is the one that mattered:
+346 rows from 17 titles is a Save pressed repeatedly, not 346 typos, and the
+weekly plan guard in `a5f0c68` does NOT have that half.
+
+Measured live: 3 rows submitted with one repeated -> 2 inserted, toast read
+"2 posts added, 1 duplicate skipped". Locally with a richer batch: 6 submitted
+(1 already on the board, 2 in-batch pairs) -> 3 inserted, 3 skipped.
+
+**L-GFX-005, real thumbnails.** New nullable column `graphic_projects.thumb_url`
+(rollback: `alter table graphic_projects drop column thumb_url`). A 360px q0.62
+copy is written at the same moment as the 1400px image, on every path that
+stores one: single add, edit, detail upload, bulk add. The lazy loader requests
+`thumb_url,image_url` and prefers the thumb, so any row predating the column
+still renders.
+
+Measured on a deliberately incompressible 2000x2000 image: 1124 KB -> 49 KB,
+23x smaller. On a flat-colour 1200x1200: 12 KB -> 2 KB.
+
+### STILL NOT FIXED, and it is the real cure
+Images are **still base64 in Postgres**. The Storage bucket needs dashboard or
+service_role access, which is not reachable from this session, so it remains
+Thulaib's to do. Until then the table still grows with every upload, roughly 20x
+slower than before but in the same direction. L-GFX-001 stays OPEN.

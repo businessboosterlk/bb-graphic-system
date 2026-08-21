@@ -232,7 +232,7 @@ projects on the entire board and a large share of the 86 MB in L-GFX-001.
 Not touched: live data, Thulaib's call. A bulk-add dedup guard was added for
 the weekly plan in a5f0c68 but `graphic_projects` bulk add has no equivalent.
 
-## L-GFX-007 · no self-test harness · OPEN
+## L-GFX-007 · no self-test harness · FIXED + LIVE 2026-08-21 (`a8f851d`)
 This system has no equivalent of Section 12 in
 `~/bb-systems/master-skeleton/bb-master-skeleton.html`. Confirmed by grep:
 zero hits for `runSelfTest`.
@@ -453,3 +453,50 @@ Images are **still base64 in Postgres**. The Storage bucket needs dashboard or
 service_role access, which is not reachable from this session, so it remains
 Thulaib's to do. Until then the table still grows with every upload, roughly 20x
 slower than before but in the same direction. L-GFX-001 stays OPEN.
+
+---
+
+## 2026-08-21 · the harness exists, and it was proven (`a8f851d`)
+
+37 checks. `?selftest` in the URL, or `runSelfTest()` in the console. 37/37 green
+on live.
+
+**Safety, because this app's state is a LIVE shared database** and not the local
+object the master-skeleton harness owns: every write function is swapped for a
+recorder and restored in a `finally`; the arrays, the signed-in user and the
+current page are snapshotted and put back. Verified state identical before and
+after, zero writes leaving the browser.
+
+**Ten of the checks are REGRESSION checks** for bugs that reached the team:
+L-GFX-002, L-GFX-005, L-GFX-008 (x2), L-GFX-010 (x4 incl. behaviour),
+L-GFX-013 (x2), plus L-GFX-015 on layout. Each cost a field report. **Do not
+delete one for looking redundant.**
+
+### It was PROVEN, not assumed
+Three regressions were reintroduced into a scratch copy: `Promise.all` back in
+`loadAll`, the dedup guard deleted, and the archive `select` stripped.
+**`guard.py` passed that broken file** — which is the whole argument for having a
+harness at all. The harness caught all three, and only those three.
+
+### THREE FLAWS IN THE HARNESS ITSELF, all found by breaking the app on purpose
+1. **One throwing check aborted the run.** 15 of 35 checks never executed, and
+   the report said only "Harness completed without throwing: false". Same
+   all-or-nothing shape as L-GFX-008. Sections now isolate failures.
+2. **The L-GFX-008 check passed for the wrong reason.** It seeded `clients` with
+   a row before the test, so "clients is not empty" stayed true even when
+   `loadAll` threw and assigned nothing. It now starts from empty, the way a
+   real first load does, and asserts the healthy query was APPLIED.
+3. **The source-grep checks matched the harness's own text.** The harness sits in
+   the page it greps, so `src.indexOf('...select=...')` found the check itself.
+   L-GFX-002 went green on a build where it was genuinely broken. Fixed with
+   explicit sentinels, and function-level checks now read
+   `Function.prototype.toString()`, which cannot collide.
+
+**All three would have shipped a harness reporting ALL GREEN on a broken app.**
+A checker nobody has tried to break is not evidence. Break it, watch it fail,
+then trust the green.
+
+### How to keep it useful
+Every future bug in this system should arrive with a regression check in Section
+12 before the fix is called done. That is the difference between a register that
+records history and one that prevents it.

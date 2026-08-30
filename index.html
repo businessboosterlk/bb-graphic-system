@@ -2,13 +2,21 @@
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0c0d10">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>BB Graphic System</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@500;600;700;800&display=swap" rel="stylesheet">
 <style>
 /* ═══════════════ CSS VARIABLES ═══════════════ */
 :root{
+/* ── BB APP SHELL: the phone reports its own insets, we never guess a model ── */
+--sat:env(safe-area-inset-top,0px);
+--sab:env(safe-area-inset-bottom,0px);
   --bg:#0c0d10;--surface:#16171c;--surface-2:#1c1d23;--surface-3:#24252d;
   --border:rgba(255,255,255,0.07);--border-strong:rgba(255,255,255,0.13);
   --accent:#FF1F8E;--accent-2:#d4006e;--accent-glow:rgba(255,31,142,0.22);--accent-soft:rgba(255,31,142,0.10);
@@ -28,6 +36,9 @@
 /* ══ WEEKLY PLAN GRID ═════════════════════════════════════════════════
    Designer rows x Mon-Fri. The table scrolls INSIDE its own wrapper so the
    page itself never scrolls sideways on a phone. */
+/* the strip behind the clock and the battery. In standalone the page owns it,
+   so the page has to paint it or the content shows through. */
+.statusfill{position:fixed;top:0;left:0;right:0;height:var(--sat);z-index:60;pointer-events:none}
 .wp-grid-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--border);
   border-radius:var(--r);background:var(--surface)}
 .wp-grid-table{width:100%;min-width:760px;border-collapse:collapse}
@@ -535,6 +546,7 @@ tr:hover td{background:var(--surface-2)}
 </style>
 </head>
 <body>
+<div class="statusfill" aria-hidden="true"></div>
 
 <!-- ═══════════════ LOGIN ═══════════════ -->
 <div class="login" id="loginScreen">
@@ -602,6 +614,10 @@ tr:hover td{background:var(--surface-2)}
       <div class="nav-item" data-page="analytics" onclick="navigateTo('analytics')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
         Analytics
+      </div>
+      <div class="nav-item" data-page="recap" onclick="navigateTo('recap')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/><path d="M8 15h3"/></svg>
+        Recap
       </div>
       <div class="nav-section">Extra</div>
       <div class="nav-item" data-page="agents" onclick="navigateTo('agents')">
@@ -672,7 +688,8 @@ tr:hover td{background:var(--surface-2)}
           <div class="qa-bar">
             <input type="text" id="qaTitle" placeholder="+ Quick add — type a title, press Enter" autocomplete="off" onkeydown="if(event.key==='Enter')quickAddProject()">
             <select id="qaType"><option value="post">Post</option><option value="story">Story</option></select>
-            <select id="qaClient"><option value="">Client (optional)</option></select>
+            <select id="qaClient"><option value="">Client *</option></select>
+            <select id="qaMonth" title="Which month's content is this?"><option value="1">January</option><option value="2">February</option><option value="3">March</option><option value="4">April</option><option value="5">May</option><option value="6">June</option><option value="7">July</option><option value="8">August</option><option value="9">September</option><option value="10">October</option><option value="11">November</option><option value="12">December</option></select>
             <button class="btn btn-accent" onclick="quickAddProject()">Add</button>
           </div>
           <button class="btn btn-ghost btn-sm" onclick="openAddProject()" title="Open the full post form with all fields">Full form</button>
@@ -796,6 +813,19 @@ tr:hover td{background:var(--surface-2)}
         <div class="analytics-grid" id="analyticsCharts"></div>
       </section>
 
+      <!-- ═══ MONTHLY RECAP ═══ -->
+      <section id="section-recap">
+        <div class="sec-header" style="gap:12px;flex-wrap:wrap">
+          <h2>Monthly Recap</h2>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="rcMonth" onchange="renderRecap()"></select>
+            <select id="rcYear" onchange="renderRecap()"></select>
+          </div>
+        </div>
+        <div id="rcSummary"></div>
+        <div id="rcBody"></div>
+      </section>
+
       <!-- ═══ AGENTS ═══ -->
       <section id="section-agents">
         <div class="sec-header">
@@ -840,7 +870,7 @@ tr:hover td{background:var(--surface-2)}
           </select>
         </div>
         <div class="form-group">
-          <label>Client</label>
+          <label>Client *</label>
           <select id="projClient"><option value="">Select Client</option></select>
         </div>
         <div class="form-group">
@@ -860,9 +890,9 @@ tr:hover td{background:var(--surface-2)}
           <input type="date" id="projDeadline">
         </div>
         <div class="form-group">
-          <label>Target Month</label>
+          <label>Target Month *</label>
           <select id="projTargetMonth">
-            <option value="">—</option>
+            <option value="">Select month</option>
             <option value="1">January</option><option value="2">February</option><option value="3">March</option>
             <option value="4">April</option><option value="5">May</option><option value="6">June</option>
             <option value="7">July</option><option value="8">August</option><option value="9">September</option>
@@ -997,7 +1027,13 @@ tr:hover td{background:var(--surface-2)}
       <button class="modal-close" onclick="closeModal('modalBulkPipeline')">&times;</button>
     </div>
     <div class="modal-body">
-      <p style="color:var(--text-2);font-size:0.82rem;margin-bottom:12px">Add multiple posts at once. Fill each row and click Save All.</p>
+      <p style="color:var(--text-2);font-size:0.82rem;margin-bottom:12px">Add multiple posts at once. Every row needs a title and a client. Fill each row and click Save All.</p>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+        <label style="font-size:0.78rem;color:var(--text-2);font-weight:600">Target month *</label>
+        <select id="bkMonth"><option value="1">January</option><option value="2">February</option><option value="3">March</option><option value="4">April</option><option value="5">May</option><option value="6">June</option><option value="7">July</option><option value="8">August</option><option value="9">September</option><option value="10">October</option><option value="11">November</option><option value="12">December</option></select>
+        <select id="bkYear"></select>
+        <span style="font-size:0.72rem;color:var(--text-3)">applies to every row below</span>
+      </div>
       <div style="overflow-x:auto">
         <table class="bulk-table" id="bulkTable">
           <thead><tr><th>Title *</th><th>Client</th><th>Type</th><th>Designer</th><th>Priority</th><th>Deadline</th><th>Image</th><th></th></tr></thead>
@@ -1088,7 +1124,7 @@ const USERS = {
   '1031': { name:'THULAIB', role:'head', team_member_id:1, label:'Thulaib (CEO)' },
   '1006': { name:'SHIARA', role:'head', team_member_id:2, label:'Shiara (COO)' },
   '3333': { name:'SUHANA', role:'designer', team_member_id:3, label:'Suhana' },
-  '4444': { name:'FARHATH', role:'designer', team_member_id:17, label:'Farhath' },
+  '4444': { name:'FARHATH', role:'graphic_head', team_member_id:17, label:'Farhath' },
   '6666': { name:'AMJATH', role:'designer', team_member_id:18, label:'Amjath' },
   '7777': { name:'ZULFA', role:'designer', team_member_id:19, label:'Zulfa' },
   '2222': { name:'NIRVANA', role:'brief', team_member_id:12, label:'Nirvana (SMM)' },
@@ -1121,6 +1157,23 @@ function fillDesignerSelects(root){
     if(keep) sel.value = keep;
   });
 }
+
+/* ── GRAPHIC HEAD ────────────────────────────────────────────────────
+   Modelled on bb-video-system's `video_head` (USHANE), where isAdmin() treats
+   the head as an admin. Here a head differs from a designer in three ways that
+   matter for running the team:
+     1. work is not auto-assigned to them, because they hand it out
+     2. Daily Pillars shows EVERY designer's day, not just their own
+     3. My Work stays personal, so they still have their own list
+   Everything else is already open to everyone, so this is about oversight
+   rather than unlocking hidden pages. */
+function isGraphicHead(){ return !!currentUser && currentUser.role==='graphic_head'; }
+/* A head is a head. Anywhere the app asks "is this person a plain designer",
+   the answer for a head must be no, or their work gets auto-scoped to them. */
+function isPlainDesigner(){ return !!currentUser && currentUser.role==='designer'; }
+/* `graphic_head` is a database value, not a job title. Printing it raw under
+   somebody's name is how "graphic_head" ends up on screen. */
+const ROLE_LABELS = { head:'Head', graphic_head:'Graphic Head', designer:'Designer', brief:'Brief' };
 
 const STAGES = ['brief','in_progress','first_draft','revisions','head_review','sent_to_client','client_changes','approved'];
 const STAGE_LABELS = {brief:'Brief',in_progress:'In Progress',first_draft:'First Draft',revisions:'Revisions',head_review:'Head Review',sent_to_client:'Sent to Client',client_changes:'Client Changes',approved:'Approved'};
@@ -1205,12 +1258,12 @@ function gdCards(){
 let GD_I = 0;
 function gdOpen(){
   const w = document.getElementById('gdWrap'); if(!w) return;
-  GD_I = 0; w.hidden = false; document.body.style.overflow='hidden';
+  GD_I = 0; w.hidden = false;   /* BBF owns the freeze now, and it restores scroll */
   gdRender();
 }
 function gdEnd(){
   const w = document.getElementById('gdWrap'); if(!w) return;
-  w.hidden = true; document.body.style.overflow='';
+  w.hidden = true;
   try{ localStorage.setItem('bbgfx_guide_seen','1'); }catch(e){}
   renderGuideRow();
 }
@@ -1315,7 +1368,7 @@ function showApp(){
   document.getElementById('appShell').classList.add('active');
   document.getElementById('userAvatar').textContent = currentUser.name[0];
   document.getElementById('userName').textContent = currentUser.label;
-  document.getElementById('userRole').textContent = currentUser.role;
+  document.getElementById('userRole').textContent = ROLE_LABELS[currentUser.role] || currentUser.role;
   document.getElementById('topbarGreeting').textContent = 'Hey, ' + currentUser.label.split(' ')[0];
   loadAll();
   loadAgentAlerts();
@@ -1357,7 +1410,7 @@ function navigateTo(page){
   document.querySelectorAll('.content section').forEach(s=>s.classList.remove('active'));
   document.getElementById('section-'+page).classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
-  document.getElementById('topbarTitle').textContent = {dashboard:'Dashboard',pipeline:'Pipeline',clients:'Clients',mywork:'My Work',weeklyplan:'Weekly Plan',pillars:'Daily Pillars',archived:'Archived',analytics:'Analytics',agents:'Agents'}[page]||page;
+  document.getElementById('topbarTitle').textContent = {dashboard:'Dashboard',pipeline:'Pipeline',clients:'Clients',mywork:'My Work',weeklyplan:'Weekly Plan',pillars:'Daily Pillars',archived:'Archived',analytics:'Analytics',recap:'Monthly Recap',agents:'Agents'}[page]||page;
   closeSidebar();
   // topbar actions per page
   const pa = document.getElementById('pageActions');
@@ -1367,6 +1420,7 @@ function navigateTo(page){
     pa.innerHTML=`<button class="btn btn-accent" onclick="wpOpenAdd()" style="font-weight:700;letter-spacing:0.04em">+ Add Task</button>`;
   } else { pa.innerHTML=''; }
   // refresh section data
+  if(page==='recap') renderRecap();
   if(page==='dashboard') renderDashboard();
   if(page==='pipeline') renderPipeline();
   if(page==='clients') loadClients();
@@ -1383,12 +1437,12 @@ function closeSidebar(){ document.getElementById('sidebar').classList.remove('op
 
 // ─── DESIGNER SCOPE ───
 function designerScope(){
-  if(!currentUser || currentUser.role!=='designer') return null;
+  if(!isPlainDesigner()) return null;      /* a head hands work out, it is not theirs by default */
   const d = DESIGNERS.find(x=>x.name===currentUser.name);
   return d ? d.label : null;
 }
 function designerScopeId(){
-  if(!currentUser || currentUser.role!=='designer') return null;
+  if(!isPlainDesigner()) return null;
   return currentUser.team_member_id||null;
 }
 /* OPEN ACCESS (Thulaib, 2026-08-20). Every designer sees every client and all
@@ -1402,7 +1456,10 @@ function scopedProjects(list){
 }
 /* The one place a personal filter is still correct: the My Work page. */
 function onlyMine(list){
-  const d = designerScope();
+  /* designerScope() is null for a head, so fall back to their own name here.
+     Without this a head's My Work silently becomes All Work and they lose the
+     one page that is theirs. */
+  const d = designerScope() || (currentUser && (DESIGNERS.find(x=>x.name===currentUser.name)||{}).label) || null;
   return d ? list.filter(p=>p.assigned_designer===d) : list;
 }
 
@@ -1462,13 +1519,18 @@ function observeLazyThumbs(){
         const el = en.target; _thumbObserver.unobserve(el);
         const pid = el.dataset.pid;
         if(IMG_CACHE[pid]){ el.src = IMG_CACHE[pid]; return; }
-        /* L-GFX-005: ask for the small thumbnail first. `image_url` is only the
-           fallback for rows uploaded before thumb_url existed, and PostgREST
-           returns both in one round trip either way. */
-        sbGet('graphic_projects','?id=eq.'+pid+'&select=thumb_url,image_url').then(r=>{
+        /* L-GFX-005: ask for the THUMBNAIL ONLY. Asking for both columns in one
+           request pulled the full base64 original down for every card anyway,
+           which is the exact cost the thumbnail exists to avoid. The original
+           is fetched only for rows uploaded before thumb_url existed, and only
+           when the small one comes back empty. */
+        sbGet('graphic_projects','?id=eq.'+pid+'&select=thumb_url').then(r=>{
           const row = (Array.isArray(r)&&r[0])?r[0]:null;
-          const url = row ? (row.thumb_url || row.image_url) : null;
-          if(url){ IMG_CACHE[pid]=url; el.src=url; } else { el.style.display='none'; }
+          if(row && row.thumb_url){ IMG_CACHE[pid]=row.thumb_url; el.src=row.thumb_url; return; }
+          return sbGet('graphic_projects','?id=eq.'+pid+'&select=image_url').then(r2=>{
+            const old = (Array.isArray(r2)&&r2[0])?r2[0].image_url:null;
+            if(old){ IMG_CACHE[pid]=old; el.src=old; } else { el.style.display='none'; }
+          });
         }).catch(()=>{});
       });
     }, {rootMargin:'250px'});
@@ -1497,6 +1559,7 @@ function renderCurrentPage(){
   if(page==='clients') loadClients();
   if(page==='mywork') renderMyWork();
   if(page==='analytics') renderAnalytics();
+  if(page==='recap') renderRecap();
   if(page==='agents') renderAgents();
 }
 
@@ -1629,7 +1692,11 @@ async function onDrop(e,el){
   const oldStage = proj.current_stage;
   proj.current_stage = newStage;
   const updateData = { current_stage: newStage, updated_at: new Date().toISOString() };
-  if(newStage==='approved') updateData.completed_at = new Date().toISOString();
+  /* Stamp on the way IN, and CLEAR on the way OUT. Without the else, a job
+     moved back out of Approved keeps its old finish time for ever: five real
+     rows did exactly that on 2 July and would have been counted as finished
+     with a false turnaround. A stage that is not finished has no finish. */
+  updateData.completed_at = (newStage==='approved') ? new Date().toISOString() : null;
   await sbPatch('graphic_projects','id=eq.'+dragId, updateData);
   await sbPost('graphic_stage_history',{ graphic_project_id: dragId, stage: newStage, entered_by: currentUser.name, notes: 'Moved from '+STAGE_LABELS[oldStage] });
   toast('Moved to '+STAGE_LABELS[newStage]);
@@ -1821,6 +1888,11 @@ async function saveProject(){
   const title = document.getElementById('projTitle').value.trim();
   if(!title){ toast('Title is required','error'); return; }
   const clientSel = document.getElementById('projClient');
+  /* See quickAddProject: optional here is how work ends up with no client and
+     no month, and every client view and every recap is wrong from then on. */
+  if(!clientSel.value){ toast('Client is required','error'); clientSel.focus(); return; }
+  const tmEl = document.getElementById('projTargetMonth');
+  if(!tmEl.value){ toast('Target month is required','error'); tmEl.focus(); return; }
   const designerSel = document.getElementById('projDesigner');
   const clientId = clientSel.value ? parseInt(clientSel.value) : null;
   const clientName = clientId ? clientSel.options[clientSel.selectedIndex].dataset.name : null;
@@ -1881,8 +1953,15 @@ async function quickAddProject(){
   const title = (el.value||'').trim();
   if(!title){ toast('Type a title first','error'); el.focus(); return; }
   const clientSel = document.getElementById('qaClient');
-  const clientId = clientSel.value ? parseInt(clientSel.value) : null;
-  const clientName = clientId ? clientSel.options[clientSel.selectedIndex].dataset.name : null;
+  /* Client and month are REQUIRED. Projects 438 and 439 were created with no
+     client and "Waverley" typed into the title instead, which is what happens
+     when the field is optional. Every client and month view is wrong without
+     them, and nobody goes back to fill them in later. */
+  if(!clientSel.value){ toast('Pick a client first','error'); clientSel.focus(); return; }
+  const clientId = parseInt(clientSel.value);
+  const clientName = clientSel.options[clientSel.selectedIndex].dataset.name;
+  const monthSel = document.getElementById('qaMonth');
+  if(!monthSel || !monthSel.value){ toast('Pick which month this is for','error'); return; }
   const now = new Date();
   const data = {
     title,
@@ -1895,7 +1974,7 @@ async function quickAddProject(){
     current_stage: 'brief',
     created_by: currentUser.name,
     target_year: now.getFullYear(),
-    target_month: now.getMonth()+1,
+    target_month: parseInt(monthSel.value,10),
     updated_at: now.toISOString()
   };
   const res = await sbPost('graphic_projects', data);
@@ -2031,7 +2110,11 @@ async function moveStage(id, dir){
   const newStage = STAGES[newIdx];
   const oldStage = p.current_stage;
   const updateData = { current_stage: newStage, updated_at: new Date().toISOString() };
-  if(newStage==='approved') updateData.completed_at = new Date().toISOString();
+  /* Stamp on the way IN, and CLEAR on the way OUT. Without the else, a job
+     moved back out of Approved keeps its old finish time for ever: five real
+     rows did exactly that on 2 July and would have been counted as finished
+     with a false turnaround. A stage that is not finished has no finish. */
+  updateData.completed_at = (newStage==='approved') ? new Date().toISOString() : null;
   await sbPatch('graphic_projects','id=eq.'+id, updateData);
   await sbPost('graphic_stage_history',{ graphic_project_id: id, stage: newStage, entered_by: currentUser.name, notes: 'Moved from '+STAGE_LABELS[oldStage] });
   p.current_stage = newStage;
@@ -2061,7 +2144,11 @@ async function deleteProject(id){
 
 async function updateImage(id){
   const url = document.getElementById('detailImageInput').value.trim();
-  await sbPatch('graphic_projects','id=eq.'+id, { image_url: url||null, updated_at: new Date().toISOString() });
+  /* This one takes a URL rather than a file, so the link IS the thumbnail.
+     Leaving thumb_url null here meant anything set this way had no thumbnail
+     for ever and fell back to fetching the full column on every board load. */
+  await sbPatch('graphic_projects','id=eq.'+id,
+    { image_url: url||null, thumb_url: url||null, updated_at: new Date().toISOString() });
   const p = projects.find(x=>x.id===id);
   if(p) p.image_url = url||null;
   if(url){ IMG_IDS.add(id); IMG_CACHE[id] = url; } else { IMG_IDS.delete(id); delete IMG_CACHE[id]; }
@@ -2297,7 +2384,11 @@ async function quickMove(id, newStage){
   if(!p) return;
   const oldStage = p.current_stage;
   const updateData = { current_stage: newStage, updated_at: new Date().toISOString() };
-  if(newStage==='approved') updateData.completed_at = new Date().toISOString();
+  /* Stamp on the way IN, and CLEAR on the way OUT. Without the else, a job
+     moved back out of Approved keeps its old finish time for ever: five real
+     rows did exactly that on 2 July and would have been counted as finished
+     with a false turnaround. A stage that is not finished has no finish. */
+  updateData.completed_at = (newStage==='approved') ? new Date().toISOString() : null;
   await sbPatch('graphic_projects','id=eq.'+id, updateData);
   await sbPost('graphic_stage_history',{ graphic_project_id: id, stage: newStage, entered_by: currentUser.name, notes: 'Moved from '+STAGE_LABELS[oldStage] });
   p.current_stage = newStage;
@@ -2311,12 +2402,34 @@ async function quickMove(id, newStage){
 const PILLAR_ITEMS = [
   'System Check','Brief Review','Client Folder Update','Design Upload','Team Update','Close Day'
 ];
+/* THE GRAPHIC HEAD RUNS THE DAY, so his list is not a designer's list.
+   Five of these are Thulaib's own words. Two are taken from the board itself:
+   `head_review` is a real stage that only a head clears, and a day that is not
+   closed is a day nobody can report on. */
+const HEAD_PILLARS = [
+  'System Check',            // everything loads, nothing is broken
+  'Work Assigned',           // every designer has their day's work
+  'Yesterday Confirmed',     // each designer says what actually closed
+  'Head Review Cleared',     // the posts waiting on the head, from the board
+  'Pending Changes',         // revisions and client changes chased
+  'Client Chats',            // new work coming in from the client threads
+  'Close Day'                // log what moved and what is stuck
+];
+/* Which list a person gets. A head's own row shows the head list; every
+   designer's row shows the designer list, including when a head is looking at
+   the whole team. */
+function pillarsFor(who){
+  const u = Object.values(USERS).find(x=>x.name===who);
+  return (u && u.role==='graphic_head') ? HEAD_PILLARS : PILLAR_ITEMS;
+}
 
 async function renderPillars(){
   const container = document.getElementById('pillarsContent');
   const designers = DESIGNERS.map(d=>d.name);
   // Only show if user is designer or head
-  const showFor = currentUser.role==='designer' ? [currentUser.name] : designers;
+  /* A designer sees their own day. A head sees everyone's, because that is
+     the thing they are managing. */
+  const showFor = isPlainDesigner() ? [currentUser.name] : designers;
 
   const today = todayStr();
   let html = '';
@@ -2325,15 +2438,17 @@ async function renderPillars(){
     let pillars = await sbGet('pillars','?who=eq.'+who+'&date=eq.'+today);
     if(!Array.isArray(pillars)) pillars = [];
 
-    html += `<div class="pillar-card"><h4>${who}'s Daily Pillars</h4>`;
-    const checkedCount = PILLAR_ITEMS.filter((_,i)=>{
-      const rec = pillars.find(p=>p.item===PILLAR_ITEMS[i]);
+    const items = pillarsFor(who);
+    const isHeadRow = items===HEAD_PILLARS;
+    html += `<div class="pillar-card"><h4>${who}'s Daily Pillars${isHeadRow?' <span style="font-size:0.66rem;font-weight:800;color:var(--accent);letter-spacing:0.06em">GRAPHIC HEAD</span>':''}</h4>`;
+    const checkedCount = items.filter((_,i)=>{
+      const rec = pillars.find(p=>p.item===items[i]);
       return rec && rec.done;
     }).length;
-    const pct = Math.round(checkedCount/PILLAR_ITEMS.length*100);
-    html += `<div class="pillar-progress mb-3"><div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:var(--green)"></div></div><div class="progress-label"><span>${checkedCount}/${PILLAR_ITEMS.length}</span><span>${pct}%</span></div></div>`;
+    const pct = Math.round(checkedCount/items.length*100);
+    html += `<div class="pillar-progress mb-3"><div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:var(--green)"></div></div><div class="progress-label"><span>${checkedCount}/${items.length}</span><span>${pct}%</span></div></div>`;
 
-    PILLAR_ITEMS.forEach((item,i)=>{
+    items.forEach((item,i)=>{
       const rec = pillars.find(p=>p.item===item);
       const checked = rec && rec.done;
       html += `<div class="pillar-item"><input type="checkbox" id="pill_${who}_${i}" ${checked?'checked':''} onchange="togglePillar('${who}','${item}',this.checked)"><label for="pill_${who}_${i}">${item}</label></div>`;
@@ -2895,6 +3010,12 @@ async function wpDeleteTask(){
 // ═══════════════════════════════════════
 let bulkRowCount = 0;
 function openBulkPipeline(){
+  const yEl=document.getElementById('bkYear'), mEl=document.getElementById('bkMonth');
+  if(yEl && !yEl.options.length){
+    const y=new Date().getFullYear();
+    yEl.innerHTML=[y,y+1].map(v=>'<option value="'+v+'">'+v+'</option>').join('');
+  }
+  if(mEl && !mEl.value) mEl.value = new Date().getMonth()+1;
   bulkRowCount=0;
   document.getElementById('bulkRows').innerHTML='';
   for(let i=0;i<3;i++) bulkAddRow();
@@ -2952,8 +3073,14 @@ function bulkKey(title, clientName, month, year){
 
 async function bulkSaveAll(){
   const rows = document.querySelectorAll('#bulkRows tr');
-  let count=0, skipped=0;
-  const month = new Date().getMonth()+1, year = new Date().getFullYear();
+  let count=0, skipped=0, skippedNoClient=0;
+  /* The batch used to be filed under whatever month it was typed in, so a
+     September plan entered in August landed in August and every month view
+     disagreed with the plan it came from. */
+  const mEl=document.getElementById('bkMonth'), yEl=document.getElementById('bkYear');
+  if(!mEl || !mEl.value){ toast('Pick the target month for these posts','error'); return; }
+  const month = parseInt(mEl.value,10);
+  const year = (yEl && parseInt(yEl.value,10)) || new Date().getFullYear();
   /* Seed from what is already on the board, then keep adding to it as we go.
      The second half is what the weekly plan guard is missing: 346 rows came
      from 17 titles, which is a Save pressed more than once, not 346 typos. */
@@ -2966,7 +3093,9 @@ async function bulkSaveAll(){
       const title = row.querySelector('.bk-title').value.trim();
       if(!title) continue;
       const clientSel = row.querySelector('.bk-client');
-      const clientId = clientSel.value ? parseInt(clientSel.value) : null;
+      /* A row with no client is the fault that put "Waverley" in a title. */
+      if(!clientSel.value){ skippedNoClient++; continue; }
+      const clientId = parseInt(clientSel.value);
       const clientName = clientSel.value ? clientSel.options[clientSel.selectedIndex].dataset.name : null;
       const k = bulkKey(title, clientName, month, year);
       if(seen.has(k)){ skipped++; continue; }
@@ -2994,10 +3123,12 @@ async function bulkSaveAll(){
       }
     }
   } finally { window.__gdSaving = false; }
-  if(count===0 && skipped===0){ toast('No posts to add — fill at least one title','error'); return; }
+  if(count===0 && skipped===0 && skippedNoClient===0){ toast('No posts to add. Fill at least one title','error'); return; }
+  if(count===0 && skippedNoClient>0){ toast(skippedNoClient+' row'+(skippedNoClient!==1?'s':'')+' had no client, so nothing was added','error'); return; }
   if(count===0){ toast('Nothing added — all '+skipped+' were already on the board','error'); closeModal('modalBulkPipeline'); return; }
   let msg = count+' post'+(count!==1?'s':'')+' added';
   if(skipped) msg += ', '+skipped+' duplicate'+(skipped!==1?'s':'')+' skipped';
+  if(skippedNoClient) msg += ', '+skippedNoClient+' skipped with no client';
   toast(msg);
   closeModal('modalBulkPipeline');
   await loadAll();
@@ -3242,10 +3373,21 @@ async function runSelfTest(){
       const keepPost=sbPost;
       sbPost = async (t,d)=>{ if(t==='graphic_projects') inserted.push(d.title); return [{id:-1}]; };
       projects=[];
+      /* Client is REQUIRED on a bulk row now, so a fixture without one is
+         skipped before dedup is ever reached and this check fails for the
+         wrong reason. Pick a client, and a target month, the way a person
+         would. */
       for(const t of ['SELFTEST DUP','SELFTEST DUP','SELFTEST UNIQUE']){
         bulkAddRow();
-        holder.querySelector('tr:last-child .bk-title').value=t;
+        const tr=holder.querySelector('tr:last-child');
+        tr.querySelector('.bk-title').value=t;
+        const cs=tr.querySelector('.bk-client');
+        if(cs && cs.options.length>1) cs.selectedIndex=1;
       }
+      const bm=document.getElementById('bkMonth'), by=document.getElementById('bkYear');
+      if(bm && !bm.value) bm.value=new Date().getMonth()+1;
+      if(by && !by.options.length){ const y=new Date().getFullYear();
+        by.innerHTML='<option value="'+y+'">'+y+'</option>'; }
       await bulkSaveAll();
       sbPost = keepPost;
       holder.innerHTML=had;
@@ -3303,10 +3445,71 @@ async function runSelfTest(){
     const sec=document.querySelector('.content section.active');
     const vw=window.innerWidth;
     if(sec && vw>320){
-      const w=sec.getBoundingClientRect().width;
+      /* The sidebar legitimately occupies 232px above the 900px breakpoint, so
+         comparing the section against the whole viewport failed on every
+         desktop. The bug this guards was the section rendering at 126px of a
+         390px phone because a max-width tied to the sidebar was never reset
+         when the sidebar went off-canvas. Measure against the space actually
+         available, which is what the bug destroyed. */
+      /* Ask the MEDIA QUERY, not the rect. `.sidebar` has transition:transform
+         .3s, so straight after a resize the rect is mid-flight and the check
+         reported "sidebar off-canvas" at 1280px and failed on a healthy app.
+         A check that depends on an animation frame is a check that cries wolf,
+         and a regression check that cries wolf gets deleted. */
+      const sbEl = document.getElementById('sidebar');
+      const sbOnScreen = window.matchMedia('(min-width:901px)').matches;
+      const sbTakes = (sbEl && sbOnScreen) ? sbEl.offsetWidth : 0;
+      const avail = vw - sbTakes;
+      const w = sec.getBoundingClientRect().width;
       ok('REGRESSION L-GFX-015: the page uses the width it has',
-         w >= vw-64, Math.round(w)+'px of '+vw+'px (126 of 390 was the bug)');
+         w >= avail-64,
+         Math.round(w)+'px of '+Math.round(avail)+'px available'+(sbTakes?' (sidebar takes '+Math.round(sbTakes)+')':' (sidebar off-canvas)')+
+         '. 126 of 390 was the bug');
     }
+    /* overflow-x:hidden HIDES overflow, it does not fix it, so content can be
+       silently unreachable while every "no page overflow" check passes. An
+       element inside its OWN horizontal scroller is fine and is excused
+       generically, never by class name. */
+    const offEdge = [].slice.call(document.querySelectorAll('body *')).filter(function(e){
+      const r=e.getBoundingClientRect();
+      if(!(r.width>0&&r.height>0))return false;
+      if(getComputedStyle(e).position==='fixed')return false;
+      let p=e.parentElement;
+      while(p&&p!==document.body){
+        const ox=getComputedStyle(p).overflowX;
+        if(ox==='auto'||ox==='scroll')return false;
+        p=p.parentElement;
+      }
+      return r.right>window.innerWidth+1;
+    }).map(function(e){return (String(e.className).split(' ')[0]||e.tagName)+' @'+Math.round(e.getBoundingClientRect().right);});
+    ok('Layout: nothing is clipped off the right edge', offEdge.length===0,
+       offEdge.slice(0,3).join(', ')||'nothing past the right edge outside its own scroller');
+
+    /* The one that shipped broken twice elsewhere: does the chrome survive a
+       scroll, or does an ancestor scroll container break the sticky. */
+    const _tb=document.querySelector('.topbar');
+    if(!_tb){ ok('Layout: the topbar survives a scroll', false, 'NO .topbar FOUND, this check proved nothing'); }
+    else{
+      const y0=window.scrollY, a=_tb.getBoundingClientRect().top;
+      window.scrollTo(0,600);
+      const b=_tb.getBoundingClientRect().top;
+      window.scrollTo(0,y0);
+      ok('Layout: the topbar survives a scroll', Math.abs(a-b)<2,
+         'top went '+Math.round(a)+' to '+Math.round(b)+'; an ancestor with overflow:hidden makes sticky bind to a box that never scrolls');
+    }
+
+    /* THE FIRST SCREEN FIRST. Verification that starts at the dashboard misses
+       the one screen every person meets before anything else. */
+    const _lg=document.getElementById('loginScreen'), _cd=document.querySelector('.login-card');
+    if(!_lg||!_cd){ ok('Layout: the login card is reachable on a short screen', false,
+                       'NO login screen FOUND, this check proved nothing'); }
+    else{
+      const oy=getComputedStyle(_lg).overflowY;
+      ok('Layout: the login card is reachable on a short screen',
+         oy==='auto'||oy==='scroll',
+         'login overflow-y is '+oy+'; a centred non-scrolling box taller than the screen clips at BOTH ends');
+    }
+
     ok('Layout: the page never scrolls sideways',
        document.documentElement.scrollWidth <= window.innerWidth+1,
        document.documentElement.scrollWidth+' vs '+window.innerWidth);
@@ -3329,6 +3532,153 @@ async function runSelfTest(){
     ok('House style: no serial commas in the walkthrough',
        !/,\s+(and|or|but|nor)\s/i.test(uiText.replace(/<[^>]+>/g,'')),
        (uiText.replace(/<[^>]+>/g,'').match(/,\s+(and|or|but|nor)\s/i)||[''])[0]);
+
+
+    });
+
+    await section('App shell and phone foundations', async () => {
+    const cs = el => getComputedStyle(el);
+
+    /* ── E · BB APP SHELL ─────────────────────────────────────────────── */
+    ok('Shell: viewport-fit=cover is set, so env() is not always 0',
+       /viewport-fit\s*=\s*cover/.test((document.querySelector('meta[name=viewport]')||{content:''}).content),
+       'without it env() reports 0 on every device and the whole thing silently does nothing');
+    ok('Shell: the page paints the status bar strip', !!document.querySelector('.statusfill'));
+    ok('Shell: it is installable', !!document.querySelector('link[rel=manifest]'));
+    const bar = document.querySelector('.topbar');
+    if(!bar){
+      ok('Shell: chrome moves down for a notch', false, 'NO .topbar FOUND, this check proved nothing');
+      ok('Shell: and leaves no gap without one', false, 'not proven');
+    } else {
+      /* env() cannot be read or faked from JS, which is exactly WHY the inset is
+         stored in an overridable variable. Push it and assert the chrome moved.
+         This proves the wiring. Only a real handset proves a real notch. */
+      const root = document.documentElement;
+      root.style.setProperty('--sat','59px');
+      const moved = parseFloat(cs(bar).paddingTop);
+      root.style.setProperty('--sat','0px');
+      const back = parseFloat(cs(bar).paddingTop);
+      root.style.removeProperty('--sat');
+      ok('Shell: chrome moves down for a notch', moved>=59, 'padding-top became '+moved+'px');
+      ok('Shell: and leaves no gap without one', back===0, 'padding-top became '+back+'px');
+    }
+
+    /* Not in the brief. Added because apply_app_shell.py turned all seven green
+       while the manifest still said "Total Uplift" and declared 13 icons against
+       4 on disk. A home screen icon labelled with another product is the most
+       visible possible failure and no existing check looked at it. */
+    try{
+      const mf = await (await fetch('./manifest.json',{cache:'no-store'})).json();
+      ok('Shell: the manifest names THIS app',
+         /graphic/i.test(mf.name||'') && !/uplift|gym/i.test((mf.name||'')+(mf.short_name||'')),
+         'name is "'+mf.name+'", short_name "'+mf.short_name+'"');
+      const declared = (mf.icons||[]).map(i=>i.src);
+      const missing = [];
+      for(const src of declared){
+        try{ const r = await fetch(src,{method:'HEAD',cache:'no-store'}); if(!r.ok) missing.push(src); }
+        catch(e){ missing.push(src); }
+      }
+      ok('Shell: every icon the manifest declares actually exists',
+         declared.length>0 && missing.length===0,
+         declared.length+' declared, '+missing.length+' missing'+(missing.length?': '+missing.slice(0,3).join(', '):''));
+    }catch(e){
+      ok('Shell: the manifest names THIS app', false, 'manifest.json unreadable: '+(e&&e.message));
+      ok('Shell: every icon the manifest declares actually exists', false, 'not proven');
+    }
+
+    /* ── F · BB APP FOUNDATIONS ───────────────────────────────────────── */
+    ok('App: double tap does not zoom', cs(document.documentElement).touchAction==='manipulation',
+       cs(document.documentElement).touchAction);
+    ok('App: the page does not pull to refresh', cs(document.body).overscrollBehaviorY==='none',
+       cs(document.body).overscrollBehaviorY);
+    const nav = document.querySelector('.nav-item');
+    ok('App: no blue flash on tap',
+       !!nav && /rgba\(0, 0, 0, 0\)|transparent/.test(cs(nav).webkitTapHighlightColor),
+       nav ? cs(nav).webkitTapHighlightColor : 'NO .nav-item FOUND, this check proved nothing');
+    ok('App: chrome does not select on drag', !!nav && cs(nav).userSelect==='none',
+       nav ? cs(nav).userSelect : 'NO .nav-item FOUND, this check proved nothing');
+
+    /* The field-zoom rule is coarse-pointer only, so on a laptop it can NEVER
+       fail. A desktop green here proves nothing about the phone, and the detail
+       says so rather than quietly banking a pass. */
+    if(matchMedia('(pointer:coarse)').matches){
+      const small=[];
+      document.querySelectorAll('input,select,textarea').forEach(el=>{
+        if(el.type==='hidden')return;
+        if(parseFloat(cs(el).fontSize)<16) small.push((el.id||el.className||el.tagName)+' '+cs(el).fontSize);
+      });
+      ok('App: no field under 16px, so focusing one cannot zoom the screen', small.length===0,
+         small.slice(0,3).join(', ') || 'all 16px or more, measured at coarse pointer');
+    } else {
+      ok('App: no field under 16px, so focusing one cannot zoom the screen', true,
+         'FINE POINTER: the rule is coarse only, so this cannot fail here. RUN AT 390px TO PROVE IT');
+    }
+    ok('App: the foundation layer is present', typeof BBF==='object' && !!BBF.start);
+    ok('App: scroll restoration is manual', history.scrollRestoration==='manual',
+       history.scrollRestoration);
+
+    /* Not in the brief. The 11 August freeze was an observer doing layout work
+       per mutation. The invariant is that a render is not an overlay change. */
+    if(typeof BBF.runs==='function'){
+      const r0 = BBF.runs();
+      ['dashboard','pipeline','clients','weeklyplan'].forEach(p=>{ try{ navigateTo(p); }catch(e){} });
+      const spent = BBF.runs() - r0;
+      ok('App: rendering pages does not storm the observer', spent<=3,
+         'four navigations caused '+spent+' sync runs; more than 3 means the coalescing is gone');
+    }
+
+    /* ── G · THE FREEZE, proven by doing it ───────────────────────────── */
+    let frozen=false, shielded=false, used='';
+    const all = [].slice.call(document.querySelectorAll(BBF.ovs));
+    if(!all.length){
+      ok('App: the page behind an open sheet is frozen', false,
+         'COULD NOT FIND ANY OVERLAY ('+BBF.ovs+'), so this check proved nothing');
+      ok('App: the page behind an open sheet is out of reach', false, 'not proven');
+    } else {
+      /* Try every declared overlay until one opens, and name which one proved
+         it. This app opens modals with .open, the sidebar backdrop with .show
+         and the walkthrough by dropping the hidden attribute, so the restore
+         has to put back exactly what it found in all three shapes. */
+      for(let i=0;i<all.length && !frozen;i++){
+        const ov = all[i];
+        const had = {open:ov.classList.contains('open'),
+                     show:ov.classList.contains('show'),
+                     hidden:ov.hasAttribute('hidden')};
+        ov.classList.add('open'); ov.classList.add('show'); ov.removeAttribute('hidden');
+        BBF.sync();                    /* the observer runs a tick later; drive it */
+        if(cs(document.body).position==='fixed'){
+          frozen = true;
+          shielded = !!document.querySelector('[inert]');
+          used = (String(ov.className).split(' ')[0] || ov.id || ov.tagName);
+        }
+        if(!had.open) ov.classList.remove('open');
+        if(!had.show) ov.classList.remove('show');
+        if(had.hidden) ov.setAttribute('hidden','');
+        BBF.sync();
+      }
+      ok('App: the page behind an open sheet is frozen', frozen,
+         frozen ? ('pinned, proven on .'+used) : ('none of '+all.length+' overlays froze it'));
+      ok('App: the page behind an open sheet is out of reach', shielded,
+         shielded ? 'inert applied to the rest of the body' : 'still tappable and tabbable');
+    }
+
+    /* The drawer must survive its own backdrop. #sidebarOverlay is a SIBLING of
+       #sidebar, so a generic shield inerts the drawer the backdrop belongs to
+       and it goes dead under the thumb. That is what the keep list prevents. */
+    const sb = document.getElementById('sidebar'), sbo = document.getElementById('sidebarOverlay');
+    if(!sb || !sbo){
+      ok('App: the drawer stays usable while its own backdrop is up', false,
+         'NO #sidebar or #sidebarOverlay FOUND, this check proved nothing');
+    } else {
+      const hadShow = sbo.classList.contains('show');
+      sbo.classList.add('show'); BBF.sync();
+      const dead = sb.hasAttribute('inert');
+      if(!hadShow) sbo.classList.remove('show');
+      BBF.sync();
+      ok('App: the drawer stays usable while its own backdrop is up', !dead,
+         dead ? 'the sidebar was inerted by its own backdrop, so the drawer is dead to the touch'
+              : 'kept reachable by the keep list');
+    }
 
     });
 
@@ -3354,6 +3704,320 @@ async function runSelfTest(){
 }
 window.runSelfTest = runSelfTest;
 /* @@BBGFX_SELFTEST_END@@ */
+
+
+/* ═══ BB APP FOUNDATIONS (BBF) ═════════════════════════════════════════════
+   Makes this behave like an app rather than a page on a phone: the page behind
+   a sheet is frozen AND out of reach, Back closes the sheet instead of leaving
+   the app, and the keyboard's action key says what the button says.
+
+   Module internals taken from bb-smm-workspace, NOT from bb-video-system.
+   Video's copy predates the 11 August freeze fix: its observers call sync()
+   directly on every mutation batch, and sync() reads layout for every overlay,
+   so a render storm hung the browser for 30 seconds. Verified 2026-08-21 that
+   video, bb-master-skeleton and restaurant-skeleton all still lack the fix. */
+var BBF=(function(){
+ /* Backdrops and full-screen dialogs only.
+    NOT `.sidebar`: it is permanently display:flex and hidden by
+    translateX(-100%), so it has a non-zero rect at all times and a visibility
+    test would call it open forever. */
+ var OVS='.modal-overlay, .sidebar-overlay, .gd-wrap';
+ /* Must stay reachable while a backdrop is up. #sidebarOverlay is a SIBLING of
+    #sidebar, so without this the shield inerts the drawer the backdrop belongs
+    to and the drawer goes dead under the thumb. */
+ var KEEP='#sidebar';
+ var lockedY=0, locked=false, lastFocus=null, histDepth=0, closing=false;
+ try{if('scrollRestoration' in history)history.scrollRestoration='manual';}catch(e){}
+
+ /* AN OVERLAY IS OPEN WHEN IT IS VISIBLE, not when it carries a class. This app
+    uses .open on modals, .show on the sidebar backdrop and the hidden attribute
+    on the walkthrough. Visibility is true of all three. */
+ function isOpen(el){
+  var cs=getComputedStyle(el);
+  if(cs.display==='none'||cs.visibility==='hidden')return false;
+  var r=el.getBoundingClientRect();
+  if(!(r.width>0&&r.height>0))return false;
+  /* A FADING OVERLAY IS OPEN THE MOMENT IT STARTS. Opacity reads 0 for one
+     frame and the observer fires BEFORE that frame, so it was judged closed and
+     the body was never pinned. A running transition means it is opening. */
+  if(parseFloat(cs.opacity||'1')<0.05){
+   var moving=false;
+   try{moving=el.getAnimations().some(function(a){
+    return a.playState==='running'||a.playState==='pending';});}catch(e){}
+   if(!moving)return false;
+  }
+  return true;
+ }
+ function anyOpen(){var n=document.querySelectorAll(OVS),i;
+  for(i=0;i<n.length;i++)if(isOpen(n[i]))return n[i];return null;}
+
+ function lock(){if(locked)return;
+  lockedY=window.scrollY||window.pageYOffset||0;
+  document.body.style.top=(-lockedY)+'px';
+  document.body.classList.add('sheet-open');locked=true;}
+ function unlock(){if(!locked)return;
+  document.body.classList.remove('sheet-open');document.body.style.top='';
+  window.scrollTo(0,lockedY);locked=false;}
+
+ /* Covered is not the same as out of reach: a thumb still hits a button through
+    the gap beside a sheet, and a keyboard or screen reader walks straight into
+    content the person cannot see. Generic, so it survives any later screen. */
+ var shielded=[];
+ function shield(ov){release();if(!ov)return;
+  [].slice.call(document.body.children).forEach(function(el){
+   if(el===ov||el.contains(ov))return;
+   if(/^(SCRIPT|STYLE|TEMPLATE|LINK)$/.test(el.tagName))return;
+   if(el.matches&&el.matches(KEEP))return;
+   if(el.querySelector&&el.querySelector(KEEP))return;
+   if(el.hasAttribute('inert'))return;
+   el.setAttribute('inert','');el.setAttribute('aria-hidden','true');shielded.push(el);});}
+ function release(){shielded.forEach(function(el){
+  el.removeAttribute('inert');el.removeAttribute('aria-hidden');});shielded=[];}
+
+ function takeFocus(ov){lastFocus=document.activeElement;
+  var f=ov.querySelector('button,[href],input,[tabindex]:not([tabindex="-1"])');
+  if(f){try{f.focus({preventScroll:true});}catch(e){}}}
+ function giveBackFocus(){if(lastFocus&&lastFocus.focus){
+  try{lastFocus.focus({preventScroll:true});}catch(e){}}lastFocus=null;}
+
+ /* BACK CLOSES THE SHEET, it does not leave the app. On Android this is the
+    loudest tell that a product is really a web page. */
+ function closeTop(){var ov=anyOpen();if(!ov)return false;
+  var oc=ov.getAttribute&&ov.getAttribute('onclick');
+  if(oc&&/close/i.test(oc)){ov.click();return true;}
+  var btn=ov.querySelector('[onclick*="close"],[onclick*="Close"],[data-close]');
+  if(btn){btn.click();return true;}
+  if(ov.id==='gdWrap'&&typeof gdEnd==='function'){try{gdEnd();return true;}catch(e){}}
+  ov.classList.remove('open');ov.classList.remove('show');return true;}
+ window.addEventListener('popstate',function(){
+  if(closing)return;                 /* this pop is the one our own close asked for */
+  if(histDepth>0){histDepth--;closeTop();}});
+ window.addEventListener('keydown',function(e){
+  if(e.key==='Escape'&&anyOpen()){e.preventDefault();history.back();}});
+
+ /* COALESCE. A render can ask for a sync hundreds of times; the work runs once.
+    Doing layout work per mutation is what froze the OS on 11 August. */
+ var syncQueued=false,inSync=false,syncRuns=0;
+ function scheduleSync(){if(syncQueued)return;syncQueued=true;
+  setTimeout(function(){syncQueued=false;sync();},0);}
+ function sync(){if(inSync)return;inSync=true;syncRuns++;
+  try{syncBody();}finally{inSync=false;}}
+ function syncBody(){
+  var ov=anyOpen();
+  if(ov&&!locked){lock();shield(ov);takeFocus(ov);
+   histDepth++;try{history.pushState({bbSheet:1},'');}catch(e){}}
+  else if(!ov&&locked){release();giveBackFocus();
+   /* Unlock synchronously, always. Deferring it behind a timer left the body
+      pinned for whatever ran next, and that could then not scroll at all. */
+   unlock();
+   if(histDepth>0){histDepth--;closing=true;
+    try{history.back();}catch(e){}
+    setTimeout(function(){closing=false;},0);}}}
+
+ /* ONE observer, never N edited open functions. The body observer's job is
+    spotting NEW overlays, so it only schedules when it actually saw one. */
+ function start(){
+  var mo=new MutationObserver(scheduleSync);
+  var watch=function(el){mo.observe(el,{attributes:true,attributeFilter:['class','style','hidden']});};
+  document.querySelectorAll(OVS).forEach(watch);
+  new MutationObserver(function(muts){
+   var sawOverlay=false;
+   muts.forEach(function(m){[].slice.call(m.addedNodes).forEach(function(n){
+    if(n.nodeType===1&&n.matches&&n.matches(OVS)){watch(n);sawOverlay=true;}});});
+   if(sawOverlay)scheduleSync();
+  }).observe(document.body,{childList:true,subtree:true});
+  sync();
+ }
+
+ /* THE KEYBOARD SAYS WHAT THE BUTTON SAYS. Applied at focus, which is the only
+    moment it is read, because most fields here do not exist until their page or
+    modal renders. */
+ function hint(el){
+  if(!el||!/^(INPUT|TEXTAREA)$/.test(el.tagName))return;
+  if(el.getAttribute('enterkeyhint'))return;
+  var form=el.closest('.modal,.filter-bar,.login-card,form')||document.body;
+  var peers=form.querySelectorAll('input:not([type=checkbox]):not([type=radio]),textarea');
+  el.setAttribute('enterkeyhint',peers.length&&peers[peers.length-1]===el?'go':'next');
+  if(el.type==='email'||el.inputMode==='email'||el.inputMode==='numeric'||el.inputMode==='decimal'){
+   el.setAttribute('autocapitalize','off');el.setAttribute('autocorrect','off');
+   el.setAttribute('spellcheck','false');}}
+ function hintKeyboards(){
+  document.addEventListener('focusin',function(e){hint(e.target);});
+  document.querySelectorAll('input,textarea').forEach(hint);}
+
+ /* The check asks the module for its selector. A hand written selector inside a
+    check is a selector that can be pointed at nothing and pass on silence. */
+ return {start:start,hintKeyboards:hintKeyboards,anyOpen:anyOpen,sync:sync,
+         ovs:OVS,                       /* the name bb-video-system's checks use */
+         overlaySelector:function(){return OVS;},
+         keepSelector:function(){return KEEP;},
+         runs:function(){return syncRuns;},
+         isLocked:function(){return locked;}};
+})();
+BBF.start();BBF.hintKeyboards();
+
+/* The tool copies a service worker and never registers it, so the app installs
+   and the worker never runs. Register it here. It is network-first and never
+   caches the database: a stale board is worse than no board. */
+if('serviceWorker' in navigator){
+  window.addEventListener('load',function(){
+    navigator.serviceWorker.register('./sw.js').catch(function(){});
+  });
+}
+
+/* ══ MONTHLY RECAP ════════════════════════════════════════════════════
+   Definitions, written down so every number on the page can be reproduced:
+     opened    created_at falls inside the month
+     finished  completed_at falls inside the month
+     turnaround  days from created_at to completed_at, and ONLY for rows that
+                 have both. Never estimated, never inferred from updated_at.
+     still open  not in a finished stage, and created before the month ended
+   A duration is always shown with the count it was measured on. */
+const RC_FINISHED = ['approved'];
+let RC_ROWS = null, RC_KEY = '';
+/* Two renders can be in flight at once: navigating to the page starts one and
+   changing the month starts another. Whichever FETCH finishes last paints last,
+   which is not necessarily the one the person asked for. A token means only the
+   newest render is allowed to write to the DOM. */
+let RC_TOKEN = 0;
+
+function rcMedian(a){
+  if(!a.length) return null;
+  const v = a.slice().sort((x,y)=>x-y), m = Math.floor(v.length/2);
+  return v.length%2 ? v[m] : (v[m-1]+v[m])/2;
+}
+function rcDays(from,to){ return (new Date(to)-new Date(from))/86400000; }
+function rcNum(n){ return Number.isInteger(n) ? String(n) : n.toFixed(1); }
+/* "0.0 days" is arithmetically right and tells nobody anything. Under a day,
+   say it in hours. Under an hour, say that plainly rather than "0.0". */
+function rcDur(d){
+  if(d===null) return 'n/a';
+  if(d>=1) return rcNum(d)+' '+rcPlural(d,'day','days');
+  const h=d*24;
+  if(h>=1) return rcNum(h)+' '+rcPlural(h,'hour','hours');
+  return 'under an hour';
+}
+function rcPlural(n,one,many){ return n===1?one:many; }
+
+async function renderRecap(){
+  const mSel=document.getElementById('rcMonth'), ySel=document.getElementById('rcYear');
+  if(!mSel||!ySel) return;
+  if(!mSel.options.length){
+    const now=new Date();
+    mSel.innerHTML = MONTHS.slice(1).map((m,i)=>'<option value="'+(i+1)+'">'+m+'</option>').join('');
+    const y=now.getFullYear();
+    ySel.innerHTML = [y-1,y,y+1].map(v=>'<option value="'+v+'">'+v+'</option>').join('');
+    mSel.value = now.getMonth()+1; ySel.value = y;
+  }
+  const month=parseInt(mSel.value,10), year=parseInt(ySel.value,10);
+  const start=new Date(year,month-1,1), end=new Date(year,month,1);
+  const body=document.getElementById('rcBody'), sum=document.getElementById('rcSummary');
+  const myToken = ++RC_TOKEN;
+  body.innerHTML='<div class="rc-say">Loading…</div>'; sum.innerHTML='';
+
+  /* One query. Anything finished in the month was created before it ended, so
+     created_at < month end covers opened, finished and still open at once. */
+  const key=year+'-'+month;
+  if(RC_KEY!==key || !RC_ROWS){
+    const r=await sbGet('graphic_projects','?created_at=lt.'+end.toISOString()+
+      '&select=id,client_name,current_stage,created_at,completed_at,is_archived,type&order=created_at.asc');
+    if(myToken!==RC_TOKEN) return;      /* a newer render started while this one waited */
+    RC_ROWS = Array.isArray(r)?r:[];
+    RC_KEY = key;
+  }
+  if(myToken!==RC_TOKEN) return;
+  const rows=RC_ROWS;
+
+  const inMonth=(d)=>{ if(!d) return false; const t=new Date(d); return t>=start && t<end; };
+  const opened  = rows.filter(p=>inMonth(p.created_at));
+  /* A job is finished when it is IN a finished stage. Counting by timestamp
+     alone counted five real rows that had been moved BACK to head_review and
+     kept a stale completion date, so July read 17 finished when 12 were. The
+     handler now clears the stamp on reopen, but historical rows still carry it
+     and a recap must not repeat the error it was built to expose. */
+  const finished= rows.filter(p=>inMonth(p.completed_at) && RC_FINISHED.indexOf(p.current_stage)>-1);
+  const stillOpen = rows.filter(p=>RC_FINISHED.indexOf(p.current_stage)===-1 && !p.is_archived);
+
+  /* THE HONEST EMPTY STATE. The board was cleared on 20 August, so a recap of
+     any earlier month is a page of zeros. Saying why is the whole point. */
+  if(!rows.length){
+    sum.innerHTML='';
+    body.innerHTML='<div class="rc-empty">'
+      +'<h3>There is nothing to recap yet</h3>'
+      +'<p>The board holds no projects. It was cleared on 20 August 2026 to fix a database size problem. The team started adding work again from September.</p>'
+      +'<p>The history from before that date was exported first and is not lost. It is 363 projects with their stage history, saved to Downloads as a dated backup folder with a restore guide.</p>'
+      +'<p>This page will fill itself as soon as work is added. Nothing here is a real zero yet, so please do not read it as one.</p>'
+      +'</div>';
+    return;
+  }
+
+  /* Durations, and ONLY where both ends exist. */
+  const measurable = finished.filter(p=>p.created_at && p.completed_at);
+  const unmeasurable = finished.length - measurable.length;
+  const days = measurable.map(p=>rcDays(p.created_at,p.completed_at));
+  const med = rcMedian(days), longest = days.length?Math.max.apply(null,days):null;
+  const rate = opened.length ? Math.round(100*finished.length/opened.length) : null;
+
+  sum.innerHTML='<div class="rc-tiles">'
+    +'<div class="rc-tile a"><div class="rc-lbl">Jobs opened</div><div class="rc-num">'+opened.length+'</div>'
+      +'<div class="rc-sub">created in '+MONTHS[month]+' '+year+'</div></div>'
+    +'<div class="rc-tile b"><div class="rc-lbl">Finished</div><div class="rc-num">'+finished.length+'</div>'
+      +'<div class="rc-sub">'+(rate===null?'no jobs opened, so no rate':rate+'% of what was opened')+'</div></div>'
+    +'<div class="rc-tile c"><div class="rc-lbl">Median turnaround</div><div class="rc-num">'
+      +rcDur(med)+'</div>'
+      +'<div class="rc-sub">'+(med===null?'nothing finished with both dates'
+        :'measured on '+measurable.length+' of '+finished.length)+'</div>'
+      +(unmeasurable>0?'<div class="rc-gap">'+unmeasurable+' had no finish time</div>':'')+'</div>'
+    +'<div class="rc-tile d"><div class="rc-lbl">Still open</div><div class="rc-num">'+stillOpen.length+'</div>'
+      +'<div class="rc-sub">across every month, not just this one</div></div>'
+    +'</div>';
+
+  /* Per client. A client appears if it opened, finished or still holds work. */
+  const names={};
+  [].concat(opened,finished,stillOpen).forEach(p=>{ names[p.client_name||'(No client)']=1; });
+  const list=Object.keys(names).sort();
+  const now=new Date();
+
+  body.innerHTML = list.map(name=>{
+    const mine=(arr)=>arr.filter(p=>(p.client_name||'(No client)')===name);
+    const o=mine(opened), f=mine(finished), so=mine(stillOpen);
+    const meas=f.filter(p=>p.created_at&&p.completed_at);
+    const un=f.length-meas.length;
+    const d=meas.map(p=>rcDays(p.created_at,p.completed_at));
+    const m=rcMedian(d), lg=d.length?Math.max.apply(null,d):null;
+    const ages=so.filter(p=>p.created_at).map(p=>rcDays(p.created_at,now));
+    const oldest=ages.length?Math.max.apply(null,ages):null;
+
+    /* The plain sentence. It only claims what was measured. */
+    let say='';
+    if(o.length===0 && f.length===0) say='Nothing opened or finished this month.';
+    /* Finished counts work that LANDED this month, whoever started it and
+       whenever. Saying so stops "8 opened and 11 finished" reading as an
+       error, which is exactly how a client would read it. */
+    else say=o.length+' '+rcPlural(o.length,'job','jobs')+' opened and '+f.length+' finished'
+             +(f.length>o.length?', some of which started before this month.':'.');
+    /* "within under an hour" is what you get from bolting a phrase into a
+       sentence that did not expect it. */
+    if(m!==null) say+= (m<1/24 ? ' Half were done inside an hour'
+                               : ' Half were done within '+rcDur(m))
+                       +' and the slowest took '+rcDur(lg)+'.';
+    else if(f.length>0) say+=' None of the finished work has a recorded finish time, so the turnaround cannot be measured.';
+    if(un>0 && m!==null) say+=' '+un+' of the finished '+rcPlural(un,'job has','jobs have')+' no finish time and '+rcPlural(un,'is','are')+' left out of that figure.';
+    if(so.length>0) say+=' '+so.length+' '+rcPlural(so.length,'job is','jobs are')+' still open'
+                        +(oldest!==null?' and the oldest has been waiting '+rcDur(oldest):'')+'.';
+
+    return '<div class="rc-client">'
+      +'<div class="rc-chead"><span class="rc-cname">'+esc(name)+'</span>'
+      +'<span class="rc-cnums"><span>opened <b>'+o.length+'</b></span>'
+      +'<span>finished <b>'+f.length+'</b></span>'
+      +'<span>median <b>'+rcDur(m)+'</b></span>'
+      +'<span>longest <b>'+rcDur(lg)+'</b></span>'
+      +'<span>open <b>'+so.length+'</b></span></span></div>'
+      +'<div class="rc-say">'+esc(say)+'</div>'
+      +(un>0?'<div class="rc-gap">'+un+' without a finish time</div>':'')
+      +'</div>';
+  }).join('');
+}
 
 /* ══ SESSION RESTORE — MUST BE THE LAST THING IN THIS SCRIPT ══════════
    L-GFX-013. This used to sit around line 1247, roughly 80 lines ABOVE the
@@ -3503,6 +4167,106 @@ window.runSelfTest = runSelfTest;
 .kanban-cards{border-radius:0 0 var(--r-md) var(--r-md)}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)!important;box-shadow:0 0 0 3px var(--accent-glow)}
 @media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.06s!important}}
+
+/* ══ MONTHLY RECAP ══════════════════════════════════════════════════ */
+.rc-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px;margin-bottom:18px}
+.rc-tile{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:14px 16px;border-top:3px solid var(--border-strong)}
+.rc-tile.a{border-top-color:var(--accent)} .rc-tile.b{border-top-color:var(--green)}
+.rc-tile.c{border-top-color:var(--blue)}   .rc-tile.d{border-top-color:var(--amber)}
+.rc-lbl{font-size:0.66rem;font-weight:800;color:var(--text-3);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:6px}
+.rc-num{font-size:1.7rem;font-weight:900;line-height:1;color:var(--text)}
+.rc-tile.a .rc-num{color:var(--accent)} .rc-tile.b .rc-num{color:var(--green)}
+.rc-tile.c .rc-num{color:var(--blue)}    .rc-tile.d .rc-num{color:var(--amber)}
+.rc-sub{font-size:0.68rem;color:var(--text-3);margin-top:6px;line-height:1.45}
+/* THE GAP IS LABELLED, never hidden. A figure nobody can reproduce is worse
+   than a gap that says how big it is. */
+.rc-gap{display:inline-block;margin-top:6px;padding:3px 7px;border-radius:99px;
+  background:var(--amber-soft);color:var(--amber);font-size:0.6rem;font-weight:800;letter-spacing:0.04em}
+.rc-client{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:14px 16px;margin-bottom:10px}
+.rc-chead{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+.rc-cname{font-size:0.92rem;font-weight:800;color:var(--text)}
+.rc-cnums{display:flex;gap:14px;flex-wrap:wrap;font-size:0.72rem;color:var(--text-3)}
+.rc-cnums b{color:var(--text);font-weight:800}
+.rc-say{font-size:0.8rem;line-height:1.6;color:var(--text-2)}
+.rc-empty{background:var(--surface);border:1px solid var(--amber);border-radius:var(--r-md);padding:20px}
+.rc-empty h3{font-size:1rem;font-weight:800;color:var(--text);margin-bottom:8px}
+.rc-empty p{font-size:0.82rem;line-height:1.65;color:var(--text-2);margin-bottom:8px}
+.rc-empty p:last-child{margin-bottom:0}
+
+/* ═══ BB APP SHELL + APP FOUNDATIONS, cascade-final ═══════════════════════
+   ONE block at the very end of the last sheet on purpose. The documented trap
+   is a @media rule resetting a box further down and killing the inset on the
+   ONE screen that has a notch. Last in the sheet wins everywhere.
+   Rollback is deleting this block. */
+
+/* 1 · TOUCH. No double-tap zoom, no pull to refresh, no blue flash, no
+      long-press copy on controls. Text and values stay selectable, because
+      somebody copying a client name or a brief is fine and blocking it is rude. */
+html{touch-action:manipulation}
+html,body{overscroll-behavior-y:none}
+*{-webkit-tap-highlight-color:transparent}
+button,label,.nav-item,.btn,.k-advance,.wp-item-box,.wp-item-next,.gd-next,.gd-back,.gd-skip,
+.stage-dot,.badge,[role="button"]{
+ -webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+
+/* 2 · THE FIELD ZOOM. iOS zooms the whole viewport when a focused input has
+      text under 16px, and does not zoom back. 16 is the platform threshold,
+      not a preference. Coarse pointers only, so the desktop keeps its scale. */
+@media (pointer:coarse){
+ input,select,textarea,.login-input-big{font-size:16px!important}
+}
+
+/* 3 · A sheet must not chain its scroll into the page behind it. */
+.modal,.modal-overlay,.gd-wrap,.gd-body,.wp-grid-wrap,.kanban-cards,.content{
+ overscroll-behavior:contain}
+
+/* 4 · SAFE AREA. Read from the device, never detected. Every element that
+      touches the top or bottom edge uses the variables. */
+.topbar{height:auto;min-height:calc(var(--topbar-h) + var(--sat));padding-top:var(--sat)}
+.sidebar{padding-top:var(--sat);padding-bottom:var(--sab)}
+/* THE FIRST SCREEN. A fixed, centred, non-scrolling box whose content is taller
+   than the screen clips at BOTH ends and neither end is reachable. The card is
+   505px tall, so a 390px-high landscape phone hides the top and the bottom of
+   it at once. `auto` costs nothing when it fits and saves the screen when it
+   does not. bb-app-shell: test in the order a human meets the app. */
+.login{padding-top:calc(24px + var(--sat));padding-bottom:calc(24px + var(--sab));
+ overflow-y:auto;-webkit-overflow-scrolling:touch}
+.gd-wrap{padding:calc(22px + var(--sat)) 22px calc(22px + var(--sab))}
+.toast-wrap{bottom:calc(24px + var(--sab))}
+.modal-overlay{padding:calc(20px + var(--sat)) 20px calc(20px + var(--sab))}
+#bbGfxSentinelBanner{top:var(--sat)!important}
+
+/* 5 · vh is measured against the TALLEST the viewport ever gets, so a modal at
+      90vh pushes its own buttons off screen the moment the address bar appears.
+      dvh tracks the real height. */
+.modal{max-height:min(90dvh,calc(100dvh - var(--sat) - var(--sab) - 32px))}
+
+/* 6 · THE FREEZE. overflow:hidden alone does not hold on iOS: the page keeps
+      its rubber band and silently forgets where it was. BBF pins the body at a
+      negative top and puts it back on close, and the restore is the entire
+      reason to do it this way. */
+body.sheet-open{position:fixed;left:0;right:0;width:100%}
+
+/* 8 · THE STICKY TOPBAR. `.main` carried `overflow:hidden`, which makes it a
+      SCROLL CONTAINER, so the sticky topbar bound to an element that never
+      scrolls while the window did, and it scrolled away off the top. Measured
+      at 390px: the topbar went from top 0 to top -284.5 on a 700px scroll.
+      `clip` clips without creating a scroll container, which is the documented
+      fix in bb-app-shell and the reason the identical rule works elsewhere. */
+.main{overflow:visible;overflow-x:clip}
+
+/* 7 · TAP TARGETS ON THE WEEKLY GRID. The tick box is drawn 17px so the grid
+      stays dense, which is right under a mouse and a miss waiting to happen
+      under a finger. 44px is the platform minimum. A near miss on the tick
+      opens the cell editor instead, so getting this wrong silently drops
+      somebody into a text box when they meant to tick a job done. */
+@media (pointer:coarse){
+ .wp-item{padding:12px 0}
+ .wp-item-box,.wp-item-next{position:relative}
+ .wp-item-box::after,.wp-item-next::after{
+   content:'';position:absolute;left:50%;top:50%;
+   width:44px;height:44px;transform:translate(-50%,-50%);inset:auto}
+}
 </style>
 </body>
 </html>

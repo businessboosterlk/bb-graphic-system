@@ -343,7 +343,7 @@ One in the topbar page-action slot (set in `navigateTo`, ~line 1120) and one in
 the section header. Confirmed on the live build before this work, so it is
 pre-existing. Harmless, both call `wpOpenAdd()`, but it looks unfinished.
 
-## L-GFX-018 · guard.py does not check CSS · OPEN
+## L-GFX-018 · guard.py does not check CSS · CLOSED 2026-08-21 (check now in the harness)
 While building the weekly grid an edit left a CSS comment unterminated
 (`/* WELCOME WALKTHROUGH` with no `*/`), which silently swallowed the entire
 `.gd-wrap` rule set. **`guard.py` passed**, because it only parses JavaScript.
@@ -500,3 +500,127 @@ then trust the green.
 Every future bug in this system should arrive with a regression check in Section
 12 before the fix is called done. That is the difference between a register that
 records history and one that prevents it.
+
+---
+
+## 2026-08-21 · the app shell and the phone foundations
+
+Shell 0 of 7 to **7 of 7**. Phone knobs 0 of 9 to **9 of 9**. Harness 40 to
+**58**, green at 1280 AND at 390px with `pointer:coarse` true.
+
+## L-GFX-019 · the brief named the wrong build to copy the module from · FIXED
+The prior-art gate answered "the best build is bb-video-system", and for FIT
+that is right: same posture, same tables, same single-file shape.
+
+**But video's BBF predates the 11 August freeze fix**, the one
+`bb-app-foundations` calls "the worst bug this skill has produced": observers
+calling `sync()` on every mutation batch while `sync()` reads layout for every
+overlay. Measured 2026-08-21:
+
+```
+scheduleSync present:  bb-video-system 0 | bb-master-skeleton 0 | restaurant 0
+                       gym-skeleton 3 | gym-member-skeleton 3 | bb-smm-workspace 3
+```
+
+Porting video verbatim would have shipped a known browser freeze onto the phones
+of the people who use this daily. Resolution: the SHAPE, safe-area targets and
+app wiring from video; the MODULE INTERNALS from `bb-smm-workspace`, the most
+recent port and one of only three files carrying the fix.
+
+**THE RULE: "which build is best" is not one answer. It is best-for-fit and
+best-for-correctness, and they can be different files.** Check the specific
+defect history of the specific block you are copying, not the reputation of the
+file it lives in.
+
+## L-GFX-020 · the sticky topbar scrolled away on a phone · FIXED
+`.main` carried `overflow:hidden`, which makes it a **scroll container**, so the
+sticky topbar bound to a box that never scrolls while the window did. Measured
+at 390px: topbar top went **0 to -284.5** on a 700px scroll. It scrolled clean
+off the screen.
+
+This is the exact fault `bb-app-shell` says "shipped broken twice" elsewhere, and
+the documented fix applies unchanged: `overflow-x:clip` clips without creating a
+scroll container. Now `.main{overflow:visible;overflow-x:clip}`, measured 0 to 0
+at both widths.
+
+**The harness could not see this.** It is now check "Layout: the topbar survives
+a scroll".
+
+## L-GFX-021 · apply_app_shell.py ships three faults while reporting all green · FIXED
+All seven checks flipped to yes while the app was still wrong in three ways a
+person would see on their home screen. `bb-app-shell` documents all three; they
+were all present here.
+
+1. **The manifest was Total Uplift's, verbatim.** `name: "Total Uplift"`,
+   `short_name: "Uplift"`, the gym's description and `#0B1117` colours. The icon
+   on a designer's phone would have been labelled **Uplift**. It also declared
+   **13 icons while 4 existed**, so nine were dead references including an
+   `icon.svg` that exists nowhere.
+2. **The icons were the neutral defaults.** Regenerated from `bb-logo.png` with
+   `sips` (no Pillow on this Mac), padded on Graphic's own `#0c0d10`, 11 sizes
+   plus two maskable.
+3. **sw.js was the gym's** (`tu-member-v1`) **and was never registered**, so the
+   app installed and the worker never ran. Rewritten as `bb-graphic-v1` and
+   registered. It keeps the SMM rule: **never cache the database.** A stale board
+   is worse than no board, because somebody ticks a post that already moved on.
+
+Also: the page's `theme-color` meta was the gym's `#0E141B` against Graphic's
+`#0c0d10`.
+
+**Two new checks now catch all of it**: "Shell: the manifest names THIS app" and
+"Shell: every icon the manifest declares actually exists". Neither existed in any
+BB harness before today.
+
+## L-GFX-022 · the two overlay traps, both live in this file · HANDLED
+1. **`.sidebar` is permanently `display:flex`** and hidden by
+   `translateX(-100%)`, so it has a non-zero rect at all times and a visibility
+   test calls it **open forever**. It is deliberately excluded from `OVS`.
+2. **`#sidebarOverlay` is a SIBLING of `#sidebar`**, so a generic shield inerts
+   the drawer its own backdrop belongs to and the drawer goes dead under the
+   thumb. That is what `KEEP='#sidebar'` prevents, and there is now a check
+   named "App: the drawer stays usable while its own backdrop is up".
+
+## A check of mine that was wrong at desktop · FIXED
+`REGRESSION L-GFX-015` compared the active section against the whole viewport.
+Above 900px the sidebar legitimately takes 232px, so it failed on every desktop
+run reporting "1000px of 1280px" as though it were the 126-of-390 bug. It now
+measures against the space actually available. **A regression check that cries
+wolf gets deleted by the next person, which is how the real bug comes back.**
+
+## bb-elevate · what the brief did not ask for and should have
+
+**1. NOBODY IS TOLD HOW TO INSTALL IT, and that is the whole point of the pass.**
+The brief's own "what done looks like" opens with "a designer adds the Graphic
+System to their home screen". Nothing in the app tells them how. `bb-app-shell`
+rule 7 is explicit: tell the person at the TOP of the first screen, with the
+share glyph DRAWN, because "tap the share button" means nothing until they can
+see which button. Dismissible, and absent once installed.
+
+The shell is now correct and unusable-as-intended: it installs beautifully for
+anybody who already knows the gesture. **This is the highest-value thing left and
+it is one dismissible banner on the login screen.** Held because the brief scoped
+this pass to the foundation layer, and an install prompt is user-facing copy.
+
+**2. No landscape breakpoint.** `bb-video-system` carries
+`@media(orientation:landscape) and (max-height:500px)` to shrink the topbar,
+because a phone on its side gives up most of its height to chrome. Graphic has
+none. A designer checking the board on a rotated phone loses a 60px topbar plus
+the inset out of 390px of height.
+
+**3. The service worker caches nothing useful yet.** It is registered and it
+correctly refuses to cache the database, but `SHELL` lists four files. The app is
+ONE 3,900-line HTML file, which is already in the list as `./`. So offline works,
+but the icons and manifest are the only extras. That is correct and worth saying
+out loud rather than implying an offline mode nobody tested. **Offline was not
+tested in this pass.**
+
+**4. `env()` is still unproven on glass.** The harness asserts the VARIABLE is
+wired by pushing `--sat:59px` and watching the chrome move. That proves the
+plumbing. It does not prove a real notch, because `env()` cannot be read or faked
+from JavaScript. **Only a real handset proves that, and nobody has held one.**
+
+**5. The `?selftest` URL is a foot-gun on a live system.** It runs 59 checks
+against whatever is loaded. Every write is stubbed and state is restored, so it
+is safe, but it also navigates pages and toggles overlays under the user. It is
+fine for Thulaib and wrong for a designer who pastes a link. Not changed, but
+worth knowing before that URL is shared.

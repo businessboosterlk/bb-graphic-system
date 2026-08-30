@@ -661,6 +661,7 @@ tr:hover td{background:var(--surface-2)}
     <div class="content">
       <!-- ═══ DASHBOARD ═══ -->
       <section id="section-dashboard" class="active">
+        <div id="dashHeadPillars"></div>
         <div class="stat-grid" id="dashStats"></div>
         <div class="sec-header"><h2>Pipeline Overview</h2></div>
         <div class="pipeline-strip" id="dashPipeline"></div>
@@ -1616,6 +1617,12 @@ function renderDashboard(){
     ).join('');
   }
 
+  /* THE HEAD'S DAY, ON HIS DASHBOARD. bb-video-system renders Ushane's pillars
+     inside renderDashboard for the same reason: a checklist on a page you have
+     to go and find is a checklist nobody ticks. The Pillars page still exists
+     and still shows the whole team, which is the oversight view. */
+  renderHeadPillars();
+
   // Overdue
   if(overdue.length===0){
     document.getElementById('dashOverdue').innerHTML = emptyHTML('No overdue projects');
@@ -1624,6 +1631,34 @@ function renderDashboard(){
       `<div class="feed-item" style="cursor:pointer" onclick="openProjectDetail(${p.id})"><div class="feed-dot" style="background:var(--red)"></div><div><div class="feed-text"><strong>${esc(p.title)}</strong> — ${esc(p.client_name||'No client')}</div><div class="feed-time">Due ${fmtDate(p.deadline)}</div></div></div>`
     ).join('');
   }
+}
+
+/* Farhath's seven, on the dashboard he lands on. Ticks write to the same
+   `pillars` rows as the Pillars page, so the two can never disagree. */
+async function renderHeadPillars(){
+  const el = document.getElementById('dashHeadPillars');
+  if(!el) return;
+  if(!isGraphicHead()){ el.innerHTML=''; return; }
+  const who = currentUser.name, today = todayStr();
+  let rows = await sbGet('pillars','?who=eq.'+who+'&date=eq.'+today);
+  if(!Array.isArray(rows)) rows = [];
+  const done = HEAD_PILLARS.filter(i=>{ const r=rows.find(x=>x.item===i); return r && r.done; }).length;
+  const pct = Math.round(done/HEAD_PILLARS.length*100);
+  el.innerHTML =
+    '<div class="panel" style="margin-bottom:20px;border-color:var(--accent)">'
+    + '<h3 style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">'
+    +   '<span>Your day as Graphic Head</span>'
+    +   '<span style="font-size:0.72rem;font-weight:800;color:'+(done===HEAD_PILLARS.length?'var(--green)':'var(--text-3)')+'">'
+    +     done+' of '+HEAD_PILLARS.length+' done</span></h3>'
+    + '<div class="pillar-progress mb-3"><div class="progress-bar"><div class="progress-fill" style="width:'+pct+'%;background:'+(done===HEAD_PILLARS.length?'var(--green)':'var(--accent)')+'"></div></div></div>'
+    + HEAD_PILLARS.map((item,i)=>{
+        const r = rows.find(x=>x.item===item);
+        const on = !!(r && r.done);
+        return '<div class="pillar-item"><input type="checkbox" id="hp_'+i+'" '+(on?'checked':'')
+             + ' onchange="togglePillar(\''+who+'\',\''+item.replace(/'/g,"\\'")+'\',this.checked);setTimeout(renderHeadPillars,400)">'
+             + '<label for="hp_'+i+'">'+esc(item)+'</label></div>';
+      }).join('')
+    + '</div>';
 }
 
 function emptyHTML(msg,sub=''){

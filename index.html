@@ -727,6 +727,13 @@ tr:hover td{background:var(--surface-2)}
           </select>
         </div>
         <div class="kanban" id="kanbanBoard"></div>
+        <div class="bulkbar" id="bulkBar">
+          <span><b id="bulkCount">0</b> selected</span>
+          <select id="bulkMoveTo"><option value="">Move to…</option></select>
+          <button class="ghost" onclick="bulkMoveSelected()">Move</button>
+          <button class="danger" onclick="bulkDeleteSelected()">Delete</button>
+          <button class="ghost" onclick="bulkClearSelection()">Clear</button>
+        </div>
       </section>
 
       <!-- ═══ CLIENTS ═══ -->
@@ -1045,7 +1052,7 @@ tr:hover td{background:var(--surface-2)}
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modalBulkPipeline')">Cancel</button>
-      <button class="btn btn-accent" onclick="bulkSaveAll()">Save All</button>
+      <button class="btn btn-accent" id="bulkSaveBtn" onclick="bulkSaveAll()">Save All</button>
     </div>
   </div>
 </div>
@@ -1687,6 +1694,7 @@ function renderPipeline(){
     `;
   }).join('');
   requestAnimationFrame(observeLazyThumbs);
+  bulkBarSync();
 }
 
 function renderKCard(p){
@@ -1694,7 +1702,8 @@ function renderKCard(p){
   const hasImg = (p.image_url!==undefined && p.image_url!==null) || IMG_IDS.has(p.id) || IMG_CACHE[p.id];
   const cachedSrc = (p.image_url && p.image_url!==undefined) ? p.image_url : (IMG_CACHE[p.id]||'');
   return `
-    <div class="k-card" draggable="true" data-id="${p.id}" ondragstart="onDragStart(event,${p.id})" ondragend="onDragEnd(event)" onclick="openProjectDetail(${p.id})">
+    <div class="k-card${BULK_PICKED.has(p.id)?' picked':''}" draggable="true" data-id="${p.id}" ondragstart="onDragStart(event,${p.id})" ondragend="onDragEnd(event)" onclick="openProjectDetail(${p.id})">
+      <input type="checkbox" class="k-pick" ${BULK_PICKED.has(p.id)?'checked':''} onclick="event.stopPropagation();bulkPick(${p.id},this.checked)" title="Select">
       ${hasImg?`<img class="k-card-thumb lazy-thumb" data-pid="${p.id}"${cachedSrc?` src="${esc(cachedSrc)}"`:''} alt="" onerror="this.style.display='none'">`:''}
       <div class="k-card-title">${esc(p.title)}</div>
       <div class="k-card-client">${esc(p.client_name||'No client')}</div>
@@ -1709,6 +1718,62 @@ function renderKCard(p){
         : `<div class="k-doneflag">&#10003; Approved</div>`; })()}
     </div>
   `;
+}
+
+/* ══ BULK SELECT ══════════════════════════════════════════════════════
+   Every destructive action names the count and asks first, and reports what it
+   actually changed rather than what it attempted. */
+const BULK_PICKED = new Set();
+function bulkPick(id, on){
+  if(on) BULK_PICKED.add(id); else BULK_PICKED.delete(id);
+  bulkBarSync();
+  const card=document.querySelector('.k-card[data-id="'+id+'"]');
+  if(card) card.classList.toggle('picked', on);
+}
+function bulkClearSelection(){ BULK_PICKED.clear(); renderPipeline(); bulkBarSync(); }
+function bulkBarSync(){
+  const bar=document.getElementById('bulkBar'); if(!bar) return;
+  document.getElementById('bulkCount').textContent = BULK_PICKED.size;
+  bar.classList.toggle('on', BULK_PICKED.size>0);
+  const sel=document.getElementById('bulkMoveTo');
+  if(sel && sel.options.length<2)
+    sel.innerHTML='<option value="">Move to…</option>'+STAGES.map(st=>'<option value="'+st+'">'+STAGE_LABELS[st]+'</option>').join('');
+}
+async function bulkMoveSelected(){
+  const to=document.getElementById('bulkMoveTo').value;
+  if(!to){ toast('Pick a stage to move them to','error'); return; }
+  const ids=[...BULK_PICKED];
+  if(!ids.length) return;
+  if(!confirm('Move '+ids.length+' post'+(ids.length!==1?'s':'')+' to '+STAGE_LABELS[to]+'?')) return;
+  let moved=0;
+  for(const id of ids){
+    /* the same stamp rule as every other stage change: set on the way in,
+       CLEAR on the way out, or a reopened job keeps a false finish time */
+    const ok=await sbPatch('graphic_projects','id=eq.'+id,
+      { current_stage:to, updated_at:new Date().toISOString(),
+        completed_at: (to==='approved') ? new Date().toISOString() : null });
+    if(ok){ moved++; await sbPost('graphic_stage_history',
+      { graphic_project_id:id, stage:to, entered_by:currentUser.name, notes:'Moved in bulk' }, 'id'); }
+  }
+  toast(moved+' of '+ids.length+' moved to '+STAGE_LABELS[to], moved===ids.length?'success':'error');
+  BULK_PICKED.clear(); await loadAll(); bulkBarSync();
+}
+async function bulkDeleteSelected(){
+  const ids=[...BULK_PICKED];
+  if(!ids.length) return;
+  /* Deleting is not undoable here, so the count is said twice and the second
+     one has to be typed. 456 rows were once created by accident; this is the
+     tool that removes them, so it must be hard to fire by mistake. */
+  if(!confirm('Delete '+ids.length+' post'+(ids.length!==1?'s':'')+' for good? This cannot be undone.')) return;
+  const typed=prompt('Type the number '+ids.length+' to confirm.');
+  if(String(typed).trim()!==String(ids.length)){ toast('Not deleted, the number did not match','error'); return; }
+  let gone=0;
+  for(const id of ids){
+    await sbDel('graphic_stage_history','graphic_project_id=eq.'+id);
+    if(await sbDel('graphic_projects','id=eq.'+id)) gone++;
+  }
+  toast(gone+' of '+ids.length+' deleted', gone===ids.length?'success':'error');
+  BULK_PICKED.clear(); await loadAll(); bulkBarSync();
 }
 
 // Drag & Drop
@@ -1983,7 +2048,11 @@ async function saveProject(){
 
 // One-tap quick add: just a title (client optional). Everything else defaults,
 // so logging a new brief takes seconds instead of a 10-field form.
+let _quickRunning = false;
 async function quickAddProject(){
+  if(_quickRunning) return;            /* a double tap is one post, not two */
+  _quickRunning = true;
+  try{
   const el = document.getElementById('qaTitle');
   const title = (el.value||'').trim();
   if(!title){ toast('Type a title first','error'); el.focus(); return; }
@@ -2016,12 +2085,13 @@ async function quickAddProject(){
   if(Array.isArray(res) && res[0]){
     await sbPost('graphic_stage_history',{ graphic_project_id: res[0].id, stage:'brief', entered_by: currentUser.name, notes:'Quick added' });
     el.value=''; clientSel.value='';
-    toast((data.type==='story'?'Story':'Post')+' added — '+title);
+    toast((data.type==='story'?'Story':'Post')+' added: '+title);
     await loadAll();
     el.focus();
   } else {
-    toast('Could not add — try Full form','error');
+    toast('Could not add. Try the full form','error');
   }
+  } finally { _quickRunning = false; }
 }
 
 // ═══════════════════════════════════════
@@ -3106,7 +3176,26 @@ function bulkKey(title, clientName, month, year){
           month, year].join('|');
 }
 
+/* 456 of 486 rows on the board were duplicates on 2026-08-31: Amjath's 29
+   Fusion titles, each repeated 10 to 21 times across 3.5 minutes, interleaved.
+   That is the whole batch submitted again and again, because 29 rows is 58
+   round trips, nothing said it was working, and the button stayed live.
+   The dedup guard could not see it: it seeds from `projects`, which only
+   refreshes AFTER a save, so every fresh press started from a stale view.
+   Three blocks, because one is not enough:
+     a) a re-entrancy flag, so a second call returns at once
+     b) the button is disabled and shows progress, so nobody needs to guess
+     c) an ids-inserted set that SURVIVES the call, so a later press still
+        sees what an earlier one wrote even before loadAll has run */
+let _bulkRunning = false;
+const _bulkInserted = new Set();
 async function bulkSaveAll(){
+  if(_bulkRunning){ toast('Already saving, please wait','error'); return; }
+  _bulkRunning = true;
+  const btn = document.getElementById('bulkSaveBtn');
+  const btnText = btn ? btn.textContent : '';
+  if(btn){ btn.disabled = true; btn.style.opacity='0.6'; btn.style.pointerEvents='none'; }
+  try{
   const rows = document.querySelectorAll('#bulkRows tr');
   let count=0, skipped=0, skippedNoClient=0;
   /* The batch used to be filed under whatever month it was typed in, so a
@@ -3119,9 +3208,12 @@ async function bulkSaveAll(){
   /* Seed from what is already on the board, then keep adding to it as we go.
      The second half is what the weekly plan guard is missing: 346 rows came
      from 17 titles, which is a Save pressed more than once, not 346 typos. */
+  /* Seed from the board AND from anything this session already inserted. The
+     second half is what was missing: `projects` is stale until loadAll runs. */
   const seen = new Set((projects||[])
     .filter(p=>!p.is_archived)
     .map(p=>bulkKey(p.title, p.client_name, p.target_month, p.target_year)));
+  _bulkInserted.forEach(k=>seen.add(k));
   window.__gdSaving = true;
   try {
     for(const row of rows){
@@ -3150,11 +3242,13 @@ async function bulkSaveAll(){
         target_year: year,
         created_by: currentUser.name,
       };
+      if(btn) btn.textContent = 'Saving '+(count+1)+'…';
       const res = await sbPost('graphic_projects', data, 'id');
       if(Array.isArray(res)&&res[0]){
         if(row._img){ IMG_IDS.add(res[0].id); IMG_CACHE[res[0].id] = row._thumb || row._img; }
         await sbPost('graphic_stage_history',{graphic_project_id:res[0].id, stage:'brief', entered_by:currentUser.name, notes:'Bulk added'}, 'id');
         count++;
+        _bulkInserted.add(k);        /* remembered beyond this call */
       }
     }
   } finally { window.__gdSaving = false; }
@@ -3167,6 +3261,10 @@ async function bulkSaveAll(){
   toast(msg);
   closeModal('modalBulkPipeline');
   await loadAll();
+  } finally {
+    _bulkRunning = false;
+    if(btn){ btn.disabled=false; btn.style.opacity=''; btn.style.pointerEvents=''; btn.textContent=btnText; }
+  }
 }
 
 // ═══════════════════════════════════════
@@ -3335,9 +3433,13 @@ async function runSelfTest(){
        DESIGNERS.length===new Set(DESIGNERS.map(d=>d.name)).size);
     /* Four selects exist at rest; the two bulk-add row selects are created on
        demand, so they are checked by actually making a row. */
-    const desSelects=document.querySelectorAll('select[data-designers]');
+    /* Count only the STANDING dropdowns. Bulk-add rows are created on demand
+       and each carries one, so a row left open by anything, including an
+       earlier check, made this read 5 and fail on a healthy app. */
+    const desSelects=[].slice.call(document.querySelectorAll('select[data-designers]'))
+      .filter(el=>!el.closest('#bulkRows') && !el.closest('#wpBulkRows'));
     ok('Roster: the 4 standing designer dropdowns are data-driven',
-       desSelects.length===4, desSelects.length+' found');
+       desSelects.length===4, desSelects.length+' standing');
     let bulkOk=false;
     try{
       const holder=document.getElementById('bulkRows');
@@ -4202,6 +4304,22 @@ async function renderRecap(){
 .kanban-cards{border-radius:0 0 var(--r-md) var(--r-md)}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)!important;box-shadow:0 0 0 3px var(--accent-glow)}
 @media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.06s!important}}
+
+/* ══ BULK SELECT ON THE PIPELINE ════════════════════════════════════
+   456 junk rows had to be cleaned up by hand because there was no way to
+   select and remove more than one card at a time. */
+.k-card{position:relative}
+.k-pick{position:absolute;top:8px;right:8px;width:20px;height:20px;z-index:3;cursor:pointer;accent-color:var(--accent)}
+.k-card.picked{outline:2px solid var(--accent);outline-offset:-2px}
+.bulkbar{position:fixed;left:50%;transform:translateX(-50%);
+  bottom:calc(20px + var(--sab));z-index:120;display:none;gap:10px;align-items:center;flex-wrap:wrap;
+  background:var(--surface-2);border:1px solid var(--accent);border-radius:99px;
+  padding:10px 16px;box-shadow:var(--shadow-lg);max-width:calc(100vw - 24px)}
+.bulkbar.on{display:flex}
+.bulkbar b{color:var(--accent);font-weight:900}
+.bulkbar select,.bulkbar button{font-size:0.76rem;padding:8px 12px;min-height:38px;border-radius:99px}
+.bulkbar .danger{border:1px solid var(--red);color:var(--red);background:none;cursor:pointer;font-weight:700}
+.bulkbar .ghost{border:1px solid var(--border-strong);color:var(--text-2);background:none;cursor:pointer;font-weight:700}
 
 /* ══ MONTHLY RECAP ══════════════════════════════════════════════════ */
 .rc-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px;margin-bottom:18px}

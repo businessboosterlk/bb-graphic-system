@@ -731,7 +731,8 @@ tr:hover td{background:var(--surface-2)}
           <span><b id="bulkCount">0</b> selected</span>
           <select id="bulkMoveTo"><option value="">Move to…</option></select>
           <button class="ghost" onclick="bulkMoveSelected()">Move</button>
-          <button class="danger" onclick="bulkDeleteSelected()">Delete</button>
+          <button class="ghost" onclick="bulkArchiveSelected()">Archive</button>
+          <button class="danger" id="bulkDeleteBtn" onclick="bulkDeleteSelected()">Delete</button>
           <button class="ghost" onclick="bulkClearSelection()">Clear</button>
         </div>
       </section>
@@ -1076,7 +1077,7 @@ tr:hover td{background:var(--surface-2)}
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modalWpBulk')">Cancel</button>
-      <button class="btn btn-accent" onclick="wpBulkSaveAll()">Save All</button>
+      <button class="btn btn-accent" id="wpBulkSaveBtn" onclick="wpBulkSaveAll()">Save All</button>
     </div>
   </div>
 </div>
@@ -1185,6 +1186,12 @@ function isGraphicHead(){ return !!currentUser && currentUser.role==='graphic_he
 /* A head is a head. Anywhere the app asks "is this person a plain designer",
    the answer for a head must be no, or their work gets auto-scoped to them. */
 function isPlainDesigner(){ return !!currentUser && currentUser.role==='designer'; }
+/* A designer can ARCHIVE anything, which is reversible from the Archived page.
+   Only a head or an SMM can delete for good. Enforced in the functions, not
+   only by hiding buttons, so a stale tab or a typed URL cannot get round it. */
+function canDeleteForever(){
+  return !!currentUser && ['head','graphic_head','smm'].indexOf(currentUser.role)>-1;
+}
 /* `graphic_head` is a database value, not a job title. Printing it raw under
    somebody's name is how "graphic_head" ends up on screen. */
 const ROLE_LABELS = { head:'Head', graphic_head:'Graphic Head', designer:'Designer',
@@ -1742,6 +1749,8 @@ function bulkBarSync(){
   const bar=document.getElementById('bulkBar'); if(!bar) return;
   document.getElementById('bulkCount').textContent = BULK_PICKED.size;
   bar.classList.toggle('on', BULK_PICKED.size>0);
+  const del=document.getElementById('bulkDeleteBtn');
+  if(del) del.hidden = !canDeleteForever();
   const sel=document.getElementById('bulkMoveTo');
   if(sel && sel.options.length<2)
     sel.innerHTML='<option value="">Move to…</option>'+STAGES.map(st=>'<option value="'+st+'">'+STAGE_LABELS[st]+'</option>').join('');
@@ -1765,7 +1774,22 @@ async function bulkMoveSelected(){
   toast(moved+' of '+ids.length+' moved to '+STAGE_LABELS[to], moved===ids.length?'success':'error');
   BULK_PICKED.clear(); await loadAll(); bulkBarSync();
 }
+/* Archive in bulk: reversible, so a plain confirm is enough. Every designer
+   may do this. It is the safe way to clear the board. */
+async function bulkArchiveSelected(){
+  const ids=[...BULK_PICKED];
+  if(!ids.length) return;
+  if(!confirm('Archive '+ids.length+' post'+(ids.length!==1?'s':'')+'? You can restore them from the Archived page.')) return;
+  let done=0;
+  for(const id of ids){
+    forgetBulkKeyFor(id);
+    if(await sbPatch('graphic_projects','id=eq.'+id,{ is_archived:true, updated_at:new Date().toISOString() })) done++;
+  }
+  toast(done+' of '+ids.length+' archived', done===ids.length?'success':'error');
+  BULK_PICKED.clear(); await loadAll(); bulkBarSync();
+}
 async function bulkDeleteSelected(){
+  if(!canDeleteForever()){ toast('Only a head or an SMM can delete for good. Use Archive instead','error'); return; }
   const ids=[...BULK_PICKED];
   if(!ids.length) return;
   /* Deleting is not undoable here, so the count is said twice and the second
@@ -1776,7 +1800,11 @@ async function bulkDeleteSelected(){
   if(String(typed).trim()!==String(ids.length)){ toast('Not deleted, the number did not match','error'); return; }
   let gone=0;
   for(const id of ids){
+    forgetBulkKeyFor(id);
+    /* the single delete removed comments too; the bulk one did not, and would
+       have left orphaned comment rows behind every post it removed */
     await sbDel('graphic_stage_history','graphic_project_id=eq.'+id);
+    await sbDel('graphic_project_comments','graphic_project_id=eq.'+id);
     if(await sbDel('graphic_projects','id=eq.'+id)) gone++;
   }
   toast(gone+' of '+ids.length+' deleted', gone===ids.length?'success':'error');
@@ -2159,7 +2187,7 @@ async function openProjectDetail(id){
       ${canMoveNext?`<button class="btn btn-accent btn-sm" onclick="moveStage(${p.id},'next')">Next Stage &#9654;</button>`:''}
       <button class="btn btn-ghost btn-sm" onclick="closeModal('modalDetail');openEditProject(${p.id})">Edit</button>
       <button class="btn btn-ghost btn-sm" onclick="archiveProject(${p.id})">Archive</button>
-      <button class="btn btn-danger btn-sm" onclick="deleteProject(${p.id})">Delete</button>
+      ${canDeleteForever()?`<button class="btn btn-danger btn-sm" onclick="deleteProject(${p.id})">Delete</button>`:''}
     </div>
 
     <div class="stage-mover">${stageDotsHTML}</div>
@@ -2237,7 +2265,8 @@ async function moveStage(id, dir){
 }
 
 async function archiveProject(id){
-  if(!confirm('Archive this project?')) return;
+  if(!confirm('Archive this project? You can restore it from the Archived page.')) return;
+  forgetBulkKeyFor(id);
   await sbPatch('graphic_projects','id=eq.'+id, { is_archived: true, updated_at: new Date().toISOString() });
   toast('Project archived');
   closeModal('modalDetail');
@@ -2245,7 +2274,9 @@ async function archiveProject(id){
 }
 
 async function deleteProject(id){
+  if(!canDeleteForever()){ toast('Only a head or an SMM can delete for good. Archive it instead','error'); return; }
   if(!confirm('Permanently delete this project? This cannot be undone.')) return;
+  forgetBulkKeyFor(id);
   await sbDel('graphic_stage_history','graphic_project_id=eq.'+id);
   await sbDel('graphic_project_comments','graphic_project_id=eq.'+id);
   await sbDel('graphic_projects','id=eq.'+id);
@@ -3196,6 +3227,13 @@ function bulkKey(title, clientName, month, year){
         sees what an earlier one wrote even before loadAll has run */
 let _bulkRunning = false;
 const _bulkInserted = new Set();
+/* Found on the deep check: `_bulkInserted` never forgot anything, so a post
+   deleted by mistake and re-added correctly in the same session was silently
+   skipped as a duplicate. Removing or archiving a post now forgets its key. */
+function forgetBulkKeyFor(id){
+  const p=(projects||[]).find(x=>x.id===id);
+  if(p) _bulkInserted.delete(bulkKey(p.title,p.client_name,p.target_month,p.target_year));
+}
 async function bulkSaveAll(){
   if(_bulkRunning){ toast('Already saving, please wait','error'); return; }
   _bulkRunning = true;
@@ -3204,7 +3242,7 @@ async function bulkSaveAll(){
   if(btn){ btn.disabled = true; btn.style.opacity='0.6'; btn.style.pointerEvents='none'; }
   try{
   const rows = document.querySelectorAll('#bulkRows tr');
-  let count=0, skipped=0, skippedNoClient=0;
+  let count=0, skipped=0, skippedNoClient=0, failed=0;
   /* The batch used to be filed under whatever month it was typed in, so a
      September plan entered in August landed in August and every month view
      disagreed with the plan it came from. */
@@ -3250,23 +3288,35 @@ async function bulkSaveAll(){
         created_by: currentUser.name,
       };
       if(btn) btn.textContent = 'Saving '+(count+1)+'…';
-      const res = await sbPost('graphic_projects', data, 'id');
+      /* Two faults lived here. (1) A network throw escaped both finally blocks
+         and became an unhandled rejection: rows already saved, no toast, modal
+         left open, board never refreshed. (2) The key was remembered only AFTER
+         the history write, so if that second write failed the post existed but
+         was forgotten, and the next press duplicated it. Remember first, and
+         count what fails so the toast says so. */
+      let res=null;
+      try{ res = await sbPost('graphic_projects', data, 'id'); }catch(e){ res=null; }
       if(Array.isArray(res)&&res[0]){
-        if(row._img){ IMG_IDS.add(res[0].id); IMG_CACHE[res[0].id] = row._thumb || row._img; }
-        await sbPost('graphic_stage_history',{graphic_project_id:res[0].id, stage:'brief', entered_by:currentUser.name, notes:'Bulk added'}, 'id');
+        _bulkInserted.add(k);        /* remembered the moment the post exists */
         count++;
-        _bulkInserted.add(k);        /* remembered beyond this call */
+        if(row._img){ IMG_IDS.add(res[0].id); IMG_CACHE[res[0].id] = row._thumb || row._img; }
+        try{ await sbPost('graphic_stage_history',{graphic_project_id:res[0].id, stage:'brief', entered_by:currentUser.name, notes:'Bulk added'}, 'id'); }catch(e){}
+      } else {
+        seen.delete(k);              /* it did not land, so it may be retried */
+        failed++;
       }
     }
   } finally { window.__gdSaving = false; }
-  if(count===0 && skipped===0 && skippedNoClient===0){ toast('No posts to add. Fill at least one title','error'); return; }
+  if(count===0 && skipped===0 && skippedNoClient===0 && failed===0){ toast('No posts to add. Fill at least one title','error'); return; }
+  if(count===0 && failed>0){ toast(failed+' post'+(failed!==1?'s':'')+' failed to save. Check your connection and press Save All again','error'); await loadAll(); return; }
   if(count===0 && skippedNoClient>0){ toast(skippedNoClient+' row'+(skippedNoClient!==1?'s':'')+' had no client, so nothing was added','error'); return; }
-  if(count===0){ toast('Nothing added — all '+skipped+' were already on the board','error'); closeModal('modalBulkPipeline'); return; }
+  if(count===0){ toast('Nothing added. All '+skipped+' were already on the board','error'); closeModal('modalBulkPipeline'); return; }
   let msg = count+' post'+(count!==1?'s':'')+' added';
   if(skipped) msg += ', '+skipped+' duplicate'+(skipped!==1?'s':'')+' skipped';
   if(skippedNoClient) msg += ', '+skippedNoClient+' skipped with no client';
-  toast(msg);
-  closeModal('modalBulkPipeline');
+  if(failed) msg += ', '+failed+' FAILED to save';
+  toast(msg, failed?'error':'success');
+  if(!failed) closeModal('modalBulkPipeline');   /* leave it open so the failed rows can be retried */
   await loadAll();
   } finally {
     _bulkRunning = false;
@@ -3296,9 +3346,20 @@ function wpBulkAddRow(){
   fillDesignerSelects(tr);
   document.getElementById('wpBulkRows').appendChild(tr);
 }
+/* The weekly bulk save had the exact shape that produced 456 duplicates on
+   the pipeline: a dedup against `wpTasks`, which is stale until wpLoadWeek
+   runs, a live button, and nothing said it was working. Same three blocks. */
+let _wpBulkRunning=false;
+const _wpBulkInserted=new Set();
 async function wpBulkSaveAll(){
+  if(_wpBulkRunning){ toast('Already saving, please wait','error'); return; }
+  _wpBulkRunning=true;
+  const btn=document.getElementById('wpBulkSaveBtn');
+  const btnText=btn?btn.textContent:'';
+  if(btn){ btn.disabled=true; btn.style.opacity='0.6'; btn.style.pointerEvents='none'; }
+  try{
   const rows = document.querySelectorAll('#wpBulkRows tr');
-  let count=0, skipped=0;
+  let count=0, skipped=0, failed=0;
   const ws = wpWeekStart.toISOString().slice(0,10);
   for(const row of rows){
     const clientName = row.querySelector('.wbk-client').value;
@@ -3307,7 +3368,8 @@ async function wpBulkSaveAll(){
     const typeVal = row.querySelector('.wbk-type').value;
     const assignedVal = row.querySelector('.wbk-designer').value||null;
     // Dedup: skip if same week+day+client+type+designer already exists
-    const exists = wpTasks.some(t=>t.week_start===ws && t.day_of_week===dayVal && t.client_name===clientName && t.task_type===typeVal && (t.assigned_to||null)===(assignedVal||null));
+    const wk=[ws,dayVal,String(clientName).toLowerCase(),typeVal,(assignedVal||'')].join('|');
+    const exists = _wpBulkInserted.has(wk) || wpTasks.some(t=>t.week_start===ws && t.day_of_week===dayVal && t.client_name===clientName && t.task_type===typeVal && (t.assigned_to||null)===(assignedVal||null));
     if(exists){ skipped++; continue; }
     const data = {
       week_start: ws,
@@ -3320,15 +3382,22 @@ async function wpBulkSaveAll(){
       created_by: currentUser.name,
       updated_at: new Date().toISOString()
     };
-    await sbPost('graphic_weekly_plan', data);
-    count++;
+    if(btn) btn.textContent='Saving '+(count+1)+'…';
+    let res=null;
+    try{ res = await sbPost('graphic_weekly_plan', data); }catch(e){ res=null; }
+    if(Array.isArray(res)){ _wpBulkInserted.add(wk); count++; } else { failed++; }
   }
-  if(count===0 && skipped===0){ toast('No tasks to add — select a client for at least one row','error'); return; }
+  if(count===0 && skipped===0 && failed===0){ toast('No tasks to add. Select a client for at least one row','error'); return; }
   let msg = count+' task'+(count!==1?'s':'')+' added';
   if(skipped) msg += ', '+skipped+' duplicate'+(skipped!==1?'s':'')+' skipped';
-  toast(msg);
-  closeModal('modalWpBulk');
+  if(failed) msg += ', '+failed+' FAILED to save';
+  toast(msg, failed?'error':'success');
+  if(!failed) closeModal('modalWpBulk');
   wpLoadWeek();
+  } finally {
+    _wpBulkRunning=false;
+    if(btn){ btn.disabled=false; btn.style.opacity=''; btn.style.pointerEvents=''; btn.textContent=btnText; }
+  }
 }
 
 
@@ -4611,6 +4680,11 @@ var BBSET=(function(){
     var items=document.querySelectorAll('.nav-item');
     var host=null;
     if(items.length){ var last=items[items.length-1]; var el=last.cloneNode(true); el.id='bbset-nav'; el.removeAttribute('data-page'); el.removeAttribute('onclick'); el.classList.remove('active');
+      /* The last nav item is Agents and carries <span id="agentBadge">. A deep
+         clone copies that id, so the page had two agentBadge elements and the
+         Settings item showed the agent count. Anything cloned must shed every
+         descendant id, not just its own. */
+      el.querySelectorAll('[id]').forEach(function(n){ n.removeAttribute('id'); });
       var svg=el.querySelector('svg'); if(svg){ svg.outerHTML=GEAR; }
       var textNodes=[]; (function walk(n){ for(var i=0;i<n.childNodes.length;i++){ var c=n.childNodes[i]; if(c.nodeType===3&&c.textContent.trim()) textNodes.push(c); else if(c.nodeType===1&&c.tagName!=='svg') walk(c); } })(el);
       if(textNodes.length){ textNodes[0].textContent='Settings'; for(var k=1;k<textNodes.length;k++) textNodes[k].textContent=''; } else { el.appendChild(document.createTextNode('Settings')); }

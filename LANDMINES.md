@@ -624,3 +624,60 @@ against whatever is loaded. Every write is stubbed and state is restored, so it
 is safe, but it also navigates pages and toggles overlays under the user. It is
 fine for Thulaib and wrong for a designer who pastes a link. Not changed, but
 worth knowing before that URL is shared.
+
+## L-GFX-023 · six faults in the bulk add paths, found on a deep trace · FIXED 2026-08-31
+Asked "is bulk add working perfectly", so the whole path was read line by line
+rather than trusting the last green test. Six faults, two of them introduced by
+the duplicate fix itself.
+
+1. **`_bulkInserted` never forgot anything.** A post deleted by mistake and
+   re-added correctly in the same session was silently skipped as a duplicate.
+   Introduced by the 456-duplicate fix. Now `forgetBulkKeyFor(id)` runs on every
+   delete and archive, single or bulk.
+2. **The key was remembered AFTER the second write.** If the stage-history post
+   failed, the project existed but was forgotten, and the next press duplicated
+   it. Also introduced by the fix. The key is now remembered the moment the
+   project insert returns an id.
+3. **A network throw mid-batch was silent.** `sbPost` does not catch; the
+   rejection escaped both `finally` blocks. Rows already saved, no toast, modal
+   left open, board never refreshed. Per-row try/catch now counts `failed`, the
+   toast says "2 posts added, 1 FAILED to save", the modal stays open so the
+   failed rows can be retried, and the board still refreshes.
+4. **A non-array response was silently uncounted.** RLS or constraint errors
+   come back as an object; the row vanished from the count with no mention.
+   Now counted as failed and said.
+5. **Two em dashes in user-facing toasts**, one on each bulk path. House rule.
+6. **`wpBulkSaveAll` had none of the three blocks.** Identical shape to the one
+   that produced 456 duplicates: dedup against stale `wpTasks`, live button,
+   silence. Now has the re-entrancy flag, the disabled counting button and a
+   surviving inserted set. Proven by firing it twice.
+
+Also: `bulkDeleteSelected` did not delete `graphic_project_comments`, so every
+bulk delete left orphaned comment rows. The single delete did. Now consistent.
+
+## Archive versus delete · the permission split · LIVE 2026-08-31
+Thulaib: a designer should archive, not delete; only SMM and heads delete for
+good. `canDeleteForever()` = role in `head`, `graphic_head`, `smm`.
+
+Enforced IN the functions (`deleteProject`, `bulkDeleteSelected`), not only by
+hiding buttons, so a stale tab cannot get round it. Archive stays open to
+everyone and is reversible from the Archived page via `restoreProject`.
+New `bulkArchiveSelected()` is the safe bulk clear for designers.
+
+Verified all four roles side by side with writes stubbed: designer blocked with
+a clear message and zero writes, head/graphic_head/smm delete with three writes
+each (history, comments, project).
+
+## L-GFX-024 · a runtime clone carried a duplicate id · FIXED 2026-08-31
+A Settings sheet module (`BBPUSH`, not written in this stream of work, absent
+from the 20-Aug baseline, present in HEAD) injects a "Settings" nav item by
+deep-cloning the LAST nav item. That item is Agents, which carries
+`<span id="agentBadge">`. The clone kept the id, so the page had two, the
+Settings item showed the agent count, and the harness's duplicate-id check went
+red.
+
+It was invisible to earlier green runs because the injection fires late and the
+harness usually ran first. **A check that depends on timing is a check that
+sometimes lies.** The clone now sheds every descendant id.
+
+**Rule: anything that clones DOM must strip descendant ids, not just its own.**

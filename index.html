@@ -1135,7 +1135,13 @@ const USERS = {
   '4444': { name:'FARHATH', role:'graphic_head', team_member_id:17, label:'Farhath' },
   '6666': { name:'AMJATH', role:'designer', team_member_id:18, label:'Amjath' },
   '7777': { name:'ZULFA', role:'designer', team_member_id:19, label:'Zulfa' },
-  '2222': { name:'NIRVANA', role:'brief', team_member_id:12, label:'Nirvana (SMM)' },
+  /* The two SMM seats. Role `smm` is NOT `designer`, so they are never
+     auto-assigned design work and are never scoped to their own: they see every
+     client, every post and every designer's day, which is the oversight the
+     graphic head has. They deliberately do NOT get the head's own daily
+     checklist, because that is Farhath's job list and not theirs. */
+  '2222': { name:'NIRVANA', role:'smm', team_member_id:12, label:'Nirvana (SMM)' },
+  '8888': { name:'TIANA', role:'smm', team_member_id:22, label:'Tiana (SMM)' },
 };
 
 /* ─── THE ONE DESIGNER LIST ───────────────────────────────────────────
@@ -1181,7 +1187,8 @@ function isGraphicHead(){ return !!currentUser && currentUser.role==='graphic_he
 function isPlainDesigner(){ return !!currentUser && currentUser.role==='designer'; }
 /* `graphic_head` is a database value, not a job title. Printing it raw under
    somebody's name is how "graphic_head" ends up on screen. */
-const ROLE_LABELS = { head:'Head', graphic_head:'Graphic Head', designer:'Designer', brief:'Brief' };
+const ROLE_LABELS = { head:'Head', graphic_head:'Graphic Head', designer:'Designer',
+                      smm:'SMM', brief:'Brief' };
 
 const STAGES = ['brief','in_progress','first_draft','revisions','head_review','sent_to_client','client_changes','approved'];
 const STAGE_LABELS = {brief:'Brief',in_progress:'In Progress',first_draft:'First Draft',revisions:'Revisions',head_review:'Head Review',sent_to_client:'Sent to Client',client_changes:'Client Changes',approved:'Approved'};
@@ -3514,7 +3521,12 @@ async function runSelfTest(){
          skipped before dedup is ever reached and this check fails for the
          wrong reason. Pick a client, and a target month, the way a person
          would. */
-      for(const t of ['SELFTEST DUP','SELFTEST DUP','SELFTEST UNIQUE']){
+      /* Unique per run. `_bulkInserted` deliberately survives for the life of
+         the page, so a fixed title makes the SECOND run of this check skip its
+         own rows and report the guard as gone. A check must give the same
+         answer every time it is run. */
+      const tag = 'SELFTEST '+Date.now();
+      for(const t of [tag+' DUP', tag+' DUP', tag+' UNIQUE']){
         bulkAddRow();
         const tr=holder.querySelector('tr:last-child');
         tr.querySelector('.bk-title').value=t;

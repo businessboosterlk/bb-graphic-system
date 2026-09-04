@@ -699,3 +699,41 @@ rewrite of that block does not silently drop it. (3) grep the live file for the
 CODE, not for a comment phrase: my first check searched the wrong tense and
 reported 0 for a fix that was present at the time.
 Re-applied with the comment in the commit after e8dc067.
+
+## L-GFX-026 · Daily Pillars never saved, for eleven weeks · FIXED 2026-09-04
+Farhath: "the tick gets ticked and then it disappears." Every designer had the
+same fault since the 14 June rebuild and nobody reported it.
+
+Root cause: the app wrote `{who, date, item, done}` to `pillars`. That table is
+the Command Centre's, shape `id, who, done_ids, top3, updated_at`, UNIQUE(who).
+It has no `item` and no `date`. PostgREST rejected every write. The code ignored
+the write's result, so the rejection was silent, and the 400ms re-render read
+back nothing, so the tick vanished.
+
+Fix: pillars now live in `daily_pillar_state` (`user_name, pillar_date, state
+jsonb`, UNIQUE on the pair), the table the Video and SMM systems already use,
+via a PostgREST upsert on the pair. The done list is mirrored into the CC
+`pillars` table exactly as Video does, so the CC Team page shows the right
+count. A failed write now toasts instead of vanishing.
+
+Proven with a REAL round trip, not a stub: tick written, read back true, unticked,
+read back false, probe rows deleted. And the exact reported symptom driven
+through the real checkbox: still ticked after the 400ms re-render, counter
+"1 of 7 done".
+
+**Why it was not caught, honestly.** Every test stubbed writes, by design, so
+the harness never once asked the database whether the columns it would write to
+exist. It proved the panel rendered seven boxes and that a click called the
+right function. It never proved a tick came back. **Schema drift between the
+app and a table is invisible to a harness that stubs writes.** New section in
+the harness: a read-only probe (`?select=<cols>&limit=0`) for every column the
+app writes, in seven tables. Proven to bite: asking for the old shape returns
+"column pillars.date does not exist".
+
+## L-GFX-024, second clobber · the fix now lives in owned code · FIXED 2026-09-04
+The clone-id fix was removed AGAIN by 4a958a4 (09:43, another session rewriting
+the BBPUSH inject() block from its own copy), sixteen minutes after c8e1f87
+re-applied it. Re-applying inside their block is futile. The fix now lives in a
+standalone MutationObserver in this system's own region, repairs the clone the
+moment it appears, and a harness check WAITS for the injection instead of racing
+it, so a future drop turns the gate red. 67/67 twice with the injection landed.

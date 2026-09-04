@@ -1228,6 +1228,14 @@ async function sbPatch(table, query, data){
   const r = await fetch(SB_URL+'/rest/v1/'+table+'?'+query, {method:'PATCH',headers:gHdr({'Prefer':'return=minimal'}),body:JSON.stringify(data)});
   return r.ok;
 }
+/* Upsert on a unique key. daily_pillar_state is UNIQUE(user_name, pillar_date),
+   so a tick is one merge, never a read-then-insert that races with itself. */
+async function sbUpsert(table, data, conflictCols){
+  await gEnsure();
+  const r = await fetch(SB_URL+'/rest/v1/'+table+'?on_conflict='+conflictCols,
+    {method:'POST',headers:gHdr({'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify(data)});
+  return r.ok;
+}
 async function sbDel(table, query){
   await gEnsure();
   const r = await fetch(SB_URL+'/rest/v1/'+table+'?'+query, {method:'DELETE',headers:gHdr()});
@@ -1661,9 +1669,8 @@ async function renderHeadPillars(){
   if(!el) return;
   if(!isGraphicHead()){ el.innerHTML=''; return; }
   const who = currentUser.name, today = todayStr();
-  let rows = await sbGet('pillars','?who=eq.'+who+'&date=eq.'+today);
-  if(!Array.isArray(rows)) rows = [];
-  const done = HEAD_PILLARS.filter(i=>{ const r=rows.find(x=>x.item===i); return r && r.done; }).length;
+  const pst = await pillarState(who);
+  const done = HEAD_PILLARS.filter(i=>!!pst[i]).length;
   const pct = Math.round(done/HEAD_PILLARS.length*100);
   el.innerHTML =
     '<div class="panel" style="margin-bottom:20px;border-color:var(--accent)">'
@@ -1673,8 +1680,7 @@ async function renderHeadPillars(){
     +     done+' of '+HEAD_PILLARS.length+' done</span></h3>'
     + '<div class="pillar-progress mb-3"><div class="progress-bar"><div class="progress-fill" style="width:'+pct+'%;background:'+(done===HEAD_PILLARS.length?'var(--green)':'var(--accent)')+'"></div></div></div>'
     + HEAD_PILLARS.map((item,i)=>{
-        const r = rows.find(x=>x.item===item);
-        const on = !!(r && r.done);
+        const on = !!pst[item];
         return '<div class="pillar-item"><input type="checkbox" id="hp_'+i+'" '+(on?'checked':'')
              + ' onchange="togglePillar(\''+who+'\',\''+item.replace(/'/g,"\\'")+'\',this.checked);setTimeout(renderHeadPillars,400)">'
              + '<label for="hp_'+i+'">'+esc(item)+'</label></div>';
@@ -2578,22 +2584,17 @@ async function renderPillars(){
   let html = '';
   for(const who of showFor){
     // Try to load today's pillars
-    let pillars = await sbGet('pillars','?who=eq.'+who+'&date=eq.'+today);
-    if(!Array.isArray(pillars)) pillars = [];
+    const pst = await pillarState(who);
 
     const items = pillarsFor(who);
     const isHeadRow = items===HEAD_PILLARS;
     html += `<div class="pillar-card"><h4>${who}'s Daily Pillars${isHeadRow?' <span style="font-size:0.66rem;font-weight:800;color:var(--accent);letter-spacing:0.06em">GRAPHIC HEAD</span>':''}</h4>`;
-    const checkedCount = items.filter((_,i)=>{
-      const rec = pillars.find(p=>p.item===items[i]);
-      return rec && rec.done;
-    }).length;
+    const checkedCount = items.filter(it=>!!pst[it]).length;
     const pct = Math.round(checkedCount/items.length*100);
     html += `<div class="pillar-progress mb-3"><div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:var(--green)"></div></div><div class="progress-label"><span>${checkedCount}/${items.length}</span><span>${pct}%</span></div></div>`;
 
     items.forEach((item,i)=>{
-      const rec = pillars.find(p=>p.item===item);
-      const checked = rec && rec.done;
+      const checked = !!pst[item];
       html += `<div class="pillar-item"><input type="checkbox" id="pill_${who}_${i}" ${checked?'checked':''} onchange="togglePillar('${who}','${item}',this.checked)"><label for="pill_${who}_${i}">${item}</label></div>`;
     });
     html += '</div>';
@@ -2601,15 +2602,29 @@ async function renderPillars(){
   container.innerHTML = html;
 }
 
+/* DAILY PILLARS live in `daily_pillar_state`, the table the Video and SMM
+   systems already use: one row per person per day, `state` is a JSON object of
+   {item: true}. This code wrote {who, date, item, done} to `pillars` since the
+   14 June rebuild. That table is the Command Centre's and has no `item` or
+   `date` column, so EVERY tick by EVERY designer was rejected for eleven weeks,
+   silently, and the 400ms re-render read back nothing: the tick disappeared.
+   The write ignored its own result, which is how it stayed silent. */
+async function pillarState(who){
+  const r = await sbGet('daily_pillar_state','?user_name=eq.'+encodeURIComponent(who)+'&pillar_date=eq.'+todayStr()+'&select=state');
+  return (Array.isArray(r) && r[0] && r[0].state && typeof r[0].state==='object') ? r[0].state : {};
+}
 async function togglePillar(who, item, done){
   const today = todayStr();
-  // Check if record exists
-  let existing = await sbGet('pillars','?who=eq.'+who+'&date=eq.'+today+'&item=eq.'+encodeURIComponent(item));
-  if(Array.isArray(existing) && existing.length>0){
-    await sbPatch('pillars','id=eq.'+existing[0].id, { done });
-  } else {
-    await sbPost('pillars',{ who, date: today, item, done });
-  }
+  const state = await pillarState(who);
+  state[item] = !!done;
+  const ok = await sbUpsert('daily_pillar_state',
+    { user_name: who, pillar_date: today, state, updated_at: new Date().toISOString() },
+    'user_name,pillar_date');
+  if(!ok){ toast('That tick did not save. Check your connection and try again','error'); return false; }
+  /* Mirror the done list into the Command Centre's `pillars` table, exactly as
+     the Video System does, so the CC Team page shows the right count. */
+  try{ await sbUpsert('pillars',{ who, done_ids: JSON.stringify(Object.keys(state).filter(k=>state[k])), updated_at: new Date().toISOString() },'who'); }catch(e){}
+  return true;
 }
 
 // ═══════════════════════════════════════
@@ -3433,6 +3448,7 @@ async function runSelfTest(){
   };
   /* ── HARD STUB. Nothing below may reach the database. ── */
   const realPost=sbPost, realPatch=sbPatch, realDel=sbDel, realLoad=loadAll, realWpLoad=(typeof wpLoadWeek!=='undefined'?wpLoadWeek:null);
+  const realGetForProbe=sbGet;      /* the schema probe must hit the real database */
   const writes=[];
   sbPost  = async (t,d)=>{ writes.push('POST '+t);  return [{id:-1}]; };
   sbPatch = async (t,q,d)=>{ writes.push('PATCH '+t); return true; };
@@ -3629,6 +3645,27 @@ async function runSelfTest(){
 
     });
 
+    await section('Schema: every column the app writes exists', async () => {
+    /* The Daily Pillars bug: the app wrote {who,date,item,done} to a table with
+       no `item` or `date` column, for eleven weeks, and every test stubbed the
+       write so nothing noticed. A harness that must never write can still ask
+       the database whether the columns it would write to exist. */
+    const probes = [
+      ['daily_pillar_state','user_name,pillar_date,state,updated_at'],
+      ['pillars','who,done_ids,updated_at'],
+      ['graphic_projects','id,title,client_id,client_name,assigned_designer,assigned_designer_id,current_stage,priority,deadline,brief_notes,drive_link,dimensions,type,target_month,target_year,is_archived,created_by,created_at,updated_at,completed_at,image_url,thumb_url'],
+      ['graphic_stage_history','graphic_project_id,stage,entered_by,notes'],
+      ['graphic_weekly_plan','week_start,day_of_week,client_name,task_type,design_count,assigned_to,status,created_by,updated_at'],
+      ['graphic_project_comments','graphic_project_id,author,body,image_url'],
+      ['clients','id,name,package,industry,health,monthly_posts']
+    ];
+    for(const [t,cols] of probes){
+      let r=null; try{ r = await realGetForProbe(t,'?select='+cols+'&limit=0'); }catch(e){ r={message:String(e&&e.message||e)}; }
+      ok('Schema: '+t+' has every column the app touches', Array.isArray(r),
+         Array.isArray(r) ? cols.split(',').length+' columns present' : 'REJECTED: '+String((r&&r.message)||JSON.stringify(r)).slice(0,110));
+    }
+    });
+
     await section('Weekly plan', async () => {
     /* ── C · WEEKLY PLAN ── */
     ok('Weekly plan: grid renderer present', typeof wpRenderItem==='function' && typeof wpRenderSummary==='function');
@@ -3756,6 +3793,15 @@ async function runSelfTest(){
 
     await section('App shell and phone foundations', async () => {
     const cs = el => getComputedStyle(el);
+
+    /* The generic duplicate-id check only catches this if the Settings
+       injection has already fired, which is timing. This one waits for it. */
+    let navEl=document.getElementById('bbset-nav');
+    for(let w=0; !navEl && w<12; w++){ await new Promise(r=>setTimeout(r,250)); navEl=document.getElementById('bbset-nav'); }
+    if(!navEl){ ok('REGRESSION L-GFX-024: the cloned Settings item carries no ids', false, 'Settings item never appeared in 3s, this check proved nothing'); }
+    else { const dup=navEl.querySelectorAll('[id]').length;
+      ok('REGRESSION L-GFX-024: the cloned Settings item carries no ids', dup===0,
+         dup ? dup+' id(s) inside the clone, agentBadge is duplicated again' : 'clean, and '+document.querySelectorAll('#agentBadge').length+' agentBadge on the page'); }
 
     /* ── E · BB APP SHELL ─────────────────────────────────────────────── */
     ok('Shell: viewport-fit=cover is set, so env() is not always 0',
@@ -4236,6 +4282,26 @@ async function renderRecap(){
       +'</div>';
   }).join('');
 }
+
+/* ══ L-GFX-024, THIRD TIME ══════════════════════════════════════════════
+   The Settings module (BBPUSH) deep-clones the last nav item, Agents, which
+   carries <span id="agentBadge">. The clone keeps the id, so the page gets two.
+   A one-line fix INSIDE its inject() was added in 5102ab1, removed by e8dc067,
+   re-added in c8e1f87, and removed again by 4a958a4: another session rewrites
+   that block from its own copy. So the fix now lives HERE, in code that block
+   does not touch, and repairs the clone the moment it appears. */
+(function(){
+  function shed(){
+    var nav=document.getElementById('bbset-nav'); if(!nav) return;
+    nav.querySelectorAll('[id]').forEach(function(n){ n.removeAttribute('id'); });
+  }
+  shed();
+  new MutationObserver(function(muts){
+    for(var i=0;i<muts.length;i++){ var a=muts[i].addedNodes;
+      for(var j=0;j<a.length;j++){ var n=a[j];
+        if(n.nodeType===1 && (n.id==='bbset-nav' || (n.querySelector && n.querySelector('#bbset-nav')))){ shed(); return; } } }
+  }).observe(document.body,{childList:true,subtree:true});
+})();
 
 /* ══ SESSION RESTORE — MUST BE THE LAST THING IN THIS SCRIPT ══════════
    L-GFX-013. This used to sit around line 1247, roughly 80 lines ABOVE the

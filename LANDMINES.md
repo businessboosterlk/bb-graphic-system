@@ -737,3 +737,45 @@ re-applied it. Re-applying inside their block is futile. The fix now lives in a
 standalone MutationObserver in this system's own region, repairs the clone the
 moment it appears, and a harness check WAITS for the injection instead of racing
 it, so a future drop turns the gate red. 67/67 twice with the injection landed.
+
+---
+
+## L-GFX-028 · undo, and the four copies of one rule
+
+**Added** 2026-09-04 with the undo feature, cast from the Video System mold
+(L-VID-025). Same rules: reversal goes through the normal writer, in memory for
+this session only, a bulk move is one undo, each post returns to its own
+previous stage, reached from a bar, a Pipeline button and Ctrl+Z.
+
+**What this system had that the Video System did not: FOUR writers.** A stage
+change was written in four places, each with its own copy of the completed_at
+rule, and two of them carried the same comment about the five rows that kept a
+false finish time on 2 July:
+
+| Where | |
+|---|---|
+| `onDrop` | drag and drop |
+| `moveStage` | the Previous and Next buttons |
+| `quickMove` | the card menu |
+| `bulkMoveSelected` | bulk move |
+
+Undo would have been a fifth. All four now call **`gfxSetStage`**, the one
+writer, which also records the undo. Four copies of a rule is four chances for
+it to drift, and the drift is silent: a job reopened from Approved through the
+one path nobody fixed keeps a false finish time.
+
+**I only found the fourth because a check failed.** The patch was written for
+three, `quickMove` was invisible until an anchor matched twice. **When a
+replacement anchor matches more times than you expect, that is the finding, not
+the obstacle.**
+
+**And then my check itself was wrong.** The first version counted
+`sbPatch('graphic_projects' ... current_stage` and matched across newlines, so
+it counted `gfxSetStage`'s OWN write and failed on correct code. It now counts
+the thing that was actually duplicated, the completed_at stamp, and asserts
+exactly one copy exists inside the one writer. **A check that cannot tell the
+fix from the fault is worse than no check: it trains you to ignore it.**
+
+**Six checks**, 73 passing. Proven live: post 1038 "Puwakaramba" moved
+in_progress to first_draft and back, and the history reads
+`first_draft (Moved from In Progress) -> in_progress (Undo, back from First Draft)`.

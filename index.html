@@ -450,6 +450,19 @@ tr:hover td{background:var(--surface-2)}
 
 /* ═══════════════ TOAST ═══════════════ */
 .toast-wrap{position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+/* UNDO BAR. Sits above the home indicator, and clears the toast stack on the
+   right so a move confirmation and its undo never overlap. */
+.bbu-bar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + var(--sab,0px));z-index:9998;
+  display:flex;align-items:center;gap:12px;max-width:min(560px,calc(100vw - 24px));
+  padding:11px 12px 11px 16px;border-radius:14px;background:var(--surface);border:1px solid var(--border);
+  box-shadow:0 10px 34px var(--shadow-soft)}
+.bbu-bar[hidden]{display:none}
+.bbu-txt{flex:1;min-width:0;font-size:0.83rem;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bbu-go{flex:none;background:var(--accent);color:#fff;border:none;border-radius:9px;padding:9px 16px;font-size:0.82rem;font-weight:800;cursor:pointer;min-height:40px}
+.bbu-go:hover{filter:brightness(1.08)}
+.bbu-x{flex:none;background:none;border:none;color:var(--text-3);font-size:19px;line-height:1;cursor:pointer;padding:6px 4px;min-width:32px;min-height:40px}
+.bbu-x:hover{color:var(--text)}
+@media(max-width:640px){.bbu-bar{left:12px;right:12px;transform:none;max-width:none}}
 .toast{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px 18px;font-size:0.85rem;box-shadow:0 8px 30px var(--shadow-soft);animation:toastIn .3s ease;display:flex;align-items:center;gap:8px;max-width:320px}
 .toast.success{border-left:3px solid var(--green)}
 .toast.error{border-left:3px solid var(--red)}
@@ -1095,6 +1108,11 @@ tr:hover td{background:var(--surface-2)}
 </div>
 
 <!-- ═══════════════ TOASTS ═══════════════ -->
+<div class="bbu-bar" id="bbuBar" hidden role="status">
+  <span class="bbu-txt" id="bbuText"></span>
+  <button class="bbu-go" onclick="bbuUndo()">Undo</button>
+  <button class="bbu-x" onclick="document.getElementById('bbuBar').hidden=true" aria-label="Hide">&times;</button>
+</div>
 <div class="toast-wrap" id="toastWrap"></div>
 
 <script>
@@ -1445,14 +1463,14 @@ function navigateTo(page){
   // topbar actions per page
   const pa = document.getElementById('pageActions');
   if(page==='pipeline'){
-    pa.innerHTML=`<button class="btn btn-ghost" onclick="openBulkPipeline()" style="font-weight:600">Bulk Add</button><button class="btn btn-accent" onclick="openAddProject()" style="font-weight:700;letter-spacing:0.04em">+ Add Post</button>`;
+    pa.innerHTML=`<button class="btn btn-ghost" id="bbuPageBtn" onclick="bbuUndo()" style="font-weight:600" ${BBU.stack.length?'':'hidden'}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-4"/></svg>Undo</button><button class="btn btn-ghost" onclick="openBulkPipeline()" style="font-weight:600">Bulk Add</button><button class="btn btn-accent" onclick="openAddProject()" style="font-weight:700;letter-spacing:0.04em">+ Add Post</button>`;
   } else if(page==='weeklyplan'){
     pa.innerHTML=`<button class="btn btn-accent" onclick="wpOpenAdd()" style="font-weight:700;letter-spacing:0.04em">+ Add Task</button>`;
   } else { pa.innerHTML=''; }
   // refresh section data
   if(page==='recap') renderRecap();
   if(page==='dashboard') renderDashboard();
-  if(page==='pipeline') renderPipeline();
+  if(page==='pipeline'){ renderPipeline(); bbuBtn(); }
   if(page==='clients') loadClients();
   if(page==='mywork') renderMyWork();
   if(page==='weeklyplan') wpLoadWeek();
@@ -1585,7 +1603,7 @@ function renderCurrentPage(){
   if(!active) return;
   const page = active.id.replace('section-','');
   if(page==='dashboard') renderDashboard();
-  if(page==='pipeline') renderPipeline();
+  if(page==='pipeline'){ renderPipeline(); bbuBtn(); }
   if(page==='clients') loadClients();
   if(page==='mywork') renderMyWork();
   if(page==='analytics') renderAnalytics();
@@ -1768,15 +1786,12 @@ async function bulkMoveSelected(){
   if(!ids.length) return;
   if(!confirm('Move '+ids.length+' post'+(ids.length!==1?'s':'')+' to '+STAGE_LABELS[to]+'?')) return;
   let moved=0;
+  BBU.batch=[];                       /* many moves, ONE undo */
   for(const id of ids){
-    /* the same stamp rule as every other stage change: set on the way in,
-       CLEAR on the way out, or a reopened job keeps a false finish time */
-    const ok=await sbPatch('graphic_projects','id=eq.'+id,
-      { current_stage:to, updated_at:new Date().toISOString(),
-        completed_at: (to==='approved') ? new Date().toISOString() : null });
-    if(ok){ moved++; await sbPost('graphic_stage_history',
-      { graphic_project_id:id, stage:to, entered_by:currentUser.name, notes:'Moved in bulk' }, 'id'); }
+    if(await gfxSetStage(id, to, 'Moved in bulk')) moved++;
   }
+  const _b=BBU.batch; BBU.batch=null;
+  if(_b && _b.length) bbuRecord(_b);
   toast(moved+' of '+ids.length+' moved to '+STAGE_LABELS[to], moved===ids.length?'success':'error');
   BULK_PICKED.clear(); await loadAll(); bulkBarSync();
 }
@@ -1817,6 +1832,103 @@ async function bulkDeleteSelected(){
   BULK_PICKED.clear(); await loadAll(); bulkBarSync();
 }
 
+/* ══ ONE WRITER FOR A STAGE CHANGE ══════════════════════════════════════
+   Drag-and-drop, the Previous/Next buttons and bulk move each carried their
+   own copy of this, including two identical copies of the completed_at
+   comment. Undo would have been a fourth. One place now.
+
+   Stamp completed_at on the way IN and CLEAR it on the way OUT. Without the
+   clear, a job moved back out of Approved keeps its old finish time for ever:
+   five real rows did exactly that on 2 July and would have been counted as
+   finished with a false turnaround. A stage that is not finished has no
+   finish. */
+async function gfxSetStage(id, newStage, note){
+  const p = projects.find(x=>x.id===id);
+  const oldStage = p ? p.current_stage : null;
+  const okWrite = await sbPatch('graphic_projects','id=eq.'+id, {
+    current_stage: newStage,
+    updated_at: new Date().toISOString(),
+    completed_at: (newStage==='approved') ? new Date().toISOString() : null
+  });
+  if(!okWrite) return false;
+  await sbPost('graphic_stage_history', { graphic_project_id: id, stage: newStage,
+    entered_by: currentUser.name, notes: note || ('Moved from '+(STAGE_LABELS[oldStage]||oldStage)) });
+  if(p) p.current_stage = newStage;
+  if(oldStage && oldStage!==newStage) bbuNote(id, oldStage, newStage, p && p.title);
+  return true;
+}
+
+/* ══ UNDO ═══════════════════════════════════════════════════════════════
+   Read LANDMINES.md before changing. In memory, this session, stage moves
+   only. Reverses THROUGH gfxSetStage so history and completed_at stay right. */
+const BBU = { stack: [], max: 15, suspended: false, batch: null };
+function bbuNote(id, from, to, title){
+  if(BBU.suspended || !id) return;
+  const it={id:id, from:from, to:to, title:title||'Untitled'};
+  if(BBU.batch) BBU.batch.push(it); else bbuRecord([it]);
+}
+function bbuRecord(items){
+  if(!items || !items.length) return;
+  BBU.stack.push({items:items, at:Date.now()});
+  while(BBU.stack.length>BBU.max) BBU.stack.shift();
+  bbuRender(true);
+}
+function bbuLabel(e){
+  if(!e) return '';
+  if(e.items.length===1){
+    const i=e.items[0];
+    const t=String(i.title||'');
+    return '\u201C'+(t.length>34?t.slice(0,34)+'\u2026':t)+'\u201D back to '+(STAGE_LABELS[i.from]||i.from);
+  }
+  return e.items.length+' posts back out of '+(STAGE_LABELS[e.items[0].to]||e.items[0].to);
+}
+async function bbuUndo(){
+  const e=BBU.stack[BBU.stack.length-1];
+  if(!e){ toast('Nothing to undo','error'); return; }
+  BBU.stack.pop();
+  BBU.suspended=true;
+  let done=0, failed=0;
+  try{
+    for(const i of e.items){
+      const p=projects.find(x=>x.id===i.id);
+      if(!p){ failed++; continue; }
+      if(p.current_stage===i.from) continue;          /* already back */
+      const okMove=await gfxSetStage(i.id, i.from, 'Undo, back from '+(STAGE_LABELS[i.to]||i.to));
+      if(okMove) done++; else failed++;
+    }
+  } finally {
+    BBU.suspended=false;
+    bbuRender();
+    await loadAll();
+  }
+  toast(failed?('Undone '+done+', '+failed+' could not go back'):(done?'Move undone':'Already back where it was'),
+        failed?'error':'success');
+}
+let _bbuHideTimer=null;
+function bbuRender(flash){
+  const bar=document.getElementById('bbuBar');
+  if(!bar) return;
+  const e=BBU.stack[BBU.stack.length-1];
+  if(!e){ bar.hidden=true; bbuBtn(); return; }
+  document.getElementById('bbuText').textContent=bbuLabel(e);
+  if(flash){
+    bar.hidden=false;
+    clearTimeout(_bbuHideTimer);
+    /* The bar goes; the stack stays, so a mistake noticed later is still
+       fixable from the Pipeline button or Ctrl+Z. */
+    _bbuHideTimer=setTimeout(function(){ bar.hidden=true; }, 14000);
+  }
+  bbuBtn();
+}
+function bbuBtn(){
+  const b=document.getElementById('bbuPageBtn');
+  if(!b) return;
+  const e=BBU.stack[BBU.stack.length-1];
+  b.hidden=!e;
+  if(e) b.title='Undo: '+bbuLabel(e);
+}
+window.bbuUndo=bbuUndo;
+
 // Drag & Drop
 let dragId = null;
 function onDragStart(e,id){ dragId=id; e.target.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; }
@@ -1830,16 +1942,7 @@ async function onDrop(e,el){
   const newStage = el.dataset.stage;
   const proj = projects.find(p=>p.id===dragId);
   if(!proj || proj.current_stage===newStage) return;
-  const oldStage = proj.current_stage;
-  proj.current_stage = newStage;
-  const updateData = { current_stage: newStage, updated_at: new Date().toISOString() };
-  /* Stamp on the way IN, and CLEAR on the way OUT. Without the else, a job
-     moved back out of Approved keeps its old finish time for ever: five real
-     rows did exactly that on 2 July and would have been counted as finished
-     with a false turnaround. A stage that is not finished has no finish. */
-  updateData.completed_at = (newStage==='approved') ? new Date().toISOString() : null;
-  await sbPatch('graphic_projects','id=eq.'+dragId, updateData);
-  await sbPost('graphic_stage_history',{ graphic_project_id: dragId, stage: newStage, entered_by: currentUser.name, notes: 'Moved from '+STAGE_LABELS[oldStage] });
+  await gfxSetStage(dragId, newStage);
   toast('Moved to '+STAGE_LABELS[newStage]);
   renderPipeline();
 }
@@ -2254,16 +2357,7 @@ async function moveStage(id, dir){
   const newIdx = dir==='next' ? idx+1 : idx-1;
   if(newIdx<0||newIdx>=STAGES.length) return;
   const newStage = STAGES[newIdx];
-  const oldStage = p.current_stage;
-  const updateData = { current_stage: newStage, updated_at: new Date().toISOString() };
-  /* Stamp on the way IN, and CLEAR on the way OUT. Without the else, a job
-     moved back out of Approved keeps its old finish time for ever: five real
-     rows did exactly that on 2 July and would have been counted as finished
-     with a false turnaround. A stage that is not finished has no finish. */
-  updateData.completed_at = (newStage==='approved') ? new Date().toISOString() : null;
-  await sbPatch('graphic_projects','id=eq.'+id, updateData);
-  await sbPost('graphic_stage_history',{ graphic_project_id: id, stage: newStage, entered_by: currentUser.name, notes: 'Moved from '+STAGE_LABELS[oldStage] });
-  p.current_stage = newStage;
+  await gfxSetStage(id, newStage);
   toast('Moved to '+STAGE_LABELS[newStage]);
   closeModal('modalDetail');
   await loadAll();
@@ -2531,16 +2625,7 @@ function renderMyWork(){
 async function quickMove(id, newStage){
   const p = projects.find(x=>x.id===id);
   if(!p) return;
-  const oldStage = p.current_stage;
-  const updateData = { current_stage: newStage, updated_at: new Date().toISOString() };
-  /* Stamp on the way IN, and CLEAR on the way OUT. Without the else, a job
-     moved back out of Approved keeps its old finish time for ever: five real
-     rows did exactly that on 2 July and would have been counted as finished
-     with a false turnaround. A stage that is not finished has no finish. */
-  updateData.completed_at = (newStage==='approved') ? new Date().toISOString() : null;
-  await sbPatch('graphic_projects','id=eq.'+id, updateData);
-  await sbPost('graphic_stage_history',{ graphic_project_id: id, stage: newStage, entered_by: currentUser.name, notes: 'Moved from '+STAGE_LABELS[oldStage] });
-  p.current_stage = newStage;
+  await gfxSetStage(id, newStage);
   toast('Moved to '+STAGE_LABELS[newStage]);
   await loadAll();
 }
@@ -2746,6 +2831,14 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
     document.querySelectorAll('.modal-overlay.open').forEach(m=>m.classList.remove('open'));
   }
+});
+/* Cmd+Z on a Mac, Ctrl+Z elsewhere. Ignored while typing, or the shortcut eats
+   a person's text edit instead of undoing a card. */
+document.addEventListener('keydown',e=>{
+  if(!((e.metaKey||e.ctrlKey)&&(e.key==='z'||e.key==='Z')&&!e.shiftKey))return;
+  const t=e.target;
+  if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.isContentEditable))return;
+  e.preventDefault(); bbuUndo();
 });
 
 // ─── CLOCK ───
@@ -3493,6 +3586,43 @@ async function runSelfTest(){
     while((m=re.exec(src))) seen[m[1]]=(seen[m[1]]||0)+1;
     const dupes=Object.keys(seen).filter(k=>seen[k]>1);
     ok('Boot: no duplicate top-level identifiers', dupes.length===0, dupes.join(', '));
+
+    /* ── UNDO ──
+       Reversal must go through gfxSetStage, the ONE writer, so history and the
+       completed_at rule behave exactly as they do for a human move. This system
+       had FOUR copies of that write (drag, Previous/Next, quickMove, bulk);
+       undo would have been a fifth chance for them to drift. */
+    const _u0 = BBU.stack.length;
+    bbuRecord([{id:-1,from:'brief',to:'head_review',title:'A'},
+               {id:-2,from:'revisions',to:'head_review',title:'B'}]);
+    const _ue = BBU.stack[BBU.stack.length-1];
+    ok('Undo: many posts moved together are one undo',
+       BBU.stack.length===_u0+1 && _ue.items.length===2,
+       'stack '+_u0+' -> '+BBU.stack.length+', '+_ue.items.length+' posts in the entry');
+    ok('Undo: each post remembers its own previous stage',
+       _ue.items[0].from==='brief' && _ue.items[1].from==='revisions',
+       _ue.items.map(function(i){return i.from}).join(' + ')+', not one shared origin');
+    BBU.suspended=true; bbuNote(-3,'brief','revisions','C'); BBU.suspended=false;
+    ok('Undo: reversing a move does not record a new one',
+       BBU.stack.length===_u0+1, 'stack still '+BBU.stack.length);
+    const _ul = bbuLabel({items:[{id:-4,from:'brief',to:'head_review',title:'AUG POST 3'}]});
+    ok('Undo: the bar says what will happen',
+       /AUG POST 3/.test(_ul) && /Brief/.test(_ul), '"'+_ul+'"');
+    BBU.stack.length=_u0;
+    ok('Undo: the check cleaned up after itself', BBU.stack.length===_u0, 'stack back to '+_u0);
+    /* All four writers must be gone. A leftover copy is a move that records no
+       undo, which is worse than no undo at all: the button lies about coverage. */
+    /* Count the RULE, not the call. The first version of this check matched
+       sbPatch('graphic_projects' ... current_stage across newlines and so
+       counted gfxSetStage's OWN write, failing on correct code. A check that
+       cannot tell the fix from the fault is worse than no check. The thing
+       that was duplicated four times is the completed_at stamp, so count that:
+       exactly one copy, and it lives inside the one writer. */
+    const _stamp = (src.match(/approved'\)\s*\?\s*new Date/g)||[]).length;
+    ok('Undo: one writer for a stage change, not four',
+       _stamp===1 && /function gfxSetStage/.test(src) && /await gfxSetStage\(/.test(src),
+       _stamp===1 ? 'one completed_at rule, inside gfxSetStage, and every path calls it'
+                  : _stamp+' copies of the completed_at rule, they can drift again');
 
     /* ── REGRESSION L-GFX-013 · the reload bug ──
        Session restore ran mid-script and called loadAll(), which reads a const

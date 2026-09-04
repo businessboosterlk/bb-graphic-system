@@ -681,3 +681,21 @@ harness usually ran first. **A check that depends on timing is a check that
 sometimes lies.** The clone now sheds every descendant id.
 
 **Rule: anything that clones DOM must strip descendant ids, not just its own.**
+
+## L-GFX-025 · another session shares this working tree and reverted a fix · OPEN (process)
+While verifying 5102ab1 on live, HEAD had moved to e8dc067, a commit from a
+different Claude session ("fix: alerts...") working in the SAME directory. Its
+rewrite of the BBPUSH inject() block deleted the L-GFX-024 clone-id fix, and the
+duplicate agentBadge came straight back on live. It did not touch any other
+function of mine (checked: 0 hits on the bulk or permission code).
+
+This is also why bb-web-learnings.md, guard.py and build scripts kept changing
+mid-session. Two sessions, one tree, no coordination.
+
+**Rules:** (1) before claiming a deploy is live, compare the live markers to
+LOCAL, not to memory of what was pushed: HEAD may not be yours. (2) any fix that
+lives inside a block another module owns needs a comment naming the fix, so a
+rewrite of that block does not silently drop it. (3) grep the live file for the
+CODE, not for a comment phrase: my first check searched the wrong tense and
+reported 0 for a fix that was present at the time.
+Re-applied with the comment in the commit after e8dc067.

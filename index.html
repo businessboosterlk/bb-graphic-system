@@ -4694,6 +4694,14 @@ var BBSET=(function(){
     var items=document.querySelectorAll('.nav-item');
     var host=null;
     if(items.length){ var last=items[items.length-1]; var el=last.cloneNode(true); el.id='bbset-nav'; el.removeAttribute('data-page'); el.removeAttribute('onclick'); el.classList.remove('active');
+      /* RE-APPLIED. This line was added in 5102ab1 and removed by e8dc067, a
+         commit from another session sharing this working tree that rewrote
+         this block. The last nav item is Agents and carries <span
+         id="agentBadge">; a deep clone keeps that id, so the page had two and
+         the Settings item showed the agent count. Anything cloned must shed
+         every descendant id, not just its own. If you rewrite inject(), keep
+         this line. */
+      el.querySelectorAll('[id]').forEach(function(n){ n.removeAttribute('id'); });
       var svg=el.querySelector('svg'); if(svg){ svg.outerHTML=GEAR; }
       var textNodes=[]; (function walk(n){ for(var i=0;i<n.childNodes.length;i++){ var c=n.childNodes[i]; if(c.nodeType===3&&c.textContent.trim()) textNodes.push(c); else if(c.nodeType===1&&c.tagName!=='svg') walk(c); } })(el);
       if(textNodes.length){ textNodes[0].textContent='Settings'; for(var k=1;k<textNodes.length;k++) textNodes[k].textContent=''; } else { el.appendChild(document.createTextNode('Settings')); }

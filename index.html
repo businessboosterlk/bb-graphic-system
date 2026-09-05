@@ -1493,14 +1493,21 @@ function designerScopeId(){
   if(!isPlainDesigner()) return null;
   return currentUser.team_member_id||null;
 }
-/* OPEN ACCESS (Thulaib, 2026-08-20). Every designer sees every client and all
-   work, and can add work for any client. This deliberately reverses the
-   per-designer filter from 8aeb61c. Kept as a function, not deleted, so the
-   shared views keep one obvious place to re-narrow if that ever changes.
-   designerScope() still exists and is still used — but only to DEFAULT a new
-   task to the person adding it, never to hide anything from them. */
+/* VISIBILITY (Thulaib, 2026-09-05): the Video System rule. A plain designer
+   sees only the work assigned to them. Farhath as graphic head, the SMMs and
+   the heads see everything. This reverses the open access of 2026-08-20 at
+   Thulaib's ask, and it is the third time this body has changed, so the rule
+   lives HERE and nowhere else: every shared view already calls this function.
+   Matched on team_member_id first, the way Video matches assigned_editor_id,
+   with the label as a fallback for rows written before the id was stored.
+   Unassigned work is not theirs yet, so a designer does not see a brief until
+   it is handed to them, exactly as an editor does not in Video. Designers can
+   still ADD work for any client; this only governs what they see. */
 function scopedProjects(list){
-  return list;
+  if(!isPlainDesigner()) return list;
+  const id = designerScopeId(), d = designerScope();
+  return list.filter(p => (id && p.assigned_designer_id!=null && Number(p.assigned_designer_id)===Number(id))
+                       || (p.assigned_designer_id==null && d && p.assigned_designer===d));
 }
 /* The one place a personal filter is still correct: the My Work page. */
 function onlyMine(list){
@@ -3678,14 +3685,28 @@ async function runSelfTest(){
        filt && filt.options.length===DESIGNERS.length+1,
        filt?Array.from(filt.options).map(o=>o.textContent).join('/'):'missing');
 
-    /* open access: a brand new designer must see everything */
-    currentUser = DESIGNERS.length ? {name:DESIGNERS[DESIGNERS.length-1].name, role:'designer', label:DESIGNERS[DESIGNERS.length-1].label} : null;
-    projects = [{id:1,title:'A',client_name:'X',assigned_designer:'Someone Else',current_stage:'brief',is_archived:false},
-                {id:2,title:'B',client_name:'Y',assigned_designer:null,current_stage:'brief',is_archived:false}];
-    ok('Access: a designer sees work assigned to other people',
-       scopedProjects(projects.filter(p=>!p.is_archived)).length===2);
-    ok('Access: My Work still shows only their own',
-       onlyMine(projects).length===0, 'nothing is theirs, so My Work must be empty');
+    /* VISIBILITY, the Video rule (2026-09-05): a designer sees only their own,
+       matched by id or by label for old rows; head, graphic head and SMM see all.
+       Four fixtures: theirs by id, theirs by label only, somebody else's, unassigned. */
+    const savedUser = currentUser, savedProjects = projects;
+    const me = DESIGNERS[DESIGNERS.length-1];
+    projects = [{id:1,title:'mine by id',    client_name:'X',assigned_designer:'Wrong Label',assigned_designer_id:me.team_member_id,current_stage:'brief',is_archived:false},
+                {id:2,title:'mine by label', client_name:'X',assigned_designer:me.label,     assigned_designer_id:null,             current_stage:'brief',is_archived:false},
+                {id:3,title:'someone else',  client_name:'Y',assigned_designer:'Someone Else',assigned_designer_id:99999,           current_stage:'brief',is_archived:false},
+                {id:4,title:'unassigned',    client_name:'Z',assigned_designer:null,         assigned_designer_id:null,             current_stage:'brief',is_archived:false}];
+    currentUser = {name:me.name, role:'designer', label:me.label, team_member_id:me.team_member_id};
+    const seen = scopedProjects(projects).map(p=>p.title);
+    ok('Access: a designer sees only work assigned to them (id or old label)',
+       seen.length===2 && seen.includes('mine by id') && seen.includes('mine by label'),
+       'designer sees '+seen.length+' of 4: '+seen.join(', '));
+    currentUser = {name:'FARHATH', role:'graphic_head', label:'Farhath', team_member_id:17};
+    ok('Access: the graphic head sees everything', scopedProjects(projects).length===4, 'head sees '+scopedProjects(projects).length+' of 4');
+    currentUser = {name:'NIRVANA', role:'smm', label:'Nirvana', team_member_id:12};
+    ok('Access: an SMM sees everything', scopedProjects(projects).length===4, 'smm sees '+scopedProjects(projects).length+' of 4');
+    currentUser = {name:me.name, role:'designer', label:me.label, team_member_id:me.team_member_id};
+    ok('Access: My Work still shows only their own by label',
+       onlyMine(projects).length===1, onlyMine(projects).length+' row(s), the label-matched one');
+    currentUser = savedUser; projects = savedProjects;
 
     });
 
@@ -4313,8 +4334,10 @@ async function renderRecap(){
      created_at < month end covers opened, finished and still open at once. */
   const key=year+'-'+month;
   if(RC_KEY!==key || !RC_ROWS){
-    const r=await sbGet('graphic_projects','?created_at=lt.'+end.toISOString()+
+    const r0=await sbGet('graphic_projects','?created_at=lt.'+end.toISOString()+
       '&select=id,client_name,current_stage,created_at,completed_at,is_archived,type&order=created_at.asc');
+    /* VISIBILITY: the recap reads the table directly, so it scopes here. A designer's recap is their month, the head's is everyone's. */
+    const r = Array.isArray(r0) ? scopedProjects(r0) : r0;
     if(myToken!==RC_TOKEN) return;      /* a newer render started while this one waited */
     RC_ROWS = Array.isArray(r)?r:[];
     RC_KEY = key;

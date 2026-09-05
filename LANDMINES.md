@@ -779,3 +779,25 @@ fix from the fault is worse than no check: it trains you to ignore it.**
 **Six checks**, 73 passing. Proven live: post 1038 "Puwakaramba" moved
 in_progress to first_draft and back, and the history reads
 `first_draft (Moved from In Progress) -> in_progress (Undo, back from First Draft)`.
+
+## L-GFX-027 · designer visibility has changed three times, so it lives in ONE function · 2026-09-05
+8aeb61c (Aug) scoped each designer to their own work by label. 43d100a
+(20 Aug, Thulaib) opened every designer to everything. 5 Sep (Thulaib):
+"Farhath sees all work and the other members see only work assigned to them,
+like the Video System." Each flip was one body: `scopedProjects(list)`.
+
+**The rule now:** a plain designer sees only rows whose `assigned_designer_id`
+is their `team_member_id` (the Video System's id match), falling back to the
+label only for rows written before the id was stored. Unassigned work is not
+theirs yet, exactly as in Video. `graphic_head`, `smm`, `head` and `brief` see
+everything. Designers can still ADD work for any client; the rule governs what
+they SEE. Ten call sites: dashboard counts, board, clients page, archive,
+recap (which reads the table directly, so it scopes its own result), and the
+harness.
+
+**Why one function matters:** the recap was added after 43d100a and fetched
+its own rows, so under the old scoping it would have leaked everyone's month
+to a designer. Any NEW surface that reads `graphic_projects` must pass its
+list through `scopedProjects`. The harness proves the rule in both directions
+with four fixtures (theirs by id, theirs by label, someone else's, unassigned)
+for a designer, the graphic head and an SMM.

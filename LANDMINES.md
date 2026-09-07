@@ -102,6 +102,29 @@ Practical effect: by BB's own rules this system cannot ship until the credential
 is removed or an explicit `GUARD-ALLOW L-015` exemption is written in (guard
 honours that marker within 2500 characters of the hit — see guard.py line 171).
 
+**🔴 THE GROUNDS OF THAT SIGN-OFF ARE FALSE. MEASURED 2026-09-07.** The
+exemption was taken on the stated basis that the published password "grants
+exactly what this app's own tables already allow". It does not. Measured
+against live policies and row counts:
+
+| table | rows | policy | anon can read | that password can read |
+|---|---|---|---|---|
+| clients | 27 | `public access` + `authenticated_all` | yes | yes |
+| graphic_projects | 63 | `anon_read` + `public_all` | yes | yes |
+| **invoices** | **184** | `authenticated_all` ONLY | **no** | **all 184** |
+| **costs** | **163** | `authenticated_all` ONLY | **no** | **all 163** |
+
+The finance tables carry an authenticated-only policy. That published password
+grants the `authenticated` role. So it grants strictly MORE than anon: every
+invoice and every cost in the business, to anyone who opens the page and reads
+the source, from anywhere, with no need to touch this app at all. It is also a
+named person's account.
+
+The SMM Workspace removed this same session for this same reason and its own
+comment says so. **The sign-off predates that discovery, so it needs re-taking
+rather than assuming.** Raised with Thulaib 2026-09-07. Found by the
+cross-system scan chat, confirmed here independently against the database.
+
 **Thulaib chose the exemption on 2026-08-14 (Option A) so the team was not
 blocked.** A `GUARD-ALLOW L-015` block now sits above `GAPP` and guard passes.
 It is a DEFERRAL WITH AN OWNER, not a fix. The real fix is the role-floor work. Adding freelancer logins
@@ -911,3 +934,27 @@ Settings sheet and neither knows about it, so both have this fault today. The
 Command Centre and the Dev System carry the sheet and have no overlay selector
 at all. Those are other chats' systems and the fix is theirs to apply; it is
 written out in `~/bb-systems/push/SHARED-CHANGES.md`.
+
+## L-GFX-033 · the self-test could not finish, so nothing was being verified · FIXED 2026-09-07
+Reported by the cross-system scan chat: `runSelfTest()` was still running after
+45 seconds and never resolved. Reproduced here, capped at 25 seconds and still
+going, while a single database read from the same page took 378ms, so the
+network was fine and the harness itself was the problem.
+
+**Two causes, both mine, both from the same afternoon.** `navigateTo` blocks
+for about a second per page, and the unowned-overlay check added that day
+walked six pages, two of which fetch. And the schema probe makes seven REAL
+reads with no time limit, so one stalled request would hang the entire run with
+no way to tell a hang from slow work.
+
+**Fixed three ways.** The run carries a 20 second budget; a section reached
+after the budget is recorded as a FAILURE naming the overrun, never silently
+dropped, because a short run must never read as a green run. Every read the
+harness makes has a 4 second limit. The page walk is three pages by default and
+`runSelfTest({deep:true})` walks all six. Measured after: 9 to 11 seconds,
+84 of 84, and the run now reports its own elapsed time as a check.
+
+**The lesson worth keeping: a harness that cannot finish is a harness nobody
+runs, which means the system was shipping unverified while showing every sign
+of being tested.** Any check suite that touches the network or re-renders pages
+needs a deadline the day it is written, not the day someone notices.

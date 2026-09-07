@@ -3539,7 +3539,7 @@ async function wpBulkSaveAll(){
 const SELFTEST_MARK_A = '@@BBGFX_SELFTEST_BEGIN@@';
 const SELFTEST_MARK_B = '@@BBGFX_SELFTEST_END@@';
 /* @@BBGFX_SELFTEST_BEGIN@@ */
-async function runSelfTest(){
+async function runSelfTest(opts){
   const R=[];
   const ok=(name,pass,detail)=>{R.push({name:name,pass:!!pass,detail:String(detail==null?'':detail).slice(0,160)});};
 
@@ -3583,7 +3583,27 @@ async function runSelfTest(){
      src.indexOf('REGRESSION L-GFX-0')===-1,
      'if this fails, every source check below is matching the test and is meaningless');
 
+  /* A DEADLINE. Reported from another chat on 2026-09-07: runSelfTest was still
+     going after 45 seconds and never resolved, so that system had been shipping
+     unverified. Reproduced here, capped at 25s and still running. Two causes,
+     both fixed: every page navigation blocks for about a second and a walk of
+     six pages was added the same afternoon, and the schema probe makes seven
+     REAL reads with no timeout, so one stalled request hung the whole run.
+     A harness that cannot finish is a harness nobody runs, so it now stops and
+     SAYS SO rather than hanging. Skipped sections are recorded as FAILURES,
+     never quietly dropped: a short run must never read as a green run. */
+  const HARNESS_BUDGET_MS = 20000;
+  const _deadline = Date.now() + HARNESS_BUDGET_MS;
+  let _skipped = 0;
+  const overBudget = () => Date.now() > _deadline;
+  /* Any network the harness itself does gets a limit. Without this a single
+     stalled request is indistinguishable from a hang. */
+  const withLimit = (p, ms, what) => Promise.race([p,
+    new Promise((_,rej)=>setTimeout(()=>rej(new Error((what||'request')+' took longer than '+(ms/1000)+'s')), ms))]);
+
   const section = async (label, fn) => {
+    if(overBudget()){ _skipped++; ok(label+': skipped, the harness ran out of time', false,
+      'the run passed its '+(HARNESS_BUDGET_MS/1000)+'s budget before this section, so it proved NOTHING here'); return; }
     try{ await fn(); }
     catch(e){ ok(label+': section threw', false, (e && e.message) || String(e)); }
   };
@@ -3818,7 +3838,7 @@ async function runSelfTest(){
       ['clients','id,name,package,industry,health,monthly_posts']
     ];
     for(const [t,cols] of probes){
-      let r=null; try{ r = await realGetForProbe(t,'?select='+cols+'&limit=0'); }catch(e){ r={message:String(e&&e.message||e)}; }
+      let r=null; try{ r = await withLimit(realGetForProbe(t,'?select='+cols+'&limit=0'), 4000, 'probe of '+t); }catch(e){ r={message:String(e&&e.message||e)}; }
       ok('Schema: '+t+' has every column the app touches', Array.isArray(r),
          Array.isArray(r) ? cols.split(',').length+' columns present' : 'REJECTED: '+String((r&&r.message)||JSON.stringify(r)).slice(0,110));
     }
@@ -4011,18 +4031,29 @@ async function runSelfTest(){
       /* A RULE THAT GUARDS ONE PAGE GUARDS NOTHING. A full-screen element that
          only exists on the pipeline is invisible to a check that runs on the
          dashboard, so walk the pages with the sheet still up. */
+      /* Measured 2026-09-07: navigateTo blocks for about a second a page, so
+         walking six cost five seconds of a twenty second budget, and two of
+         them fetch. A full-screen fixed overlay is appended to BODY, not into a
+         page section, so the walk bought almost nothing. Three cheap pages, and
+         the deep walk is there for anyone who asks for it. */
+      const walk = opts && opts.deep
+        ? ['dashboard','pipeline','weeklyplan','clients','recap','archive']
+        : ['dashboard','pipeline','weeklyplan'];
       const strayBy={}; let strayTotal=0;
       const pageNow=(typeof currentPage!=='undefined')?currentPage:'dashboard';
-      for(const pg of ['dashboard','pipeline','weeklyplan','clients','recap','archive']){
+      for(const pg of walk){
+        if(overBudget()) break;
         try{ navigateTo(pg); }catch(e){ continue; }
-        await new Promise(r=>setTimeout(r,200));
+        await new Promise(r=>setTimeout(r,80));
         const u=BBF.unowned();
         if(u.length){ strayBy[pg]=u; strayTotal+=u.length; }
       }
       try{ navigateTo(pageNow); }catch(e){}
-      await new Promise(r=>setTimeout(r,200));
-      ok('No full-screen element is unknown to the freeze layer, on ANY page', strayTotal===0,
-         strayTotal?('unowned: '+JSON.stringify(strayBy)):'6 pages walked with the Settings sheet open, every full-screen overlay registered');
+      await new Promise(r=>setTimeout(r,80));
+      ok('No full-screen element is unknown to the freeze layer', strayTotal===0,
+         strayTotal?('unowned: '+JSON.stringify(strayBy))
+                   :(walk.length+' pages walked with the Settings sheet open, every full-screen overlay registered'
+                     +(opts&&opts.deep?'':'; runSelfTest({deep:true}) walks all six')));
       if(back) back.click();
       await new Promise(r=>setTimeout(r,450));
       BBF.sync();
@@ -4174,6 +4205,14 @@ async function runSelfTest(){
     }
 
     });
+
+    /* The run must report on ITSELF. A harness that quietly stopped early and
+       printed a green total is worse than no harness, which is exactly the
+       fault this budget was added for. */
+    const _elapsed = HARNESS_BUDGET_MS - (_deadline - Date.now());
+    ok('Harness: the run finished inside its own time budget', _skipped===0,
+       _skipped ? (_skipped+' section(s) skipped after '+Math.round(_elapsed/1000)+'s, so this run is INCOMPLETE')
+                : ('finished in '+Math.round(_elapsed/1000)+'s of a '+(HARNESS_BUDGET_MS/1000)+'s budget'));
 
   }catch(e){
     ok('Harness completed without throwing', false, e && e.message);

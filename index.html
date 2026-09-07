@@ -4008,9 +4008,21 @@ async function runSelfTest(){
       ok('Settings sheet: the panel itself stays usable',
          !!sheet && !sheet.hasAttribute('inert'),
          sheet ? (sheet.hasAttribute('inert')?'the shield inerted the panel its own backdrop belongs to':'reachable, kept by the keep list') : 'no #bbset-sheet');
-      const stray=BBF.unowned();
-      ok('No full-screen element is unknown to the freeze layer', stray.length===0,
-         stray.length?('unowned: '+stray.join(', ')):'every full-screen overlay on this page is registered');
+      /* A RULE THAT GUARDS ONE PAGE GUARDS NOTHING. A full-screen element that
+         only exists on the pipeline is invisible to a check that runs on the
+         dashboard, so walk the pages with the sheet still up. */
+      const strayBy={}; let strayTotal=0;
+      const pageNow=(typeof currentPage!=='undefined')?currentPage:'dashboard';
+      for(const pg of ['dashboard','pipeline','weeklyplan','clients','recap','archive']){
+        try{ navigateTo(pg); }catch(e){ continue; }
+        await new Promise(r=>setTimeout(r,200));
+        const u=BBF.unowned();
+        if(u.length){ strayBy[pg]=u; strayTotal+=u.length; }
+      }
+      try{ navigateTo(pageNow); }catch(e){}
+      await new Promise(r=>setTimeout(r,200));
+      ok('No full-screen element is unknown to the freeze layer, on ANY page', strayTotal===0,
+         strayTotal?('unowned: '+JSON.stringify(strayBy)):'6 pages walked with the Settings sheet open, every full-screen overlay registered');
       if(back) back.click();
       await new Promise(r=>setTimeout(r,450));
       BBF.sync();

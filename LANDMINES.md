@@ -801,3 +801,22 @@ to a designer. Any NEW surface that reads `graphic_projects` must pass its
 list through `scopedProjects`. The harness proves the rule in both directions
 with four fixtures (theirs by id, theirs by label, someone else's, unassigned)
 for a designer, the graphic head and an SMM.
+
+## L-GFX-028 · the Graphic alert ladder, and the stage that alerts nobody · 2026-09-07
+Eight stages now carry alert rules, set by Thulaib. Recipients are computed by
+MEANING: the doer from `assigned_designer_id`, the head from `is_head` plus a
+graphic role, the client's OWN SMM from `clients.assigned_smm` (never both
+SMMs), the CEO by role. No rule names a person. The SQL, the matrix and the
+proof live at `~/bb-systems/push/rules/graphic-2026-09-07.sql`.
+
+**`in_progress` alerts nobody, on purpose.** Its only recipient is the doer,
+and the doer is the only person who moves a card there, so it would ring the
+phone of whoever just tapped it. Stored inactive with the reason, not deleted.
+See L-PUSH-009 for the one column that makes it safe.
+
+**Two things changed for Thulaib personally:** he no longer gets `head_review`
+(his own matrix puts the head alone on that stage) and he now gets
+`sent_to_client`, which nothing alerted on before.
+
+**Never add a stage to `STAGES` without deciding its alert row.** A new stage
+with no rule is silent, and silence looks identical to working.

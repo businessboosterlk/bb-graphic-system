@@ -338,10 +338,17 @@ migration, exactly like the Video System did in `1081365` ("migrate week keys to
 Monday and remove the compatibility path") after `5da80a6` ("fix 16 UTC date
 bugs"). Do it deliberately or not at all.
 
-## L-GFX-017 · two "+ Add Task" buttons on the Weekly Plan · OPEN (cosmetic)
+## L-GFX-017 · two "+ Add Task" buttons on the Weekly Plan · FIXED 2026-09-07
 One in the topbar page-action slot (set in `navigateTo`, ~line 1120) and one in
 the section header. Confirmed on the live build before this work, so it is
 pre-existing. Harmless, both call `wpOpenAdd()`, but it looks unfinished.
+
+**FIXED 2026-09-07.** The section-header copy is gone and the topbar slot keeps
+it, which is what every other page does. `.topbar-actions` has no rule hiding it
+on a narrow screen, so the phone keeps the button. The check counts the buttons
+**on the Weekly Plan itself**: the first version of it ran on the dashboard,
+found zero and passed for the wrong reason, which is the "a check that passes
+because it could not find its target" trap in this register's own words.
 
 ## L-GFX-018 · guard.py does not check CSS · CLOSED 2026-08-21 (check now in the harness)
 While building the weekly grid an edit left a CSS comment unterminated
@@ -820,3 +827,50 @@ See L-PUSH-009 for the one column that makes it safe.
 
 **Never add a stage to `STAGES` without deciding its alert row.** A new stage
 with no rule is silent, and silence looks identical to working.
+
+## L-GFX-030 · the alert ladder was half silent because an id column was empty · FIXED 2026-09-07
+Measured the morning after the ladder shipped: `assigned_designer_id` was NULL
+on **60 of 63 active graphics**, while `assigned_designer` (the name, as text)
+was set on every single one.
+
+Visibility survived that, because `scopedProjects` falls back to the name. The
+ALERTS did not: `bb_notify_on_stage` finds the doer through the id alone, so
+the doer half of revisions, client changes and approved would have reached the
+designer on 3 cards out of 63. The head, the SMM and the CEO were unaffected,
+which is exactly why it would have looked like it was working.
+
+Backfilled from the name, only ever filling a NULL, every row matching an
+active member (59 Farhath, 1 Zulfa, 0 unmatched). The app already wrote both on
+new work, so this was a one-off.
+
+**The lesson: two columns for one fact will drift, and the surface that reads
+the less-used one fails quietly.** When a feature depends on a column, count
+how many rows actually carry it BEFORE calling the feature done. `select
+count(*) ... where <that column> is null` is one line and it was the difference
+between shipped and working.
+
+## L-GFX-031 · the page that would not scroll, and why guessing stopped · FIXED 2026-09-07
+Farhath reported that the app would not scroll up or down. Six surfaces at
+phone width were driven on 5 September (dashboard, pipeline, weekly plan, the
+Settings sheet, the walkthrough, a detail modal) and every one scrolled, with
+the body never left pinned. No reproduction, so no root cause.
+
+The symptom has exactly ONE shape, whatever causes it: `body` is left with
+`position:fixed` (the `sheet-open` pin) while no overlay is open. So rather
+than keep hunting the trigger, BBF now carries a **watchdog** that checks every
+two seconds and on every `pageshow` and tab return. If the page is pinned and
+nothing is open, it frees it and counts it.
+
+**It judges the PAGE, not our own bookkeeping.** The first version tested only
+BBF's internal `locked` flag, so it could not heal a pin left behind by
+anything else, which is the most likely shape of a fault nobody can reproduce.
+The check caught that: it faked the DOM state, the watchdog ignored it, and the
+check went red. It now asks both questions.
+
+It frees an orphan pin **without scrolling**, because the original position is
+unknown and guessing would throw the person somewhere they never were.
+
+Proven by reproducing the symptom: with the body pinned a scroll to 400px
+stayed at 0, and after the watchdog the page was static and scrolled to 400
+again. `BBF.healed()` counts every heal, so if this keeps happening the number
+grows and we finally get evidence instead of a description.

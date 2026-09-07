@@ -802,7 +802,7 @@ list through `scopedProjects`. The harness proves the rule in both directions
 with four fixtures (theirs by id, theirs by label, someone else's, unassigned)
 for a designer, the graphic head and an SMM.
 
-## L-GFX-028 · the Graphic alert ladder, and the stage that alerts nobody · 2026-09-07
+## L-GFX-029 · the Graphic alert ladder, and the stage that alerts nobody · 2026-09-07
 Eight stages now carry alert rules, set by Thulaib. Recipients are computed by
 MEANING: the doer from `assigned_designer_id`, the head from `is_head` plus a
 graphic role, the client's OWN SMM from `clients.assigned_smm` (never both

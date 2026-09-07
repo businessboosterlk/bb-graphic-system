@@ -994,3 +994,37 @@ nothing to prove.
 board with zero console errors and the full navigation. Cards visible follow
 the visibility rule (heads and SMMs 62, Suhana 1, Zulfa 1, Amjath 0, because
 nothing is assigned to him).
+
+## L-GFX-035 · the Weekly Plan showed only Suhana, and it was not a permission fault · FIXED 2026-09-07
+Reported: everyone opening the Weekly Plan saw only Suhana's work.
+
+**Measured in `graphic_weekly_plan` before changing anything.** Of the 143 rows
+ever written, Suhana holds 131 across 15 weeks, Farhath 6 in a single week, 6
+are unassigned, and **Amjath and Zulfa have never had a single row.** This week
+holds 12 rows, all Suhana's. Nobody was being filtered out. Suhana's work was
+the only work in the table.
+
+**What turned that into a fault.** The grid built its rows from the people who
+had work: `withWork.length ? withWork : rows`, with the comment "so an empty
+roster never renders a wall of dashes". So the three people a head most needs
+to hand work to were the three who did not appear on the page. **A planning
+surface that hides the people with nothing on cannot be used to hand work out,
+which is the only thing it is for.** The empty row IS the invitation.
+
+**Fixed to Thulaib's rule, 2026-09-07.** Thulaib, Shiara, Farhath, Nirvana and
+Tiana see every designer, with or without work. A plain designer sees their own
+row, matching the pipeline rule of 5 September. Proven for all eight logins:
+the five planners each render Suhana, Farhath, Amjath and Zulfa; Suhana, Amjath
+and Zulfa each render only themselves.
+
+**Two faults in the CHECKS found while proving this, both worth more than the
+fix.** The new check counted the day-totals row as a designer row, so it failed
+on a correct app and sent me looking for a bug in code that was right. And at a
+0x0 viewport, which a pane reports before it lays out, `BBF.unowned()` treated
+every fixed element as covering 80 percent of the screen and named the whole
+page as unowned, while the overlay checks failed because nothing has a rectangle
+at 0x0. Five red checks, none of them real. The register already carries this
+lesson from 2026-08-10 (`if a whole suite reds together, read the viewport
+before the code`) and it still cost twenty minutes. **Every rect-based check now
+sits behind one explicit viewport test that FAILS OUT LOUD and skips, rather
+than inventing failures.**

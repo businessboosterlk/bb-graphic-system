@@ -3024,8 +3024,12 @@ async function wpLoadWeek(){
 
 function wpGetFiltered(){
   let f = wpTasks;
-  /* open access — everyone sees the whole week. Use the Designer filter above
-     to narrow it to one person on purpose. */
+  /* WHO SEES WHOSE WEEK, set by Thulaib 2026-09-07.
+     Thulaib, Shiara, Farhath, Nirvana and Tiana see EVERYONE's week: planning
+     the team is the entire point of this page. A plain designer sees their own,
+     which matches the pipeline rule taken on 5 September. */
+  const _mine = designerScope();
+  if(isPlainDesigner() && _mine) f = f.filter(t=>t.assigned_to===_mine);
   const fd = document.getElementById('wpFilterDesigner')?.value||'';
   const fc = document.getElementById('wpFilterClient')?.value||'';
   const fs = document.getElementById('wpFilterStatus')?.value||'';
@@ -3056,11 +3060,19 @@ function wpRender(){
   /* THE GRID: designer rows x Mon-Fri, the Video System shape. Rows are the
      people who actually have work this week, so an empty roster never renders
      a wall of dashes. */
+  /* EVERY DESIGNER GETS A ROW, whether or not they have work.
+     Reported 2026-09-07: the Weekly Plan showed only Suhana. It was not a
+     permission fault. Measured in the table: Suhana holds 131 of the 143 rows
+     ever written, Farhath 6, and AMJATH AND ZULFA HAVE NEVER HAD ONE. The grid
+     hid anybody with nothing on, so the three people a head most needs to give
+     work to were the three who were not on the page. A planning surface that
+     hides the people with no work cannot be used to hand work out, which is
+     what it is for. An empty row is the invitation. */
   const rows = DESIGNERS.map(d=>d.label);
   filtered.forEach(t=>{ if(t.assigned_to && rows.indexOf(t.assigned_to)===-1) rows.push(t.assigned_to); });
-  const withWork = rows.filter(r=>filtered.some(t=>t.assigned_to===r));
   const unassigned = filtered.filter(t=>!t.assigned_to);
-  const showRows = withWork.length ? withWork : rows;
+  const _mineRow = designerScope();
+  const showRows = (isPlainDesigner() && _mineRow) ? [_mineRow] : rows;
 
   const dayTotals=[0,0,0,0,0];
   filtered.forEach(t=>{ const i=(t.day_of_week||1)-1; if(i>=0&&i<5) dayTotals[i]+=(t.design_count||0); });
@@ -4057,8 +4069,15 @@ async function runSelfTest(opts){
 
     /* THE SETTINGS SHEET, the module this layer did not know about. Opened for
        real, because every fault it caused was invisible while it was shut. */
-    const setNav=document.getElementById('bbset-nav');
-    if(!setNav){
+    const _vpUsable = innerWidth>=200 && innerHeight>=200;
+    ok('Viewport is big enough to measure anything', _vpUsable,
+       _vpUsable ? innerWidth+'x'+innerHeight
+                 : innerWidth+'x'+innerHeight+', so every check that measures a rectangle below was SKIPPED and proved nothing');
+    const setNav = _vpUsable ? document.getElementById('bbset-nav') : null;
+    if(!_vpUsable){
+      /* deliberately no further overlay checks: at 0x0 they would all fail for
+         a reason that has nothing to do with the app */
+    } else if(!setNav){
       ok('Settings sheet: the freeze layer knows about it', false, 'no #bbset-nav on the page, this proved nothing');
     } else {
       const yBefore=window.scrollY;
@@ -4141,6 +4160,52 @@ async function runSelfTest(opts){
                 :'the edge did not arm an auto-scroll, so '+(b.scrollWidth-b.clientWidth)+'px of board is unreachable by drag'));
       }
       try{ navigateTo(wasPage); }catch(e){}
+      await new Promise(r=>setTimeout(r,150));
+    }
+
+    /* THE WEEKLY PLAN IS A PLANNING SURFACE. A head who cannot see a designer
+       cannot give that designer work, so every designer must have a row even
+       with an empty week. This is the fault reported on 7 September, where the
+       page showed only Suhana because she was the only person with any rows in
+       the table at all. */
+    {
+      const wasPage2=(typeof currentPage!=='undefined')?currentPage:'dashboard';
+      const savedUser2=currentUser;
+      try{ navigateTo('weeklyplan'); }catch(e){}
+      await new Promise(r=>setTimeout(r,350));
+      /* The grid's last row is the day totals, not a person. Counting it as one
+         made the designer check fail on a correct app. A check that misreads
+         the thing it measures is worse than no check, because it sends you
+         looking for a bug in code that is right. */
+      const rowNames=()=>[...document.querySelectorAll('#wpBoard tbody tr')]
+        .map(tr=>((tr.querySelector('th,td')||{}).textContent||'').trim().split('\n')[0])
+        .filter(t=>t && !/^total/i.test(t));
+      currentUser={name:'FARHATH', role:'graphic_head', label:'Farhath', team_member_id:17};
+      try{ wpRender(); }catch(e){}
+      await new Promise(r=>setTimeout(r,200));
+      const asHead=rowNames();
+      const everyDesigner=DESIGNERS.every(d=>asHead.some(r=>r.indexOf(d.label)>-1));
+      ok('Weekly Plan: a planner sees EVERY designer, even one with an empty week',
+         everyDesigner, 'rows shown: '+(asHead.join(' | ')||'none')+' ; roster is '+DESIGNERS.map(d=>d.label).join(', '));
+
+      currentUser={name:'NIRVANA', role:'smm', label:'Nirvana (SMM)', team_member_id:12};
+      try{ wpRender(); }catch(e){}
+      await new Promise(r=>setTimeout(r,200));
+      const asSmm=rowNames();
+      ok('Weekly Plan: an SMM sees the whole team too',
+         DESIGNERS.every(d=>asSmm.some(r=>r.indexOf(d.label)>-1)), 'rows: '+(asSmm.join(' | ')||'none'));
+
+      const sole=DESIGNERS.find(d=>d.name==='SUHANA')||DESIGNERS[0];
+      currentUser={name:sole.name, role:'designer', label:sole.label, team_member_id:sole.team_member_id};
+      try{ wpRender(); }catch(e){}
+      await new Promise(r=>setTimeout(r,200));
+      const asDesigner=rowNames();
+      ok('Weekly Plan: a designer sees only their own row',
+         asDesigner.length>0 && asDesigner.every(r=>r.indexOf(sole.label)>-1),
+         'rows: '+(asDesigner.join(' | ')||'none'));
+
+      currentUser=savedUser2;
+      try{ wpRender(); navigateTo(wasPage2); }catch(e){}
       await new Promise(r=>setTimeout(r,150));
     }
 
@@ -4473,6 +4538,11 @@ var BBF=(function(){
     rather than by somebody's thumb. */
  function unowned(){
   var out=[];
+  /* A pane that has not laid out yet reports 0x0, and then EVERY fixed element
+     is "at least 80 percent of the viewport" and this returns the whole page as
+     unowned. Measured 2026-09-07: it named bbuBar and toastWrap on three pages
+     at 0x0. A check must refuse to answer rather than answer nonsense. */
+  if(innerWidth<200||innerHeight<200) return out;
   var all=document.querySelectorAll('body *');
   for(var i=0;i<all.length;i++){
    var e=all[i],cs=getComputedStyle(e);

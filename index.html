@@ -792,7 +792,9 @@ tr:hover td{background:var(--surface-2)}
             <button class="btn btn-ghost btn-sm" onclick="wpChangeWeek(1)">&#9654;</button>
             <button class="btn btn-ghost btn-sm" onclick="wpGoToday()">Today</button>
           </div>
-          <button class="btn btn-accent" onclick="wpOpenAdd()">+ Add Task</button>
+          <!-- L-GFX-017: "+ Add Task" lives in the topbar action slot, set by
+               navigateTo, exactly as it does on every other page. It used to be
+               here as well, so the Weekly Plan showed the same button twice. -->
           <button class="btn btn-ghost" onclick="wpOpenBulk()">Bulk Add</button>
         </div>
         <div class="filter-bar" id="wpFilters">
@@ -1855,6 +1857,11 @@ async function gfxSetStage(id, newStage, note){
   const okWrite = await sbPatch('graphic_projects','id=eq.'+id, {
     current_stage: newStage,
     updated_at: new Date().toISOString(),
+    /* WHO moved it. The alert trigger drops this person from the recipient
+       list, so nobody is ever told about their own tap. Without it a designer
+       got pinged for a card they had just dragged themselves, which is the one
+       habit that teaches a team to mute the app. Added 2026-09-07, L-PUSH-009. */
+    updated_by: (currentUser && currentUser.name) || null,
     completed_at: (newStage==='approved') ? new Date().toISOString() : null
   });
   if(!okWrite) return false;
@@ -3954,6 +3961,33 @@ async function runSelfTest(){
       ok('REGRESSION L-GFX-024: the cloned Settings item carries no ids', dup===0,
          dup ? dup+' id(s) inside the clone, agentBadge is duplicated again' : 'clean, and '+document.querySelectorAll('#agentBadge').length+' agentBadge on the page'); }
 
+    /* The watchdog is the answer to a fault nobody could reproduce, so it has
+       to be proven directly: pin the body with nothing open and watch it heal. */
+    if(typeof BBF.watchdog==='function'){
+      const before=BBF.healed(); const y0=window.scrollY;
+      document.body.style.top='-40px'; document.body.classList.add('sheet-open');
+      BBF.watchdog();
+      const stuck=getComputedStyle(document.body).position==='fixed';
+      document.body.classList.remove('sheet-open'); document.body.style.top=''; window.scrollTo(0,y0);
+      ok('App: a page frozen with no sheet open frees itself', !stuck && BBF.healed()>before,
+         stuck?'still pinned, the watchdog did not fire':'freed and counted, healed='+BBF.healed());
+    } else ok('App: a page frozen with no sheet open frees itself', false, 'BBF.watchdog missing');
+
+    ok('Alerts: a stage move records who did it',
+       /updated_by:\s*\(currentUser/.test(gfxSetStage.toString()),
+       'without this the trigger cannot drop the actor and people get alerted about their own taps');
+
+    /* Count it ON the Weekly Plan. The topbar button is built per page, so
+       counting anywhere else finds zero and passes for the wrong reason. */
+    const pageBefore = (typeof currentPage!=='undefined') ? currentPage : 'dashboard';
+    try{ navigateTo('weeklyplan'); }catch(e){}
+    await new Promise(r=>setTimeout(r,250));
+    const wpAdd=[...document.querySelectorAll('button')].filter(b=>b.offsetParent!==null && /\+ Add Task/.test(b.textContent)).length;
+    ok('L-GFX-017: exactly one "+ Add Task" button on the Weekly Plan', wpAdd===1,
+       wpAdd+' visible on the Weekly Plan itself');
+    try{ navigateTo(pageBefore); }catch(e){}
+    await new Promise(r=>setTimeout(r,200));
+
     /* ── E · BB APP SHELL ─────────────────────────────────────────────── */
     ok('Shell: viewport-fit=cover is set, so env() is not always 0',
        /viewport-fit\s*=\s*cover/.test((document.querySelector('meta[name=viewport]')||{content:''}).content),
@@ -4229,9 +4263,38 @@ var BBF=(function(){
     try{history.back();}catch(e){}
     setTimeout(function(){closing=false;},0);}}}
 
+ /* FREEZE WATCHDOG. Farhath reported "you cannot scroll up and down" and it
+    could not be reproduced across six surfaces at phone width. Whatever the
+    trigger, the symptom has exactly one shape: the body is left pinned with no
+    sheet open, which is what a sync that never ran would leave behind. Rather
+    than keep guessing, notice the stuck state, free the page, and COUNT it, so
+    the next report arrives with evidence instead of a description. */
+ var healed=0;
+ function watchdog(){
+  /* Judge the PAGE, not our own bookkeeping. The first version of this checked
+     only the internal `locked` flag, so it could not heal a pin that something
+     else left behind, which is the most likely shape of a fault nobody can
+     reproduce. Ask both: does anyone think it is locked, and is the body
+     actually pinned in the DOM. */
+  var pinnedByUs=locked, pinnedInDom=document.body.classList.contains('sheet-open');
+  if((!pinnedByUs&&!pinnedInDom)||anyOpen())return;
+  if(pinnedByUs)sync();                        /* the normal release path first */
+  if(locked){release();unlock();}              /* it did not let go, so force it */
+  if(document.body.classList.contains('sheet-open')){
+   /* An orphan pin nobody owns. Free it WITHOUT scrolling: we do not know where
+      the person was, and guessing would throw them somewhere they never went. */
+   document.body.classList.remove('sheet-open');document.body.style.top='';
+  }
+  healed++;
+  try{console.warn('[BBF] the page was pinned with no sheet open, freed it. count='+healed);}catch(e){}
+ }
+
  /* ONE observer, never N edited open functions. The body observer's job is
     spotting NEW overlays, so it only schedules when it actually saw one. */
  function start(){
+  setInterval(watchdog,2000);
+  window.addEventListener('pageshow',scheduleSync);
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)scheduleSync();});
   var mo=new MutationObserver(scheduleSync);
   var watch=function(el){mo.observe(el,{attributes:true,attributeFilter:['class','style','hidden']});};
   document.querySelectorAll(OVS).forEach(watch);
@@ -4263,6 +4326,7 @@ var BBF=(function(){
  /* The check asks the module for its selector. A hand written selector inside a
     check is a selector that can be pointed at nothing and pass on silence. */
  return {start:start,hintKeyboards:hintKeyboards,anyOpen:anyOpen,sync:sync,
+         watchdog:watchdog,healed:function(){return healed;},
          ovs:OVS,                       /* the name bb-video-system's checks use */
          overlaySelector:function(){return OVS;},
          keepSelector:function(){return KEEP;},

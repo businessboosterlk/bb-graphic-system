@@ -874,3 +874,40 @@ Proven by reproducing the symptom: with the body pinned a scroll to 400px
 stayed at 0, and after the watchdog the page was static and scrolled to 400
 again. `BBF.healed()` counts every heal, so if this keeps happening the number
 grows and we finally get evidence instead of a description.
+
+## L-GFX-032 · the Settings sheet was invisible to the freeze layer · FIXED 2026-09-07
+Farhath reported twice that the app would not scroll. The first hunt found
+nothing because it drove the surfaces the app has always had. The Settings
+sheet is a LATER module, injected at runtime by its own block, and nothing ever
+registered it with `BBF`.
+
+**Measured on the live build with Settings open:** `BBF.anyOpen()` returned
+null, the body was never pinned, and the page behind scrolled underneath the
+sheet. Android Back did not close it, because BBF pushes the history entry and
+BBF did not know the sheet existed. The backdrop is `position:fixed; inset:0;
+z-index:100000` with `pointer-events:auto`, so while it is up it takes every
+touch on the screen, and if it is ever left showing **nothing heals it**: the
+body is not pinned, so even the new watchdog sees nothing wrong. A full-screen
+element that takes every touch and that no layer owns is precisely what "the
+app will not scroll" feels like.
+
+**Fix:** `#bbset-back` joins `OVS` and `#bbset-sheet` joins `KEEP`. The keep
+matters: the backdrop is a SIBLING of the panel, so recognising the backdrop
+without keeping the panel would inert the panel its own backdrop belongs to,
+which is the trap already recorded for `#sidebar` and `#sidebarOverlay`.
+`closeTop` clicks the backdrop, because its close handler lives on the `onclick`
+PROPERTY where the two existing lookups cannot find it.
+
+**The general fix, which is the point.** `BBF.unowned()` returns every
+full-screen fixed element that takes pointer events and is matched by neither
+`OVS` nor `KEEP`, and a check fails on it **with the Settings sheet open**,
+because every fault it caused was invisible while it was shut. The next module
+injected this way is found by a check instead of by somebody's thumb.
+
+**Estate-wide, and NOT fixed here.** Measured the same day: the SMM Workspace
+(`OVS='.modal-bg, #smm-checkin-overlay, #agent-drawer-overlay, #bb-detail-overlay, .sidebar-backdrop'`)
+and the Video System (`OVS='.modal-backdrop, .m-sheet'`) both carry the
+Settings sheet and neither knows about it, so both have this fault today. The
+Command Centre and the Dev System carry the sheet and have no overlay selector
+at all. Those are other chats' systems and the fix is theirs to apply; it is
+written out in `~/bb-systems/push/SHARED-CHANGES.md`.

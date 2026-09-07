@@ -3988,6 +3988,38 @@ async function runSelfTest(){
     try{ navigateTo(pageBefore); }catch(e){}
     await new Promise(r=>setTimeout(r,200));
 
+    /* THE SETTINGS SHEET, the module this layer did not know about. Opened for
+       real, because every fault it caused was invisible while it was shut. */
+    const setNav=document.getElementById('bbset-nav');
+    if(!setNav){
+      ok('Settings sheet: the freeze layer knows about it', false, 'no #bbset-nav on the page, this proved nothing');
+    } else {
+      const yBefore=window.scrollY;
+      setNav.click();
+      await new Promise(r=>setTimeout(r,450));
+      BBF.sync();
+      const back=document.getElementById('bbset-back'), sheet=document.getElementById('bbset-sheet');
+      const known = !!(back && BBF.anyOpen()===back);
+      ok('Settings sheet: the freeze layer knows about it', known,
+         known?'recognised as the open overlay':'BBF.anyOpen() does not return #bbset-back, so it is invisible to the freeze, to Back and to the watchdog');
+      ok('Settings sheet: the page behind it is frozen',
+         getComputedStyle(document.body).position==='fixed',
+         'body is '+getComputedStyle(document.body).position+'; unfrozen means the page scrolls under the sheet');
+      ok('Settings sheet: the panel itself stays usable',
+         !!sheet && !sheet.hasAttribute('inert'),
+         sheet ? (sheet.hasAttribute('inert')?'the shield inerted the panel its own backdrop belongs to':'reachable, kept by the keep list') : 'no #bbset-sheet');
+      const stray=BBF.unowned();
+      ok('No full-screen element is unknown to the freeze layer', stray.length===0,
+         stray.length?('unowned: '+stray.join(', ')):'every full-screen overlay on this page is registered');
+      if(back) back.click();
+      await new Promise(r=>setTimeout(r,450));
+      BBF.sync();
+      ok('Settings sheet: closing it gives the page back',
+         getComputedStyle(document.body).position!=='fixed' && !document.querySelector('[inert]'),
+         'body '+getComputedStyle(document.body).position+', '+document.querySelectorAll('[inert]').length+' inert left');
+      window.scrollTo(0,yBefore);
+    }
+
     /* ── E · BB APP SHELL ─────────────────────────────────────────────── */
     ok('Shell: viewport-fit=cover is set, so env() is not always 0',
        /viewport-fit\s*=\s*cover/.test((document.querySelector('meta[name=viewport]')||{content:''}).content),
@@ -4170,11 +4202,21 @@ var BBF=(function(){
     NOT `.sidebar`: it is permanently display:flex and hidden by
     translateX(-100%), so it has a non-zero rect at all times and a visibility
     test would call it open forever. */
- var OVS='.modal-overlay, .sidebar-overlay, .gd-wrap';
+ /* #bbset-back added 2026-09-07. The Settings sheet is injected by a LATER
+    module and nothing registered it here, so this layer did not know it
+    existed. Measured on the live build: with Settings open, anyOpen() returned
+    null, the body was never frozen and the page behind scrolled underneath it,
+    and Android Back did not close it because no history entry was pushed. It is
+    a full-screen backdrop at z-index 100000 with pointer-events auto, so if it
+    is ever left showing, the screen takes no touch at all and nothing heals it.
+    That is the exact shape of "the app will not scroll". */
+ var OVS='.modal-overlay, .sidebar-overlay, .gd-wrap, #bbset-back';
  /* Must stay reachable while a backdrop is up. #sidebarOverlay is a SIBLING of
     #sidebar, so without this the shield inerts the drawer the backdrop belongs
-    to and the drawer goes dead under the thumb. */
- var KEEP='#sidebar';
+    to and the drawer goes dead under the thumb. #bbset-sheet is a sibling of
+    #bbset-back for the same reason: without it the Settings panel goes dead the
+    moment its own backdrop is recognised. */
+ var KEEP='#sidebar, #bbset-sheet';
  var lockedY=0, locked=false, lastFocus=null, histDepth=0, closing=false;
  try{if('scrollRestoration' in history)history.scrollRestoration='manual';}catch(e){}
 
@@ -4237,6 +4279,9 @@ var BBF=(function(){
   var btn=ov.querySelector('[onclick*="close"],[onclick*="Close"],[data-close]');
   if(btn){btn.click();return true;}
   if(ov.id==='gdWrap'&&typeof gdEnd==='function'){try{gdEnd();return true;}catch(e){}}
+  /* The Settings backdrop carries its close on the onclick PROPERTY, not the
+     attribute, so the two lookups above cannot see it. Clicking it runs it. */
+  if(ov.id==='bbset-back'){ov.click();return true;}
   ov.classList.remove('open');ov.classList.remove('show');return true;}
  window.addEventListener('popstate',function(){
   if(closing)return;                 /* this pop is the one our own close asked for */
@@ -4289,6 +4334,26 @@ var BBF=(function(){
   try{console.warn('[BBF] the page was pinned with no sheet open, freed it. count='+healed);}catch(e){}
  }
 
+ /* Every full-screen thing that can swallow a touch must be KNOWN to this
+    layer, or it cannot be frozen behind, closed by Back, or healed when stuck.
+    The Settings sheet was invisible here for three days. This names any other
+    module that arrives the same way, so the next one is found by a check
+    rather than by somebody's thumb. */
+ function unowned(){
+  var out=[];
+  var all=document.querySelectorAll('body *');
+  for(var i=0;i<all.length;i++){
+   var e=all[i],cs=getComputedStyle(e);
+   if(cs.position!=='fixed'||cs.display==='none'||cs.visibility==='hidden')continue;
+   if(cs.pointerEvents==='none')continue;
+   var r=e.getBoundingClientRect();
+   if(r.width<innerWidth*0.8||r.height<innerHeight*0.6)continue;
+   try{if(e.matches(OVS)||e.matches(KEEP)||e.closest(OVS))continue;}catch(x){}
+   out.push(e.id||e.className||e.tagName);
+  }
+  return out;
+ }
+
  /* ONE observer, never N edited open functions. The body observer's job is
     spotting NEW overlays, so it only schedules when it actually saw one. */
  function start(){
@@ -4326,7 +4391,7 @@ var BBF=(function(){
  /* The check asks the module for its selector. A hand written selector inside a
     check is a selector that can be pointed at nothing and pass on silence. */
  return {start:start,hintKeyboards:hintKeyboards,anyOpen:anyOpen,sync:sync,
-         watchdog:watchdog,healed:function(){return healed;},
+         watchdog:watchdog,healed:function(){return healed;},unowned:unowned,keep:KEEP,
          ovs:OVS,                       /* the name bb-video-system's checks use */
          overlaySelector:function(){return OVS;},
          keepSelector:function(){return KEEP;},

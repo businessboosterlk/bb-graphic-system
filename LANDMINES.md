@@ -958,3 +958,39 @@ harness makes has a 4 second limit. The page walk is three pages by default and
 runs, which means the system was shipping unverified while showing every sign
 of being tested.** Any check suite that touches the network or re-renders pages
 needs a deadline the day it is written, not the day someone notices.
+
+## L-GFX-034 · three stages were unreachable by drag on a laptop · FIXED 2026-09-07
+Reported as "moving left and right on the pipeline, it gets stuck".
+
+**Measured at 1440x900:** the board is 2084px wide inside a 1160px window, so
+924px sits off the right edge and THREE stages are not on screen at all: Sent
+to Client, Client Changes and Approved. HTML5 drag does not auto-scroll a
+container, and nothing in this file did it either. So you pick a card up, push
+it against the right edge, and nothing moves. The three stages it made
+unreachable are the ones where work LEAVES the team.
+
+**Why every sweep missed it.** Below 900px `.kanban` becomes
+`flex-direction:column`, the columns stack and there is nothing to scroll
+sideways. Every phone test therefore passed, correctly, on a layout where the
+fault cannot exist. **A fault that only exists at one width is invisible to a
+suite that only runs at another.** The phone-first habit that caught the
+16px-field and safe-area faults is the same habit that hid this one.
+
+**Fix:** a dragover listener on the document scrolls the board when the pointer
+is within 90px of either edge. It nudges on the EVENT as well as on a timer,
+because a hidden or background tab throttles `setInterval` to about once a
+second, which moved 24px in 700ms and made a correct implementation look
+broken while it was being tested. It stops on dragend and drop, never on
+dragleave, which fires constantly as the pointer crosses cards.
+
+**Proven:** 40 dragover events at the right edge scrolled the full 924px and
+brought Sent to Client, Client Changes and Approved into view; the left edge
+returned it to 0; it stopped on dragend. The check asserts ARMING plus movement
+rather than a distance in a fixed time, so timer throttling cannot make it
+flaky, and it says so out loud when the board fits the window and there is
+nothing to prove.
+
+**Login sweep the same day, all eight PINs at 1440x900:** every one renders the
+board with zero console errors and the full navigation. Cards visible follow
+the visibility rule (heads and SMMs 62, Suhana 1, Zulfa 1, Amjath 0, because
+nothing is assigned to him).

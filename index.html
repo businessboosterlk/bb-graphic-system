@@ -1948,6 +1948,53 @@ let dragId = null;
 function onDragStart(e,id){ dragId=id; e.target.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; }
 function onDragEnd(e){ e.target.classList.remove('dragging'); dragId=null; }
 function onDragOver(e){ e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
+
+/* ══ DRAG AUTO-SCROLL ═══════════════════════════════════════════════════
+   MEASURED 2026-09-07 at 1440x900: the board is 2084px wide inside a 1160px
+   window, so 924px of it sits off the right edge and THREE stages are not on
+   screen at all: Sent to Client, Client Changes and Approved. Nothing scrolled
+   the board while a drag was in progress, so a card could not be dragged to any
+   of them. You pick the card up, you push it against the right edge, and
+   nothing moves. That is "it gets stuck moving left and right", and the three
+   stages it made unreachable are the ones where work LEAVES the team.
+
+   HTML5 drag does not auto-scroll a container for you; every kanban that works
+   implements this. Below 900px the board stacks into a column and there is
+   nothing to scroll, which is why every phone sweep missed this entirely. */
+(function(){
+  var timer=null, dir=0, EDGE=90, STEP=24;
+  function board(){ return document.querySelector('.kanban'); }
+  function stop(){ if(timer){ clearInterval(timer); timer=null; } dir=0; }
+  function run(){
+    if(timer) return;
+    timer=setInterval(function(){
+      var b=board(); if(!b||!dir){ stop(); return; }
+      var before=b.scrollLeft; b.scrollLeft+=dir*STEP;
+      if(b.scrollLeft===before) stop();      /* reached the end, do not spin */
+    },16);
+  }
+  /* dragleave is deliberately NOT a stop: it fires constantly as the pointer
+     crosses cards, and stopping on it makes the scroll stutter to a halt. */
+  document.addEventListener('dragover', function(e){
+    var b=board(); if(!b) return;
+    var r=b.getBoundingClientRect();
+    if(e.clientY<r.top||e.clientY>r.bottom){ stop(); return; }
+    if(e.clientX>r.right-EDGE) dir=1;
+    else if(e.clientX<r.left+EDGE) dir=-1;
+    else { stop(); return; }
+    /* Nudge on the EVENT as well as on the timer. During a real drag these
+       fire continuously, so the board follows the pointer even where the timer
+       is throttled, and the timer only carries it when the pointer is held
+       still at the edge. Found while testing: a hidden tab throttles setInterval
+       to about once a second, so a timer-only version moved 24px in 700ms and
+       looked broken when it was not. */
+    b.scrollLeft += dir*STEP;
+    run();
+  }, true);
+  document.addEventListener('dragend', stop, true);
+  document.addEventListener('drop', stop, true);
+  window.bbDragScrollActive=function(){ return !!timer; };
+})();
 function onDragLeave(e,el){ el.classList.remove('drag-over'); }
 async function onDrop(e,el){
   e.preventDefault();
@@ -4061,6 +4108,40 @@ async function runSelfTest(opts){
          getComputedStyle(document.body).position!=='fixed' && !document.querySelector('[inert]'),
          'body '+getComputedStyle(document.body).position+', '+document.querySelectorAll('[inert]').length+' inert left');
       window.scrollTo(0,yBefore);
+    }
+
+    /* THE BOARD MUST BE REACHABLE BY DRAG. At laptop width the board is wider
+       than the window and the last stages sit off the right edge, so without an
+       auto-scroll a card cannot be dragged to them at all. Proven by firing a
+       real dragover near the right edge and watching the board move. */
+    {
+      const wasPage=(typeof currentPage!=='undefined')?currentPage:'dashboard';
+      try{ navigateTo('pipeline'); }catch(e){}
+      await new Promise(r=>setTimeout(r,300));
+      const b=document.querySelector('.kanban');
+      if(!b){ ok('Pipeline: a card can be dragged to a stage that is off screen', false, 'no .kanban board found, this proved nothing'); }
+      else if(b.scrollWidth<=b.clientWidth){
+        ok('Pipeline: a card can be dragged to a stage that is off screen', true,
+           'board fits the window here ('+b.clientWidth+'px), nothing is off screen, so there is nothing to prove at this width');
+      } else {
+        const r=b.getBoundingClientRect(); b.scrollLeft=0;
+        /* Assert on ARMING and on movement, never on a distance in a fixed
+           time: a hidden or background tab throttles timers and would make a
+           correct implementation look broken. */
+        const ev=()=>new DragEvent('dragover',{bubbles:true,cancelable:true,clientX:Math.round(r.right-20),clientY:Math.round(r.top+40)});
+        document.dispatchEvent(ev());
+        const armed = (typeof bbDragScrollActive==='function') && bbDragScrollActive();
+        document.dispatchEvent(ev()); document.dispatchEvent(ev());
+        await new Promise(res=>setTimeout(res,120));
+        const moved=b.scrollLeft;
+        document.dispatchEvent(new DragEvent('dragend',{bubbles:true}));
+        b.scrollLeft=0;
+        ok('Pipeline: a card can be dragged to a stage that is off screen', armed && moved>0,
+           (armed?'armed at the edge and moved '+moved+'px towards the hidden stages'
+                :'the edge did not arm an auto-scroll, so '+(b.scrollWidth-b.clientWidth)+'px of board is unreachable by drag'));
+      }
+      try{ navigateTo(wasPage); }catch(e){}
+      await new Promise(r=>setTimeout(r,150));
     }
 
     /* ── E · BB APP SHELL ─────────────────────────────────────────────── */

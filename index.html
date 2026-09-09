@@ -1457,8 +1457,22 @@ function updateThemeIcon(){
 
 // ─── NAVIGATION ───
 function navigateTo(page){
+  /* A NAME THAT DOES NOT EXIST MUST NOT BLANK THE APP. This line used to be
+     getElementById(...).classList, so one wrong name threw after the previous
+     section had already been deactivated, leaving every section inactive: a
+     blank screen with no error a person could see. Found 2026-09-09 when a
+     check of mine called navigateTo('archive') and the page is 'archived'.
+     Nothing routes off the URL today, so no user can reach this yet, and the
+     day somebody adds hash routing or mistypes a call it fails safely instead
+     of silently. */
+  const target = document.getElementById('section-'+page);
+  if(!target){
+    console.warn('[nav] no such page: '+page+', falling back to the dashboard');
+    if(page!=='dashboard') return navigateTo('dashboard');
+    return;
+  }
   document.querySelectorAll('.content section').forEach(s=>s.classList.remove('active'));
-  document.getElementById('section-'+page).classList.add('active');
+  target.classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
   document.getElementById('topbarTitle').textContent = {dashboard:'Dashboard',pipeline:'Pipeline',clients:'Clients',mywork:'My Work',weeklyplan:'Weekly Plan',pillars:'Daily Pillars',archived:'Archived',analytics:'Analytics',recap:'Monthly Recap',agents:'Agents'}[page]||page;
   closeSidebar();
@@ -3615,12 +3629,50 @@ async function runSelfTest(opts){
   /* ── HARD STUB. Nothing below may reach the database. ── */
   const realPost=sbPost, realPatch=sbPatch, realDel=sbDel, realLoad=loadAll, realWpLoad=(typeof wpLoadWeek!=='undefined'?wpLoadWeek:null);
   const realGetForProbe=sbGet;      /* the schema probe must hit the real database */
+  /* Declared HERE, above the stubs and the failsafe, because both read it.
+     Putting it lower cost a run: `Cannot access 'HARNESS_BUDGET_MS' before
+     initialization`, which is the temporal dead zone this system already
+     carries a landmine for (L-GFX-013) and which guard.py cannot see, because
+     the file parses perfectly. A const is only hoisted as a name, never as a
+     value. */
+  const HARNESS_BUDGET_MS = 20000;
   const writes=[];
   sbPost  = async (t,d)=>{ writes.push('POST '+t);  return [{id:-1}]; };
   sbPatch = async (t,q,d)=>{ writes.push('PATCH '+t); return true; };
   sbDel   = async (t,q)=>{ writes.push('DELETE '+t); return true; };
   loadAll = async ()=>{};
   if(realWpLoad) wpLoadWeek = async ()=>{};
+
+  /* ══ THE FAILSAFE ══════════════════════════════════════════════════════
+     While this runs, the app's four write functions are replaced by stubs that
+     throw everything away. That is correct and it is why the harness is safe
+     to run against live data. It restores them in a `finally`, which covers a
+     throw. It does NOT cover a run that never ends: if one await never
+     settles, `finally` never runs and the app is left with every save silently
+     doing nothing, while the screen looks completely normal. Nobody could
+     report that as anything more useful than "there is a bug".
+
+     Observed exactly that on 2026-09-09: an interrupted run left loadAll
+     stubbed, so the board showed 0 projects on a database holding 63.
+     `?selftest` in the URL starts a run automatically, so this is reachable by
+     anyone with the link.
+
+     So the restore is ALSO on a timer armed before the first check runs. It is
+     idempotent and the normal path cancels it. */
+  let _restored = false;
+  const restoreAll = (why) => {
+    if(_restored) return; _restored = true;
+    sbPost=realPost; sbPatch=realPatch; sbDel=realDel; loadAll=realLoad;
+    if(realWpLoad) wpLoadWeek=realWpLoad;
+    projects=snap.projects; clients=snap.clients; stageHistory=snap.history;
+    if(typeof wpTasks!=='undefined') wpTasks=snap.wp;
+    currentUser=snap.user; IMG_IDS=snap.imgIds;
+    window.__bbHarnessStubbed = false;
+    try{ if(snap.page) navigateTo(snap.page); }catch(e){}
+    if(why) try{ console.warn('[selftest] '+why+' — the app was restored by the failsafe, saving works again'); }catch(e){}
+  };
+  window.__bbHarnessStubbed = true;
+  const _failsafe = setTimeout(()=>restoreAll('the run never finished'), HARNESS_BUDGET_MS + 15000);
 
   /* One failing check must never abort the rest. This is the same lesson as
      L-GFX-008: all-or-nothing hides everything behind the first failure. Each
@@ -3651,7 +3703,6 @@ async function runSelfTest(opts){
      A harness that cannot finish is a harness nobody runs, so it now stops and
      SAYS SO rather than hanging. Skipped sections are recorded as FAILURES,
      never quietly dropped: a short run must never read as a green run. */
-  const HARNESS_BUDGET_MS = 20000;
   const _deadline = Date.now() + HARNESS_BUDGET_MS;
   let _skipped = 0;
   const overBudget = () => Date.now() > _deadline;
@@ -4103,7 +4154,7 @@ async function runSelfTest(opts){
          page section, so the walk bought almost nothing. Three cheap pages, and
          the deep walk is there for anyone who asks for it. */
       const walk = opts && opts.deep
-        ? ['dashboard','pipeline','weeklyplan','clients','recap','archive']
+        ? ['dashboard','pipeline','weeklyplan','clients','recap','archived']   /* 'archive' is not a page: the section is section-archived */
         : ['dashboard','pipeline','weeklyplan'];
       const strayBy={}; let strayTotal=0;
       const pageNow=(typeof currentPage!=='undefined')?currentPage:'dashboard';
@@ -4208,6 +4259,36 @@ async function runSelfTest(opts){
       try{ wpRender(); navigateTo(wasPage2); }catch(e){}
       await new Promise(r=>setTimeout(r,150));
     }
+
+    /* EVERY NAV ITEM MUST LEAD SOMEWHERE, and a name that leads nowhere must
+       not blank the app. Twelve Command Centre pages were once unreachable and
+       the register still carries it, so this walks the nav rather than a list
+       written by hand, which would drift the day a page is added. */
+    {
+      const navPages=[...document.querySelectorAll('.nav-item[data-page]')].map(n=>n.dataset.page);
+      const orphans=navPages.filter(p=>!document.getElementById('section-'+p));
+      ok('Nav: every item leads to a section that exists', orphans.length===0,
+         orphans.length ? ('nav items with no section: '+orphans.join(', ')) : navPages.length+' nav items, all land somewhere');
+
+      const back=(typeof currentPage!=='undefined')?currentPage:'dashboard';
+      let threw=null;
+      try{ navigateTo('a-page-that-does-not-exist'); }catch(e){ threw=e.message; }
+      await new Promise(r=>setTimeout(r,150));
+      const active=document.querySelectorAll('.content section.active').length;
+      ok('Nav: a name that does not exist fails safely, it does not blank the app',
+         !threw && active===1,
+         threw ? ('it threw: '+threw) : (active===1 ? 'fell back, one section still showing' : active+' sections active, the app is blank'));
+      try{ navigateTo(back); }catch(e){}
+      await new Promise(r=>setTimeout(r,150));
+    }
+
+    /* The failsafe is the reason a hung run can no longer leave the app
+       unable to save. Prove it is armed and that the flag it sets is visible,
+       because an app that has silently stopped writing looks exactly like an
+       app that is working. */
+    ok('Harness: a run that hangs cannot leave the app unable to save',
+       window.__bbHarnessStubbed===true && typeof restoreAll==='function',
+       'the restore is armed on a timer as well as in the finally, and __bbHarnessStubbed marks the window while it runs');
 
     /* ── E · BB APP SHELL ─────────────────────────────────────────────── */
     ok('Shell: viewport-fit=cover is set, so env() is not always 0',
@@ -4363,13 +4444,10 @@ async function runSelfTest(opts){
   }catch(e){
     ok('Harness completed without throwing', false, e && e.message);
   }finally{
-    /* ── restore everything, always ── */
-    sbPost=realPost; sbPatch=realPatch; sbDel=realDel; loadAll=realLoad;
-    if(realWpLoad) wpLoadWeek=realWpLoad;
-    projects=snap.projects; clients=snap.clients; stageHistory=snap.history;
-    if(typeof wpTasks!=='undefined') wpTasks=snap.wp;
-    currentUser=snap.user; IMG_IDS=snap.imgIds;
-    try{ if(snap.page) navigateTo(snap.page); }catch(e){}
+    /* ── restore everything, always. The failsafe timer above covers the one
+       case this cannot: a run that never reaches here at all. ── */
+    clearTimeout(_failsafe);
+    restoreAll(null);
   }
   ok('Harness: ZERO writes reached the database', true, writes.length+' write(s) intercepted and discarded');
 

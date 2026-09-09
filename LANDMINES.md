@@ -1028,3 +1028,48 @@ lesson from 2026-08-10 (`if a whole suite reds together, read the viewport
 before the code`) and it still cost twenty minutes. **Every rect-based check now
 sits behind one explicit viewport test that FAILS OUT LOUD and skips, rather
 than inventing failures.**
+
+## L-GFX-036 · a hung self-test left the app unable to save anything · FIXED 2026-09-09
+While `runSelfTest()` runs it replaces `sbPost`, `sbPatch`, `sbDel` and
+`loadAll` with stubs that discard everything. That is correct and it is the
+whole reason the harness is safe to run against live data. It restored them in
+a `finally`, which covers a throw.
+
+**It did not cover a run that never ends.** If one await never settles,
+`finally` never runs, and the app is left with every save silently doing
+nothing while the screen looks completely normal. Nobody could report that as
+anything more useful than "there is a bug".
+
+**Observed, not theorised, 2026-09-09.** An interrupted run left `loadAll`
+stubbed: it returned in 0ms and the board showed 0 projects against a database
+holding 63, with no error anywhere. `?selftest` in the URL starts a run
+automatically, so this is reachable by anyone holding that link.
+
+**Fix:** the restore is idempotent and armed on a TIMER before the first check
+runs, as well as in the `finally` which cancels it. `window.__bbHarnessStubbed`
+marks the window while a run is in flight, so the state is visible instead of
+invisible. A check asserts both.
+
+**A second fault while fixing it, worth more than the fix.** The failsafe read
+`HARNESS_BUDGET_MS` above the line that declares it: `Cannot access
+'HARNESS_BUDGET_MS' before initialization`. That is the temporal dead zone this
+register already carries as L-GFX-013, and **guard.py cannot see it, because
+the file parses perfectly.** A `const` is hoisted as a name, never as a value.
+Declare anything the stubs or the failsafe read at the very top of the function.
+
+## L-GFX-037 · navigateTo blanked the app on a name that does not exist · FIXED 2026-09-09
+`document.getElementById('section-'+page).classList.add('active')` ran AFTER
+every section had been deactivated, so an unknown page threw and left the app
+with no active section: a blank screen and no error a person could see. Found
+when a check of mine called `navigateTo('archive')` and the page is `archived`.
+
+Nothing routes off the URL today, so no user can reach it yet. It is fixed
+anyway because the day somebody adds hash routing or mistypes a call, a blank
+screen is the worst possible way to find out. It now falls back to the
+dashboard and says so in the console.
+
+**The check that came out of it is the valuable part:** it walks the nav
+itself, so every item is proven to lead to a section that exists, and it
+deliberately navigates to a name that does not exist and asserts the app still
+shows exactly one section. **My own harness had been walking 'archive' for two
+days, a page that does not exist, and silently proving nothing there.**

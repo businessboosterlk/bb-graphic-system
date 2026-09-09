@@ -1073,3 +1073,56 @@ itself, so every item is proven to lead to a section that exists, and it
 deliberately navigates to a name that does not exist and asserts the app still
 shows exactly one section. **My own harness had been walking 'archive' for two
 days, a page that does not exist, and silently proving nothing there.**
+
+## L-GFX-038 · the daily harness row was rejected, silently, for the third time in this class · FIXED 2026-09-09
+The Bug Catcher asks every app to write one row a day to `bb_harness_runs`. The
+first version of that writer sent `failed_names` as a joined STRING. The column
+is `text[]`. PostgREST rejected the whole insert, and because the once-a-day
+marker was written BEFORE the run, it would never have retried: the app would
+have looked like it was reporting and written nothing, for ever. Caught only
+because the row count was read back and it was zero.
+
+**This is the THIRD time this estate has silently written the wrong SHAPE to a
+real table.** L-GFX-026 wrote `{who,date,item,done}` to a table with no such
+columns for eleven weeks. L-PUSH-001 omitted a NOT NULL column and the meals
+alert never sent once. Every one of them looked healthy from the app.
+
+**Three blocks, because the class keeps coming back.**
+1. The row is built by one function, `__bbHarnessRowFor`, and a check asserts
+   its SHAPE: `failed_names` an array, the three counts numbers. It proves the
+   payload without sending one.
+2. The write CHECKS ITS RESPONSE. A rejected insert clears the day marker so
+   the next load retries, and reports itself through the sentinel, because
+   anything that runs on its own must shout when it fails.
+3. The schema probe still only proves a column EXISTS, never its TYPE.
+   PostgREST's OpenAPI definitions come back empty on this project, so there is
+   no read-only way to check types from the browser today. **That gap is open
+   and named here rather than assumed away.**
+
+## L-GFX-039 · "Script error." in THIS app can never be ours · CLOSED 2026-09-09
+`system_bug_log` row 88, 4 September, live URL, anon user on an iPhone.
+
+**Evidence, not inference: this app loads ZERO external scripts.** A search for
+a script tag with a src attribute returns nothing, and the browser only hides a
+message, file and line behind the two words "Script error." when the failure
+happened inside a script from another origin. So it came from a browser
+extension or an injected script on that person's device, and nothing in this
+repo can fix it.
+
+The reporter now drops that exact message when the app has no external script,
+and says so in the console. Row 88 resolved with this evidence.
+
+**Do not copy this rule blindly to the other apps.** SMM, Video, Dev and Leads
+each load one external script, so for them "Script error." is a real signal
+with the detail stripped, and the fix there is `crossorigin="anonymous"` on
+that tag, not a filter.
+
+## L-GFX-040 · the reporter logged weather as though it were a fault · FIXED 2026-09-09
+Two things it did that cost the triage a rule each. A dropped connection
+deduped on category PLUS TABLE, so one tunnel logged once per table and read as
+a five-table storm. And a developer's localhost preview logged as a live fault:
+two of the eight open rows in the estate on 9 September were localhost URLs.
+
+Network failures now collapse to ONE row per app per ten minutes, keyed on the
+app and the category only, never the table. Previews are never sent at all,
+with a console line instead so the person testing still sees it.

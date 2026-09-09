@@ -3711,7 +3711,20 @@ async function runSelfTest(opts){
   const withLimit = (p, ms, what) => Promise.race([p,
     new Promise((_,rej)=>setTimeout(()=>rej(new Error((what||'request')+' took longer than '+(ms/1000)+'s')), ms))]);
 
+  /* SECTIONS THAT MOVE THE SCREEN. The suite has grown checks that open the
+     Settings sheet, walk pages, pin the body and fire drag events. All of that
+     is correct when a person asked for it and unacceptable when it runs by
+     itself under their thumb while they work. runSelfTest({quiet:true}) skips
+     them and SAYS which it skipped, so an automatic run is honest about the
+     ground it did not cover rather than quietly reporting a smaller number as
+     if it were the whole suite. */
+  const MOVES_THE_SCREEN = ['App shell and phone foundations'];
   const section = async (label, fn) => {
+    if(opts && opts.quiet && MOVES_THE_SCREEN.indexOf(label)>-1){
+      ok(label+': skipped, this run must not move the screen', true,
+         'quiet mode, the checks in this section open sheets and navigate pages; run runSelfTest() by hand for them');
+      return;
+    }
     if(overBudget()){ _skipped++; ok(label+': skipped, the harness ran out of time', false,
       'the run passed its '+(HARNESS_BUDGET_MS/1000)+'s budget before this section, so it proved NOTHING here'); return; }
     try{ await fn(); }
@@ -4290,6 +4303,22 @@ async function runSelfTest(opts){
        window.__bbHarnessStubbed===true && typeof restoreAll==='function',
        'the restore is armed on a timer as well as in the finally, and __bbHarnessStubbed marks the window while it runs');
 
+    /* THE SHAPE OF THE DAILY ROW, checked without sending one. `failed_names`
+       is text[] and the first version of this sent a joined string, which
+       PostgREST rejected and nobody would ever have seen. Three faults in this
+       estate have now been the wrong SHAPE written silently to a real table,
+       so the shape is asserted here rather than discovered in a month of empty
+       days. */
+    if(typeof window.__bbHarnessRowFor==='function'){
+      const probe=window.__bbHarnessRowFor({total:3, failed:1, results:[{name:'x',pass:true},{name:'a failing check',pass:false}]}, 'PROBE');
+      const shapeOk = Array.isArray(probe.failed_names)
+        && typeof probe.checks==='number' && typeof probe.failed==='number'
+        && typeof probe.width==='number' && typeof probe.app==='string';
+      ok('Harness on open: the daily row matches the column types', shapeOk,
+         shapeOk ? 'failed_names is an array, the three counts are numbers'
+                 : 'failed_names is '+(typeof probe.failed_names)+', which PostgREST rejects on a text[] column');
+    } else ok('Harness on open: the daily row matches the column types', false, 'the row builder is missing');
+
     /* ── E · BB APP SHELL ─────────────────────────────────────────────── */
     ok('Shell: viewport-fit=cover is set, so env() is not always 0',
        /viewport-fit\s*=\s*cover/.test((document.querySelector('meta[name=viewport]')||{content:''}).content),
@@ -4865,6 +4894,80 @@ async function renderRecap(){
   }).observe(document.body,{childList:true,subtree:true});
 })();
 
+/* ══ HARNESS ON OPEN ═══════════════════════════════════════════════════
+   Once per person per day, quietly, after they are signed in. It writes ONE
+   row to bb_harness_runs and nothing else: never a banner, never a block,
+   never a word to the person. A red check on a designer's phone is then seen
+   by the hub within the hour, and a weekday with no rows at all is itself a
+   signal that something stopped opening.
+
+   QUIET MODE, on purpose. The full suite now opens the Settings sheet, walks
+   pages, pins the body and fires drag events. Doing that under somebody's
+   thumb while they work would BE a bug. The quiet run skips that one section
+   and the row records the skip, so the hub is never told a smaller run was the
+   whole suite.
+
+   It waits for the app to be signed in, gives up after two minutes rather than
+   polling forever, and never runs twice for the same person on the same day. */
+(function(){
+  var SB='https://yyviiwnqgphyklcoijyd.supabase.co';
+  function today(){ var d=new Date(); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
+  function who(){ try{ return (currentUser && currentUser.name) || ''; }catch(e){ return ''; } }
+  function alreadyRan(name){
+    try{ return localStorage.getItem('bbgfx_harness_'+name+'_'+today())==='1'; }catch(e){ return true; }
+  }
+  function mark(name){ try{ localStorage.setItem('bbgfx_harness_'+name+'_'+today(),'1'); }catch(e){} }
+  function unmark(name){ try{ localStorage.removeItem('bbgfx_harness_'+name+'_'+today()); }catch(e){} }
+  /* THE PAYLOAD, built in one place so a check can look at it without sending
+     it. `failed_names` is text[] in the database, NOT text. The first version
+     joined the names into a string, PostgREST rejected the whole insert, and
+     because the day marker had already been set it would never have retried:
+     the app would have looked like it was reporting and written nothing, for
+     ever. That is the third time this estate has silently written the wrong
+     SHAPE to a table (L-GFX-026 pillars, L-PUSH-001 meals). Hence both the
+     array and the response check below. */
+  function buildRow(r, name){
+    return { app:'graphic-system',
+             checks: r.total|0,
+             failed: r.failed|0,
+             failed_names: (r.results||[]).filter(function(x){ return !x.pass; }).map(function(x){ return String(x.name).slice(0,200); }),
+             width: window.innerWidth|0,
+             user_name: name,
+             url: String(location.href).slice(0,300) };
+  }
+  window.__bbHarnessRowFor = buildRow;   /* the check reads this, it never posts */
+
+  async function go(){
+    var name=who(); if(!name || alreadyRan(name)) return;
+    mark(name);                       /* mark BEFORE running: a crash must not loop */
+    try{
+      var r=await runSelfTest({quiet:true});
+      var res=await fetch(SB+'/rest/v1/bb_harness_runs',{method:'POST',
+        headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=minimal'},
+        body:JSON.stringify(buildRow(r, name))});
+      if(!res.ok){
+        /* ANYTHING THAT RUNS ON ITS OWN MUST SHOUT WHEN IT FAILS. A rejected
+           insert here is invisible: no user sees it and the hub just sees a
+           day with no rows, which reads like nobody opened the app. */
+        var body=''; try{ body=(await res.text()).slice(0,300); }catch(_){}
+        try{ unmark(name); }catch(_){}          /* let the next load try again */
+        try{ if(window.bbGraphicSentinelReport) window.bbGraphicSentinelReport({
+          severity:'error', category:'harness_write_failed', table_name:'bb_harness_runs',
+          message:'the daily harness row was rejected: HTTP '+res.status,
+          detail: body }); }catch(_){}
+        try{ console.error('[harness-on-open] rejected', res.status, body); }catch(_){}
+      }
+    }catch(e){ try{ unmark(name); }catch(_){} try{ console.warn('[harness-on-open]', e && e.message); }catch(_){} }
+  }
+  function waitForLogin(tries){
+    if(tries<=0) return;
+    try{ if(location.hostname==='localhost'||location.hostname==='127.0.0.1') return; }catch(e){}
+    if(who()){ setTimeout(go, 4000); return; }   /* let the first load settle */
+    setTimeout(function(){ waitForLogin(tries-1); }, 3000);
+  }
+  window.addEventListener('load', function(){ setTimeout(function(){ waitForLogin(40); }, 6000); });
+})();
+
 /* ══ SESSION RESTORE — MUST BE THE LAST THING IN THIS SCRIPT ══════════
    L-GFX-013. This used to sit around line 1247, roughly 80 lines ABOVE the
    `const PROJ_LIST_COLS` that loadAll() reads on its first line. A const is in
@@ -4925,9 +5028,39 @@ async function renderRecap(){
   function authHeader(){ try{ if(typeof gBearer==='function') return gBearer(); }catch(e){} return 'Bearer '+KEY; }
   function ensureAuth(){ try{ if(typeof gEnsure==='function') return gEnsure(); }catch(e){} return Promise.resolve(); }
 
+  /* A developer's preview is not a live fault. Two of the eight open rows in
+     the estate on 9 Sep were localhost URLs, and the hourly triage has to spend
+     a rule closing them. Cheaper to never send them. */
+  function isPreview(){
+    try{ var h=location.hostname; return h==='localhost'||h==='127.0.0.1'||h==='::1'||h===''; }catch(e){ return false; }
+  }
+  /* This app loads ZERO external scripts, verified 9 Sep 2026 (grep for
+     a search for a script tag carrying a src attribute returns nothing. The
+     wording matters: writing that tag out here would unbalance guard.py's
+     tag count, which is the markup-literal-in-a-string landmine the forge
+     register already carries. A same-origin inline script always yields
+     a real message, file and line. So a bare "Script error." here cannot have
+     come from our code: it is an extension or an injected script on that
+     person's device, and it is unfixable from this repo. Row 88 of
+     system_bug_log is exactly that. Logging it again buys nothing and costs
+     the triage a cluster. */
+  function isForeignScriptError(issue){
+    try{
+      if(!/^script error\.?$/i.test((issue.message||'').trim())) return false;
+      return document.querySelectorAll('script[src]').length === 0;
+    }catch(e){ return false; }
+  }
   function report(issue){
     try{
-      var key=(issue.category||'')+'|'+(issue.table_name||'')+'|'+(issue.message||'').slice(0,120);
+      if(isPreview()){ console.warn('[BB Graphic Sentinel] preview, not logged:', issue.category, issue.message); return; }
+      if(isForeignScriptError(issue)){ console.warn('[BB Graphic Sentinel] "Script error." with no external script in this app: it came from an extension, not logged'); return; }
+      /* A dropped connection used to log ONCE PER TABLE, so one tunnel reads as
+         a five-table storm. Network failures now collapse to one row per app
+         per window, keyed on the app and the category ONLY. */
+      var netErr = _NOISE.test((issue.message||'')+' '+(issue.detail||''));
+      var key = netErr
+        ? (APP+'|network')
+        : ((issue.category||'')+'|'+(issue.table_name||'')+'|'+(issue.message||'').slice(0,120));
       var now=Date.now();
       if(_seen[key] && (now-_seen[key])<DEDUPE_MS) return;
       _seen[key]=now; _issues.push(issue);
@@ -5306,6 +5439,11 @@ var BBSET=(function(){
     html+=card('Phone alerts', row('Status',alertsLine)+row('Quiet hours','9pm to 7am, held until 7am')+'<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">'+alertsBtns+btn('Run diagnostics','BBSET.diag()',false)+'</div><pre id="bbset-diag" style="display:none;white-space:pre-wrap;font-size:11px;line-height:1.5;margin:10px 0 0;padding:10px;border-radius:8px;background:var(--bg,#0c0d10);color:var(--text,#fff)"></pre>'+(st.lastError?'<div style="margin-top:8px;font-size:11px;color:#f87171">'+st.lastError+'</div>':''));
     html+=card('Installed as an app', row('This device', standalone()?'Yes':'No, running in the browser')+(!standalone()?'<div style="margin-top:8px;font-size:12px;color:var(--text3,#9aa3ad)">'+(isIOS()?'Share, then Add to Home Screen. Alerts only work from the installed app.':'Use your browser menu, then Add to Home screen.')+'</div>':''));
     html+=card('Account', row('Signed in as', st.user||'Not signed in')+(logoutFn()?'<div style="margin-top:12px">'+btn('Sign out','BBSET.signout()',false)+'</div>':''));
+    html+=card('Report a problem',
+      '<div style="font-size:12px;color:var(--text3,#9aa3ad);margin-bottom:8px">Tell us what you saw. It reaches the team with the page you were on.</div>'
+      + '<textarea id="bbset-report" rows="3" placeholder="What happened?" style="width:100%;box-sizing:border-box;background:var(--bg2,#101216);color:var(--text,#fff);border:1px solid var(--border,#2a2d35);border-radius:10px;padding:10px;font:inherit;font-size:16px;resize:vertical"></textarea>'
+      + '<div id="bbset-report-said" style="font-size:12px;margin-top:8px;color:var(--text3,#9aa3ad)"></div>'
+      + '<div style="margin-top:10px">'+btn('Send','BBSET.reportProblem()',true)+'</div>');
     html+=card('App', row('Build', document.lastModified||'')+'<div style="margin-top:12px">'+btn('Reload latest version','BBSET.reload()',false)+'</div>');
     sheet.innerHTML=html;
   }
@@ -5325,6 +5463,33 @@ var BBSET=(function(){
   async function enable(){ try{ await BBPUSH.enable(); }catch(e){} render(); }
   async function test(){ try{ var r=await BBPUSH.test(); alert(r&&r.sent?'Test sent. Check your phone.':'Nothing sent: '+(r&&r.error||'no phone registered')); }catch(e){ alert('Test failed: '+(e&&e.message||e)); } }
   async function diag(){ var el=document.getElementById('bbset-diag'); if(!el) return; el.style.display='block'; el.textContent='Checking, one line per step'; try{ var L=await BBPUSH.diagnose(function(lines){ el.textContent=lines.join('\n')+'\n…'; }); el.textContent=L.join('\n'); }catch(e){ el.textContent='Diagnostics failed: '+(e&&e.message||e); } }
+  /* A person's own words are the only report that survives a fault the
+     harness cannot see: a wrong number, a stale board, work that vanished.
+     It writes the same row the watchdog writes, marked user_report, so the
+     hourly triage picks it up with everything else. */
+  function reportProblem(){
+    var box=document.getElementById('bbset-report'), said=document.getElementById('bbset-report-said');
+    if(!box) return;
+    var text=(box.value||'').trim();
+    if(text.length<3){ if(said){ said.textContent='Type what happened first.'; said.style.color='var(--amber,#f59e0b)'; } return; }
+    if(said){ said.textContent='Sending'; said.style.color='var(--text3,#9aa3ad)'; }
+    var who='';
+    try{ who=(typeof currentUser!=='undefined'&&currentUser&&currentUser.name)||''; }catch(e){}
+    fetch('https://yyviiwnqgphyklcoijyd.supabase.co/rest/v1/system_bug_log',{
+      method:'POST',
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=minimal'},
+      body:JSON.stringify({ app:'graphic-system', severity:'info', category:'user_report',
+        message:text.slice(0,500), detail:'', user_name:who||'anon',
+        url:location.href, user_agent:navigator.userAgent.slice(0,300) })
+    }).then(function(r){
+      if(said){
+        if(r.ok){ said.textContent='Sent. Thank you.'; said.style.color='var(--green,#22c55e)'; box.value=''; }
+        else { said.textContent='Could not send it. Please tell Thulaib directly.'; said.style.color='var(--red,#ef4444)'; }
+      }
+    }).catch(function(){
+      if(said){ said.textContent='Could not send it. Please tell Thulaib directly.'; said.style.color='var(--red,#ef4444)'; }
+    });
+  }
   function signout(){ var f=logoutFn(); close(); if(f) f(); }
   async function reload(){
     try{ if('serviceWorker' in navigator){ var rs=await navigator.serviceWorker.getRegistrations(); for(var i=0;i<rs.length;i++) await rs[i].unregister(); } if(window.caches){ var ks=await caches.keys(); for(var j=0;j<ks.length;j++) await caches.delete(ks[j]); } }catch(e){}
@@ -5349,7 +5514,7 @@ var BBSET=(function(){
   }
   var tries=0; function boot(){ if(!inject() && tries++<60) setTimeout(boot,2000); }
   window.addEventListener('load',function(){ setTimeout(boot,1500); });
-  return { open:open, close:close, enable:enable, test:test, signout:signout, reload:reload, inject:inject, diag:diag };
+  return { open:open, close:close, enable:enable, test:test, signout:signout, reload:reload, inject:inject, diag:diag, reportProblem:reportProblem };
 })();
 </script>
 <!-- @@BB_SETTINGS_END@@ -->

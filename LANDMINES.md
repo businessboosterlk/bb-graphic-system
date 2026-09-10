@@ -1110,7 +1110,29 @@ a scroll container at all. Rebuilt the pre-fix file and watched both go red
 naming `content [overflow-y auto, overscroll contain]`, then watched both go
 green on the fix. 94 checks.
 
-**Estate warning:** the same `overscroll-behavior:contain` sheet list was cast
-into the other systems from the same app-foundations block. Any app whose page
-body is in that list has this fault today. Check each for a full-screen element
-that is both a scroll port and contained.
+**TWO MORE OF THE SAME, found the moment the first fix went live and the new
+sweep ran on a different page.**
+
+`.wp-grid-wrap` on the Weekly Plan asks only for `overflow-x:auto`, to let the
+seven-day grid scroll sideways. **CSS will not let one axis scroll while the
+other stays visible: set `overflow-x` and `overflow-y` computes to `auto` along
+with it.** So the wrapper silently became a vertical scroll container too, and
+the containment then stopped a finger inside the grid scrolling the page. On
+the page the graphic head uses most. Fixed by containing the axis that actually
+scrolls, `overscroll-behavior-x:contain` with `-y:auto`, which keeps the
+sideways swipe from triggering the browser back gesture and lets a vertical
+touch chain to the page.
+
+`.kanban-cards` came out too. It is a real vertical scroller in a desktop
+column and on a phone `max-height:none` means it never scrolls at all.
+Chaining at the end of a column is what a person expects in both cases.
+Containment is for a sheet sitting OVER the page, which a column is not.
+
+**And the check that found the first one nearly missed these two**, because it
+swept whichever page the harness happened to be on. It now walks four pages.
+**A trap that lives on one screen is invisible to a check that only visits
+another**, which this register has now learned three separate times.
+
+**Estate: checked, and Graphic was the only one.** The other four apps keep
+sheets in that list (`.modal`, `.modal-bg`, `.detail-panel`, drawers), not a
+page-level container. Verified 2026-09-10 by reading each app's contain list.

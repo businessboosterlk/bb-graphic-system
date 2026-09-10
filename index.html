@@ -4314,12 +4314,37 @@ async function runSelfTest(opts){
       ok('Scroll: nothing full-screen both scrolls itself and blocks the page',
          trapped.length===0,
          trapped.length ? ('a finger inside these moves nothing: '+trapped.join(' ; '))
-                        : 'checked every visible element, the window owns the page scroll');
+                        : 'checked every visible element on this page, the window owns the scroll');
 
       const c=document.querySelector('.content');
       ok('Scroll: the page body is not a scroll container of its own',
          !!c && !/(auto|scroll)/.test(getComputedStyle(c).overflowY),
          c ? ('.content overflow-y is '+getComputedStyle(c).overflowY) : 'no .content found, this proved nothing');
+
+      /* WALK THE PAGES. The first version of the sweep above ran on whichever
+         page the harness happened to be on, and `.wp-grid-wrap` on the Weekly
+         Plan survived the first fix because of exactly that. A trap that lives
+         on one screen is invisible to a check that only visits another. */
+      const trapPages={};
+      const wasOn=(typeof currentPage!=='undefined')?currentPage:'dashboard';
+      for(const pg of ['dashboard','pipeline','weeklyplan','clients']){
+        try{ navigateTo(pg); }catch(e){ continue; }
+        await new Promise(r=>setTimeout(r,220));
+        const t=[...document.querySelectorAll('body *')].filter(e=>{
+          const cs2=getComputedStyle(e);
+          if(cs2.display==='none'||cs2.visibility==='hidden') return false;
+          if(!/(auto|scroll)/.test(cs2.overflowY)) return false;
+          if(!/contain|none/.test(cs2.overscrollBehaviorY)) return false;
+          if(e.closest('.modal-overlay, .gd-wrap, #bbset-sheet, #bbset-back')) return false;
+          const r=e.getBoundingClientRect();
+          return r.width>=innerWidth*0.8 && r.height>=innerHeight*0.4;
+        }).map(e=>(e.id||e.className||e.tagName));
+        if(t.length) trapPages[pg]=t;
+      }
+      try{ navigateTo(wasOn); }catch(e){}
+      await new Promise(r=>setTimeout(r,180));
+      ok('Scroll: no page hides a finger trap of its own', Object.keys(trapPages).length===0,
+         Object.keys(trapPages).length ? JSON.stringify(trapPages) : '4 pages walked, none traps a touch');
     }
 
     /* ── E · BB APP SHELL ─────────────────────────────────────────────── */
@@ -5122,8 +5147,31 @@ button,label,.nav-item,.btn,.k-advance,.wp-item-box,.wp-item-next,.gd-next,.gd-b
       window.scrollTo(), which sets the scroll position directly and never goes
       near touch scroll chaining. The fault only exists under a finger.
       L-GFX-041. */
-.modal,.modal-overlay,.gd-wrap,.gd-body,.wp-grid-wrap,.kanban-cards{
+.modal,.modal-overlay,.gd-wrap,.gd-body{
  overscroll-behavior:contain}
+
+/* `.wp-grid-wrap` and `.kanban-cards` CAME OUT OF THAT LIST 2026-09-10, for the
+   same reason `.content` did, found the moment the first fix went live and the
+   new check swept the Weekly Plan.
+
+   `.wp-grid-wrap` asks only for `overflow-x:auto`, to let the seven-day grid
+   scroll sideways. But CSS will not let one axis scroll while the other stays
+   visible: set overflow-x and overflow-y computes to auto with it. So the
+   wrapper silently became a VERTICAL scroll container as well, and
+   `overscroll-behavior:contain` then stopped a finger inside the grid from
+   scrolling the page. Same trap as L-GFX-041, on the page the graphic head
+   uses most.
+
+   The horizontal containment is still wanted: without it a sideways swipe at
+   the end of the grid can trigger the browser's back gesture. So contain the
+   axis that actually scrolls and leave the other free to chain. */
+.wp-grid-wrap{overscroll-behavior-x:contain;overscroll-behavior-y:auto}
+
+/* `.kanban-cards` is a real vertical scroller on a desktop column and, on a
+   phone, `max-height:none` means it never scrolls at all. Chaining to the page
+   at the end of a column is the behaviour a person expects in both cases.
+   Containment is for a sheet sitting OVER the page, which this is not. */
+.kanban-cards{overscroll-behavior:auto}
 
 /* 4 · SAFE AREA. Read from the device, never detected. Every element that
       touches the top or bottom edge uses the variables. */

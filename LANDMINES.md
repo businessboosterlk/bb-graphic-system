@@ -1073,3 +1073,44 @@ itself, so every item is proven to lead to a section that exists, and it
 deliberately navigates to a name that does not exist and asserts the app still
 shows exactly one section. **My own harness had been walking 'archive' for two
 days, a page that does not exist, and silently proving nothing there.**
+
+## L-GFX-041 · the page body swallowed the finger, reported three times · FIXED 2026-09-10
+Farhath said three times that he could not scroll up or down on his phone. Two
+earlier passes could not reproduce it and shipped defensive fixes that were not
+the cause: a freeze watchdog (L-GFX-031) and the Settings sheet joining the
+overlay layer (L-GFX-032). Both were real faults. Neither was this one.
+
+**The cause, in two lines of CSS that were never meant to meet.**
+`.content` is the whole page body: `flex:1; padding:24px; overflow-y:auto`. The
+`overflow-y:auto` makes it a scroll container. And `.content` had been added to
+the sheet list carrying `overscroll-behavior:contain`, whose entire job is to
+stop a scroll inside a sheet reaching the page behind it.
+
+Together they mean a finger landing anywhere on the page content drags a box
+that has nothing to scroll, and the containment stops that touch reaching the
+window. Nothing moves. A finger on the topbar, which is outside `.content`,
+works fine, which is why it reads as intermittent to the person using it.
+
+**Why three rounds of green checks missed it, which is the real lesson.**
+Every scroll check in this harness used `window.scrollTo()`. That sets the
+scroll position directly and never goes near touch scroll chaining, so it
+reports a perfectly healthy page on a build where no thumb can move anything.
+**A check that exercises a different mechanism from the user is not a weaker
+check, it is a different check, and it will pass forever on a broken app.**
+
+**Fix:** `.content` comes out of the sheet list (it is not a sheet, it is the
+page) and gets `overflow:visible`, so the window is the only scroller. Desktop
+is untouched: `.main` is `min-height`, never a fixed height, so nothing needed
+the inner scroller there either.
+
+**The block, and it is proven.** Two checks read the STATE that makes the trap
+possible rather than trying to simulate a thumb: no full-screen element may be
+both a scroll container and overscroll-contained, and the page body may not be
+a scroll container at all. Rebuilt the pre-fix file and watched both go red
+naming `content [overflow-y auto, overscroll contain]`, then watched both go
+green on the fix. 94 checks.
+
+**Estate warning:** the same `overscroll-behavior:contain` sheet list was cast
+into the other systems from the same app-foundations block. Any app whose page
+body is in that list has this fault today. Check each for a full-screen element
+that is both a scroll port and contained.

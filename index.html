@@ -4290,6 +4290,38 @@ async function runSelfTest(opts){
        window.__bbHarnessStubbed===true && typeof restoreAll==='function',
        'the restore is armed on a timer as well as in the finally, and __bbHarnessStubbed marks the window while it runs');
 
+    /* TWO SCROLLERS IS A TRAP UNDER A FINGER, AND ONLY UNDER A FINGER.
+       An element that fills the screen, scrolls itself AND is
+       overscroll-contained will swallow a touch: the finger drags the inner
+       box, which is already at its end, and the page behind never moves.
+       window.scrollTo() sets the position directly and sails straight past
+       this, which is exactly why three rounds of checks called it healthy
+       while Farhath could not scroll. So the check reads the STATE that makes
+       it possible rather than trying to simulate a thumb. L-GFX-041. */
+    {
+      const trapped=[];
+      document.querySelectorAll('body *').forEach(e=>{
+        const cs=getComputedStyle(e);
+        if(cs.display==='none'||cs.visibility==='hidden') return;
+        const port=/(auto|scroll)/.test(cs.overflowY);
+        const contained=/contain|none/.test(cs.overscrollBehaviorY);
+        if(!port||!contained) return;
+        const r=e.getBoundingClientRect();
+        if(r.width < innerWidth*0.8 || r.height < innerHeight*0.5) return;   /* sheets are allowed, they are the point */
+        if(e.closest('.modal-overlay, .gd-wrap, #bbset-sheet, #bbset-back')) return;
+        trapped.push((e.id||e.className||e.tagName)+' [overflow-y '+cs.overflowY+', overscroll '+cs.overscrollBehaviorY+']');
+      });
+      ok('Scroll: nothing full-screen both scrolls itself and blocks the page',
+         trapped.length===0,
+         trapped.length ? ('a finger inside these moves nothing: '+trapped.join(' ; '))
+                        : 'checked every visible element, the window owns the page scroll');
+
+      const c=document.querySelector('.content');
+      ok('Scroll: the page body is not a scroll container of its own',
+         !!c && !/(auto|scroll)/.test(getComputedStyle(c).overflowY),
+         c ? ('.content overflow-y is '+getComputedStyle(c).overflowY) : 'no .content found, this proved nothing');
+    }
+
     /* ── E · BB APP SHELL ─────────────────────────────────────────────── */
     ok('Shell: viewport-fit=cover is set, so env() is not always 0',
        /viewport-fit\s*=\s*cover/.test((document.querySelector('meta[name=viewport]')||{content:''}).content),
@@ -5078,8 +5110,19 @@ button,label,.nav-item,.btn,.k-advance,.wp-item-box,.wp-item-next,.gd-next,.gd-b
  input,select,textarea,.login-input-big{font-size:16px!important}
 }
 
-/* 3 · A sheet must not chain its scroll into the page behind it. */
-.modal,.modal-overlay,.gd-wrap,.gd-body,.wp-grid-wrap,.kanban-cards,.content{
+/* 3 · A sheet must not chain its scroll into the page behind it.
+      `.content` WAS IN THIS LIST AND IS NOT A SHEET. It is the whole page body.
+      Carrying both `overflow-y:auto` (which makes it a scroll container) and
+      `overscroll-behavior:contain` (which stops a scroll inside it reaching the
+      page) meant a finger landing anywhere on the content could move nothing at
+      all, while a finger on the topbar worked. That is "you cannot scroll up
+      and down", reported three times.
+
+      Why three rounds of testing missed it: every check scrolled with
+      window.scrollTo(), which sets the scroll position directly and never goes
+      near touch scroll chaining. The fault only exists under a finger.
+      L-GFX-041. */
+.modal,.modal-overlay,.gd-wrap,.gd-body,.wp-grid-wrap,.kanban-cards{
  overscroll-behavior:contain}
 
 /* 4 · SAFE AREA. Read from the device, never detected. Every element that
@@ -5116,6 +5159,15 @@ body.sheet-open{position:fixed;left:0;right:0;width:100%}
       `clip` clips without creating a scroll container, which is the documented
       fix in bb-app-shell and the reason the identical rule works elsewhere. */
 .main{overflow:visible;overflow-x:clip}
+
+/* 9 · ONE SCROLLER, NOT TWO. `.content` is `flex:1; overflow-y:auto`, so it is
+      a scroll container sitting inside a page that also scrolls. Two nested
+      scrollers is how a finger ends up moving the inner one, which is already
+      at its end, while the page stays still. The window owns the scroll on a
+      phone and `.content` simply grows. Desktop is untouched: `.main` is
+      min-height, never a fixed height, so nothing needed the inner scroller
+      there either. */
+.content{overflow:visible}
 
 /* 7 · TAP TARGETS ON THE WEEKLY GRID. The tick box is drawn 17px so the grid
       stays dense, which is right under a mouse and a miss waiting to happen

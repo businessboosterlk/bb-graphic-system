@@ -300,6 +300,13 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .filter-bar input[type="text"]{min-width:180px;flex:0 1 220px}
 .filter-bar select{min-width:120px}
 .bulk-table{width:100%;border-collapse:collapse;font-size:0.82rem}
+.bulk-shared{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:4px 0 6px}
+.bulk-shared-field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.bulk-shared-field label{font-size:0.7rem;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:0.06em}
+.bulk-shared-field select,.bulk-shared-field input{width:100%;height:36px;font-size:0.84rem;background:var(--surface-2);
+  border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);padding:0 10px}
+.bulk-shared-note{font-size:0.72rem;color:var(--text-3);margin:0 0 12px}
+@media(max-width:700px){.bulk-shared{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .bulk-table th{text-align:left;padding:6px 8px;font-size:0.72rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;border-bottom:1px solid var(--border)}
 .bulk-table td{padding:4px 4px}
 .bulk-table input,.bulk-table select{width:100%;height:32px;font-size:0.8rem;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);padding:0 6px}
@@ -1068,16 +1075,28 @@ tr:hover td{background:var(--surface-2)}
       <button class="modal-close" onclick="closeModal('modalBulkPipeline')">&times;</button>
     </div>
     <div class="modal-body">
-      <p style="color:var(--text-2);font-size:0.82rem;margin-bottom:12px">Add multiple posts at once. Every row needs a title and a client. Fill each row and click Save All.</p>
+      <p style="color:var(--text-2);font-size:0.82rem;margin-bottom:12px">Add several posts for one client at once. Set the client, type, designer and deadline once, then add a row for each image.</p>
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
         <label style="font-size:0.78rem;color:var(--text-2);font-weight:600">Target month *</label>
         <select id="bkMonth"><option value="1">January</option><option value="2">February</option><option value="3">March</option><option value="4">April</option><option value="5">May</option><option value="6">June</option><option value="7">July</option><option value="8">August</option><option value="9">September</option><option value="10">October</option><option value="11">November</option><option value="12">December</option></select>
         <select id="bkYear"></select>
         <span style="font-size:0.72rem;color:var(--text-3)">applies to every row below</span>
       </div>
+      <!-- SET ONCE, FOR THE WHOLE BATCH. Farhath's point, 2026-09-14: a bulk add is
+           one client's set of posts for one designer by one deadline, and the only
+           thing that changes row to row is the image. Choosing the same four values
+           on every row was twenty dropdowns to fill three posts, and the one row
+           somebody forgot is the one that went in with no client. -->
+      <div class="bulk-shared">
+        <div class="bulk-shared-field"><label for="bkClient">Client *</label><select id="bkClient"><option value="">Choose a client</option></select></div>
+        <div class="bulk-shared-field"><label for="bkType">Type</label><select id="bkType"><option value="post">Post</option><option value="story">Story</option><option value="reel_cover">Reel Cover</option><option value="carousel">Carousel</option><option value="logo">Logo</option><option value="banner">Banner</option><option value="flyer">Flyer</option><option value="brochure">Brochure</option><option value="other">Other</option></select></div>
+        <div class="bulk-shared-field"><label for="bkDesigner">Designer</label><select id="bkDesigner" data-designers="Not assigned yet"></select></div>
+        <div class="bulk-shared-field"><label for="bkDeadline">Deadline</label><input type="date" id="bkDeadline"></div>
+      </div>
+      <div class="bulk-shared-note">These apply to every row below. Each row is one post: give it a title and its image.</div>
       <div style="overflow-x:auto">
         <table class="bulk-table" id="bulkTable">
-          <thead><tr><th>Title *</th><th>Client</th><th>Type</th><th>Designer</th><th>Priority</th><th>Deadline</th><th>Image</th><th></th></tr></thead>
+          <thead><tr><th>Title *</th><th>Priority</th><th>Image</th><th></th></tr></thead>
           <tbody id="bulkRows"></tbody>
         </table>
       </div>
@@ -3461,6 +3480,17 @@ function openBulkPipeline(){
     yEl.innerHTML=[y,y+1].map(v=>'<option value="'+v+'">'+v+'</option>').join('');
   }
   if(mEl && !mEl.value) mEl.value = new Date().getMonth()+1;
+  /* Rebuilt on every open, because clients load after the app does and a list
+     built once at boot can be empty. */
+  const cSel=document.getElementById('bkClient');
+  if(cSel){
+    const was=cSel.value;
+    cSel.innerHTML='<option value="">Choose a client</option>'
+      + (clients||[]).map(c=>'<option value="'+c.id+'" data-name="'+esc(c.name)+'">'+esc(c.name)+'</option>').join('');
+    if(was) cSel.value=was;
+  }
+  const dSel=document.getElementById('bkDesigner');
+  if(dSel) fillDesignerSelects(dSel.parentNode);
   bulkRowCount=0;
   document.getElementById('bulkRows').innerHTML='';
   for(let i=0;i<3;i++) bulkAddRow();
@@ -3468,15 +3498,10 @@ function openBulkPipeline(){
 }
 function bulkAddRow(){
   bulkRowCount++;
-  const clientOpts = clients.map(c=>`<option value="${c.id}" data-name="${esc(c.name)}">${esc(c.name)}</option>`).join('');
   const tr = document.createElement('tr');
   tr.innerHTML=`
     <td><input type="text" class="bk-title" placeholder="Post title"></td>
-    <td><select class="bk-client"><option value="">—</option>${clientOpts}</select></td>
-    <td><select class="bk-type"><option value="post">Post</option><option value="story">Story</option><option value="reel_cover">Reel Cover</option><option value="carousel">Carousel</option><option value="logo">Logo</option><option value="banner">Banner</option><option value="flyer">Flyer</option><option value="brochure">Brochure</option><option value="other">Other</option></select></td>
-    <td><select class="bk-designer" data-designers="—"></select></td>
     <td><select class="bk-priority"><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></td>
-    <td><input type="date" class="bk-deadline"></td>
     <td style="text-align:center;white-space:nowrap">
       <label class="bk-img-label" title="Attach image" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px">
         <span class="bk-img-icon" style="font-size:1.1rem">📷</span>
@@ -3486,7 +3511,6 @@ function bulkAddRow(){
     </td>
     <td><button class="btn-rm" onclick="this.closest('tr').remove()">&times;</button></td>
   `;
-  fillDesignerSelects(tr);
   document.getElementById('bulkRows').appendChild(tr);
 }
 function bulkRowImg(input){
@@ -3510,11 +3534,29 @@ function bulkRowImg(input){
 /* L-GFX-010. The key a duplicate is judged on. Deliberately does NOT include
    designer or priority: the same post for the same client in the same month is
    the same post, whoever it was handed to. */
-function bulkKey(title, clientName, month, year){
+/* THE IMAGE IS PART OF WHAT MAKES A POST UNIQUE. With the client set once for
+   the whole batch, the only thing that differs between rows is the image, and a
+   person reasonably types the same title for each one. Keyed on title, client
+   and month alone, every row after the first would have been silently skipped
+   as a "duplicate" of the one above it. A repeated SAVE still carries the
+   identical image, so the guard against the 456 duplicates of 31 August holds.
+   A row with no image keys exactly as it always did. */
+function imgFingerprint(dataUrl){
+  if(!dataUrl) return '';
+  let h=5381;
+  for(let i=0;i<dataUrl.length;i++){ h=((h<<5)+h+dataUrl.charCodeAt(i))|0; }
+  return (h>>>0).toString(36)+':'+dataUrl.length;
+}
+function bulkKey(title, clientName, month, year, img){
   return [String(title||'').trim().toLowerCase(),
           String(clientName||'').trim().toLowerCase(),
-          month, year].join('|');
+          month, year, img||''].join('|');
 }
+/* Which key each saved post went in under. forgetBulkKeyFor used to rebuild
+   the key from the board row, which carries no image, so a post saved WITH an
+   image could never be forgotten: delete it, add the same image again, and it
+   was refused as a duplicate of something that no longer exists. */
+const _bulkKeyById = new Map();
 
 /* 456 of 486 rows on the board were duplicates on 2026-08-31: Amjath's 29
    Fusion titles, each repeated 10 to 21 times across 3.5 minutes, interleaved.
@@ -3533,6 +3575,8 @@ const _bulkInserted = new Set();
    deleted by mistake and re-added correctly in the same session was silently
    skipped as a duplicate. Removing or archiving a post now forgets its key. */
 function forgetBulkKeyFor(id){
+  const exact=_bulkKeyById.get(id);
+  if(exact){ _bulkInserted.delete(exact); _bulkKeyById.delete(id); }
   const p=(projects||[]).find(x=>x.id===id);
   if(p) _bulkInserted.delete(bulkKey(p.title,p.client_name,p.target_month,p.target_year));
 }
@@ -3552,6 +3596,23 @@ async function bulkSaveAll(){
   if(!mEl || !mEl.value){ toast('Pick the target month for these posts','error'); return; }
   const month = parseInt(mEl.value,10);
   const year = (yEl && parseInt(yEl.value,10)) || new Date().getFullYear();
+
+  /* The four shared values, read ONCE for the whole batch. */
+  const cTop=document.getElementById('bkClient');
+  if(!cTop || !cTop.value){ toast('Choose the client for these posts first','error'); if(cTop) cTop.focus(); return; }
+  const sharedClientId   = parseInt(cTop.value,10);
+  const sharedClientName = cTop.options[cTop.selectedIndex].dataset.name || null;
+  const sharedType       = (document.getElementById('bkType')||{}).value || 'post';
+  const dTop             = document.getElementById('bkDesigner');
+  const sharedDesigner   = (dTop && dTop.value) || null;
+  /* WRITE THE ID AS WELL AS THE NAME. This path wrote only the name, while the
+     alert trigger finds the designer by id, so every bulk-added post skipped the
+     designer's phone alert. L-GFX-030 backfilled the old rows on 7 September and
+     wrongly recorded that new work already wrote both; this was the path that
+     did not, so the fault kept regenerating. */
+  const sharedDesignerId = (dTop && dTop.value && dTop.selectedOptions[0] && dTop.selectedOptions[0].dataset.id)
+                             ? parseInt(dTop.selectedOptions[0].dataset.id,10) : null;
+  const sharedDeadline   = (document.getElementById('bkDeadline')||{}).value || null;
   /* Seed from what is already on the board, then keep adding to it as we go.
      The second half is what the weekly plan guard is missing: 346 rows came
      from 17 titles, which is a Save pressed more than once, not 346 typos. */
@@ -3566,22 +3627,22 @@ async function bulkSaveAll(){
     for(const row of rows){
       const title = row.querySelector('.bk-title').value.trim();
       if(!title) continue;
-      const clientSel = row.querySelector('.bk-client');
-      /* A row with no client is the fault that put "Waverley" in a title. */
-      if(!clientSel.value){ skippedNoClient++; continue; }
-      const clientId = parseInt(clientSel.value);
-      const clientName = clientSel.value ? clientSel.options[clientSel.selectedIndex].dataset.name : null;
-      const k = bulkKey(title, clientName, month, year);
+      /* The client is chosen once above and cannot be blank by here, so the
+         old per-row "no client" skip can no longer happen. */
+      const clientId = sharedClientId;
+      const clientName = sharedClientName;
+      const k = bulkKey(title, clientName, month, year, imgFingerprint(row._thumb || row._img));
       if(seen.has(k)){ skipped++; continue; }
       seen.add(k);
       const data = {
         title,
         client_id: clientId,
         client_name: clientName,
-        type: row.querySelector('.bk-type').value,
-        assigned_designer: row.querySelector('.bk-designer').value||null,
+        type: sharedType,
+        assigned_designer: sharedDesigner,
+        assigned_designer_id: sharedDesignerId,
         priority: row.querySelector('.bk-priority').value,
-        deadline: row.querySelector('.bk-deadline').value||null,
+        deadline: sharedDeadline,
         image_url: row._img || null,
         thumb_url: row._thumb || null,
         current_stage: 'brief',
@@ -3600,6 +3661,7 @@ async function bulkSaveAll(){
       try{ res = await sbPost('graphic_projects', data, 'id'); }catch(e){ res=null; }
       if(Array.isArray(res)&&res[0]){
         _bulkInserted.add(k);        /* remembered the moment the post exists */
+        _bulkKeyById.set(res[0].id, k);
         count++;
         if(row._img){ IMG_IDS.add(res[0].id); IMG_CACHE[res[0].id] = row._thumb || row._img; }
         try{ await sbPost('graphic_stage_history',{graphic_project_id:res[0].id, stage:'brief', entered_by:currentUser.name, notes:'Bulk added'}, 'id'); }catch(e){}
@@ -3911,18 +3973,20 @@ async function runSelfTest(opts){
        earlier check, made this read 5 and fail on a healthy app. */
     const desSelects=[].slice.call(document.querySelectorAll('select[data-designers]'))
       .filter(el=>!el.closest('#bulkRows') && !el.closest('#wpBulkRows'));
-    ok('Roster: the 4 standing designer dropdowns are data-driven',
-       desSelects.length===4, desSelects.length+' standing');
-    let bulkOk=false;
+    /* Five since 2026-09-14: the bulk add's designer moved out of every row into
+       one shared dropdown above them, so it is now a standing one. */
+    ok('Roster: the 5 standing designer dropdowns are data-driven',
+       desSelects.length===5, desSelects.length+' standing');
+    let bulkOk=false, bulkDetail='';
     try{
-      const holder=document.getElementById('bulkRows');
-      const had=holder.innerHTML;
-      bulkAddRow();
-      bulkOk = !!holder.querySelector('.bk-designer[data-designers]');
-      holder.innerHTML=had;
-    }catch(e){}
-    ok('Roster: a new bulk-add row gets the roster too', bulkOk,
-       'this is where a hand-edited option list used to go stale');
+      fillDesignerSelects(document.getElementById('bkDesigner').parentNode);
+      const d=document.getElementById('bkDesigner');
+      const labels=[...d.options].map(o=>o.value).filter(Boolean);
+      bulkOk = DESIGNERS.every(x=>labels.indexOf(x.label)>-1) && [...d.options].some(o=>o.dataset.id);
+      bulkDetail = labels.join(', ')+(bulkOk?' , each carrying its team id':'');
+    }catch(e){ bulkDetail=e.message; }
+    ok('Roster: the bulk add designer list carries the roster and each id', bulkOk,
+       bulkDetail || 'this is where a hand-edited option list used to go stale');
     fillDesignerSelects();
     const filt=document.getElementById('filterDesigner');
     ok('Roster: dropdowns list exactly the roster',
@@ -4006,12 +4070,13 @@ async function runSelfTest(opts){
          own rows and report the guard as gone. A check must give the same
          answer every time it is run. */
       const tag = 'SELFTEST '+Date.now();
+      /* The client is chosen once, above the rows, since 2026-09-14. */
+      const cTop=document.getElementById('bkClient');
+      if(cTop){ if(cTop.options.length<2) cTop.innerHTML='<option value="">x</option>'+(clients||[]).slice(0,1).map(c=>'<option value="'+c.id+'" data-name="'+esc(c.name)+'">'+esc(c.name)+'</option>').join(''); cTop.selectedIndex=1; }
       for(const t of [tag+' DUP', tag+' DUP', tag+' UNIQUE']){
         bulkAddRow();
         const tr=holder.querySelector('tr:last-child');
         tr.querySelector('.bk-title').value=t;
-        const cs=tr.querySelector('.bk-client');
-        if(cs && cs.options.length>1) cs.selectedIndex=1;
       }
       const bm=document.getElementById('bkMonth'), by=document.getElementById('bkYear');
       if(bm && !bm.value) bm.value=new Date().getMonth()+1;
@@ -4025,6 +4090,38 @@ async function runSelfTest(opts){
          '3 rows in with one repeated, '+inserted.length+' inserted (3 means the guard is gone)');
     }catch(e){
       ok('REGRESSION L-GFX-010: bulk add actually SKIPS the duplicate', false, e && e.message);
+    }
+
+    /* ── L-GFX-045 · one client, one title, many images ──
+       With the client set once and a person typing the same title for each
+       image, the old key dropped every row after the first as a duplicate. The
+       image now separates them. The guard above still has to hold: the same
+       image saved twice is still one post. And the designer's id must be
+       written, or the doer alert stays silent on every bulk post. */
+    try{
+      const holder=document.getElementById('bulkRows'); const had=holder.innerHTML;
+      const inserted=[]; const keepPost=sbPost;
+      sbPost = async (t,d)=>{ if(t==='graphic_projects'){ inserted.push(d); return [{id:-(inserted.length)}]; } return [{id:-1}]; };
+      const cTop=document.getElementById('bkClient');
+      if(cTop){ if(cTop.options.length<2) cTop.innerHTML='<option value="">x</option>'+(clients||[]).slice(0,1).map(c=>'<option value="'+c.id+'" data-name="'+esc(c.name)+'">'+esc(c.name)+'</option>').join(''); cTop.selectedIndex=1; }
+      const dTop=document.getElementById('bkDesigner'); fillDesignerSelects(dTop.parentNode);
+      if(dTop.options.length>1) dTop.selectedIndex=1;
+      holder.innerHTML='';
+      const title='SELFTEST SAME TITLE '+Date.now();
+      /* two different images, one repeated image */
+      [['data:image/png;base64,AAAA1','A'],['data:image/png;base64,BBBB2','B'],['data:image/png;base64,AAAA1','A-again']].forEach(([img])=>{
+        bulkAddRow(); const tr=holder.querySelector('tr:last-child');
+        tr.querySelector('.bk-title').value=title; tr._img=img; tr._thumb=img;
+      });
+      await bulkSaveAll();
+      sbPost=keepPost; holder.innerHTML=had;
+      ok('Bulk add: posts sharing a title but not an image are all kept', inserted.length===2,
+         '3 rows, 2 distinct images: '+inserted.length+' inserted (1 means same-title images are being dropped, 3 means the repeat image got through)');
+      const withId = inserted.filter(d=>d.assigned_designer && Number.isInteger(d.assigned_designer_id)).length;
+      ok('Bulk add: the designer goes in by id as well as by name', inserted.length>0 && withId===inserted.length,
+         withId+' of '+inserted.length+' carry assigned_designer_id; without it the doer alert never fires');
+    }catch(e){
+      ok('Bulk add: posts sharing a title but not an image are all kept', false, e && e.message);
     }
 
     /* ── REGRESSION L-GFX-005 · thumbnails ── */

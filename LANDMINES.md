@@ -863,8 +863,14 @@ designer on 3 cards out of 63. The head, the SMM and the CEO were unaffected,
 which is exactly why it would have looked like it was working.
 
 Backfilled from the name, only ever filling a NULL, every row matching an
-active member (59 Farhath, 1 Zulfa, 0 unmatched). The app already wrote both on
-new work, so this was a one-off.
+active member (59 Farhath, 1 Zulfa, 0 unmatched).
+
+**CORRECTION 2026-09-14: "the app already wrote both on new work, so this was a
+one-off" was WRONG.** The single-post form wrote both. The BULK ADD wrote only
+the name. So the fault regenerated: 2 posts made since (both Suhana, first on
+11 September) came back with no id and skipped her alert. I checked one write
+path and generalised to all of them. See L-GFX-045, which fixes the writer and
+carries a check that fails on it.
 
 **The lesson: two columns for one fact will drift, and the surface that reads
 the less-used one fails quietly.** When a feature depends on a column, count
@@ -1216,3 +1222,50 @@ leaver will not be handled by the person who read this entry.
 Farhath, the SMMs and the heads (they see everything) and invisible to the
 three designers, so it is not lost, but nobody is picking it up. Who takes it
 is his call, not a default I should pick.
+
+## L-GFX-045 · the bulk add set everything once per row, and three faults hid behind it · FIXED 2026-09-14
+Farhath's point, passed on by Thulaib: a bulk add is one client's posts, for one
+designer, by one deadline, and only the image changes row to row. Choosing the
+same client, type, designer and deadline on every row was twenty dropdowns to
+file three posts, and the row somebody forgot was the one that went in with no
+client. **Those four now sit above the rows and are set once. Each row is a
+title, a priority and an image.**
+
+**Prior art checked first.** Neither the Video System nor the SMM Workspace puts
+shared fields above a bulk add; the only precedent in BB was this modal's own
+Target month, which already applied to every row. So the change extends the
+pattern this screen already had rather than importing one.
+
+**Three faults found while making the change, which is the reason it is logged.**
+
+1. **The duplicate guard would have eaten the batch.** It keyed on title,
+   client and month. With the client shared and a person typing the same title
+   for each image, every row after the first became a "duplicate" of the one
+   above it and was silently skipped. The key now includes a fingerprint of the
+   image. The guard against the 456 duplicates of 31 August still holds, because
+   a repeated SAVE carries the identical image. A row with no image keys exactly
+   as it always did, so L-GFX-010 is unchanged and its check stays green.
+
+2. **The bulk add never wrote the designer's id.** Only the name. The alert
+   trigger finds the designer by id, so every bulk post skipped the designer's
+   phone alert, and L-GFX-030's backfill was quietly undone by new work. Fixed at
+   the writer and the 2 rows made since were backfilled with the same null-only
+   rule.
+
+3. **A post saved with an image could never be forgotten.** `forgetBulkKeyFor`
+   rebuilt the key from the board row, which carries no image, so deleting such
+   a post and adding the same image again was refused as a duplicate of
+   something that no longer existed. The exact key is now remembered per id.
+
+**Proven both ways.** Rebuilt the pre-fix file and watched the two new checks
+fail naming the fault: "1 inserted (1 means same-title images are being
+dropped)" and "0 of 1 carry assigned_designer_id". On the fix: 3 rows with 2
+distinct images insert 2, both carry the id, the old L-GFX-010 check still skips
+its duplicate, and a save with no client is refused before anything is written.
+105 checks.
+
+**Known narrow gap, stated rather than hidden.** The board list does not carry
+images, so after a page reload the guard can only match on title, client and
+month. Adding the exact same image under the same title again in a LATER
+session would not be caught. The original incident was repeated presses in one
+session, which the in-session memory does catch.

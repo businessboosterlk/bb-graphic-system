@@ -1136,3 +1136,50 @@ another**, which this register has now learned three separate times.
 **Estate: checked, and Graphic was the only one.** The other four apps keep
 sheets in that list (`.modal`, `.modal-bg`, `.detail-panel`, drawers), not a
 page-level container. Verified 2026-09-10 by reading each app's contain list.
+
+## L-GFX-042 · the Weekly Plan filter had never matched a single row · FIXED 2026-09-14
+The tick writes `status:'planned'`, and the live table holds 126 `done` and 34
+`planned` with **zero** `pending`. But the grid did
+`filtered.filter(t => t.status === 'pending')` for its unfinished list, and both
+status dropdowns offered a Pending option.
+
+So the "unfinished work" bar under the grid has never rendered once, and
+choosing Pending in the filter emptied the board. Neither failed loudly: an
+empty list looks exactly like a week with nothing outstanding.
+
+**Same disease as the SMM task codes (L-SMM assign vocabulary): two words for
+one state, agreed nowhere.** The fix is to stop matching an exact word and ask
+the real question, `status !== 'done'`, and to delete the option that never
+existed in the data. `in_progress` is left in place: it is offered, it has zero
+rows, and removing an option a person might still want is his call not mine.
+
+## L-GFX-043 · the Weekly Plan now carries the Video System's week column · 2026-09-14
+Thulaib sent a screenshot of the Video grid and asked for the same on Graphic:
+a column on the right saying how much of the week each person has actually
+finished.
+
+**Prior art taken:** Video's `wpWeekStats` shape, where EVERY number on the page
+comes from one object so the week column, the day totals and the cells cannot
+disagree, plus its three-state day (done, pending, delayed) and its behind
+count. **Its harness invariant came with it and is the reason the port is
+trustworthy: the week must equal the sum of the days AND the sum of the
+people.** Proven on a fixture, and on the real week of 31 August, where Suhana
+61 of 61 plus Farhath 60 of 60 equals the footer's 121 of 121.
+
+**Prior art deliberately NOT taken:** Video's free-text cell and its line
+grammar (`3 CF`, `CUT & GRADE X (6)`, `[2/3]`). Graphic already stores one row
+per task with a real `design_count` integer, which is a better source for
+counting than parsing a number back out of a sentence. Video's shoots and its
+cutting/editing split do not exist here either.
+
+**The one thing Video has that this cannot do yet:** part-done inside a SINGLE
+task. Video writes `[2/3]` into its text. Graphic's row is done or not, so a
+task of twelve designs jumps 0 to 12. Cells with several tasks already move
+gradually, so this only bites on a big single task. It needs one nullable
+`done_count` column, which is schema and therefore Thulaib's call.
+
+**And a check broke itself while proving this.** The totals row was renamed
+from "Total designs" to "Designs done", and an older check that excluded that
+row by matching the text `/^total/i` then counted it as a person. **A check
+that reads a label breaks on a rewording.** It now excludes the row by its
+class.

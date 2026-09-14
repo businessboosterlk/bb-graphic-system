@@ -41,7 +41,7 @@
 .statusfill{position:fixed;top:0;left:0;right:0;height:var(--sat);z-index:60;pointer-events:none}
 .wp-grid-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--border);
   border-radius:var(--r);background:var(--surface)}
-.wp-grid-table{width:100%;min-width:760px;border-collapse:collapse}
+.wp-grid-table{width:100%;min-width:872px;border-collapse:collapse}   /* +112px for the Week column */
 .wp-grid-table th{background:var(--surface-2);padding:10px 12px;text-align:left;
   font-size:0.68rem;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-3);
   border-bottom:1px solid var(--border);white-space:nowrap}
@@ -79,6 +79,25 @@ th.wp-today-col{background:var(--accent-soft)}
   border-radius:99px;font-size:0.6rem;font-weight:800;letter-spacing:0.05em;text-transform:uppercase}
 .wp-pill.pending{background:var(--amber-soft);color:var(--amber)}
 .wp-pill.done{background:var(--green-soft);color:var(--green)}
+.wp-pill.delayed{background:var(--red-soft);color:var(--red)}
+.wp-cell.has.delayed{border-left-color:var(--red);background:var(--red-soft)}
+/* The pill says what state the day is in, the count says how far through it
+   is. Side by side, because either one alone makes you ask the other. */
+.wp-cell-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:7px}
+.wp-count{font-size:0.68rem;font-weight:800;color:var(--text-3);white-space:nowrap;letter-spacing:0.02em}
+.wp-count.full{color:var(--green)}
+/* THE WEEK COLUMN. The whole point of the port: how much of their week each
+   person has finished, read across without adding anything up. */
+.wp-week{padding:10px 12px;min-width:104px;background:var(--surface-2);
+  border-left:1px solid var(--border-strong);text-align:right;vertical-align:middle}
+.wp-week-num{font-family:'Poppins',sans-serif;font-size:1.32rem;font-weight:900;color:var(--text);line-height:1.1}
+.wp-week-num b{color:var(--accent)}
+.wp-week-num span{font-size:0.86rem;font-weight:700;color:var(--text-3)}
+.wp-week-sub{font-size:0.64rem;font-weight:700;color:var(--text-3);margin-top:3px;letter-spacing:0.02em}
+.wp-week-dash{color:var(--text-3);font-size:0.8rem}
+.wp-behind{display:inline-block;margin-top:6px;padding:2px 7px;border-radius:10px;
+  background:var(--red-soft);color:var(--red);font-size:0.62rem;font-weight:800;letter-spacing:0.03em}
+.wp-week-h{text-align:right}
 .wp-total-row td{background:var(--surface-2);font-weight:800;font-size:0.8rem;color:var(--text);padding:10px 12px}
 .wp-week-total{text-align:right;margin-top:10px;font-size:0.8rem;font-weight:800;color:var(--text-2)}
 .wp-week-total b{color:var(--accent);font-size:1.05rem}
@@ -805,7 +824,6 @@ tr:hover td{background:var(--surface-2)}
             <option value="planned">Planned</option>
             <option value="in_progress">In Progress</option>
             <option value="done">Done</option>
-            <option value="pending">Pending</option>
           </select>
         </div>
         <div class="wp-sum" id="wpSummary"></div>
@@ -1006,7 +1024,6 @@ tr:hover td{background:var(--surface-2)}
             <option value="planned">Planned</option>
             <option value="in_progress">In Progress</option>
             <option value="done">Done</option>
-            <option value="pending">Pending</option>
           </select>
         </div>
         <div class="form-group full">
@@ -3052,6 +3069,45 @@ function wpGetFiltered(){
   if(fs) f=f.filter(t=>t.status===fs);
   return f;
 }
+/* ══ ONE STATS OBJECT ═══════════════════════════════════════════════════
+   Ported from the Video System's `wpWeekStats`, which is BB's best version of
+   this: every number on the page comes from here, so the week column, the day
+   totals and the footer cannot disagree with each other or with the cells.
+   The harness asserts the same invariant Video's does: the week equals the sum
+   of the days AND the sum of the people.
+
+   What is NOT taken from Video: its free-text cell and its line grammar
+   (`3 CF`, `CUT & GRADE X (6)`). Graphic already stores one ROW per task with
+   a real `design_count` integer, which is a better source for counting than
+   parsing a number back out of a sentence. The unit here is DESIGNS, and
+   `jobs` is the number of tasks, because a brochure counting 1 and a set of 12
+   stories are not the same amount of work to line up. */
+function wpStats(list, rowNames){
+  const blank=()=>({plan:0,done:0,jobs:0,jobsDone:0,open:0,behind:0});
+  const today=new Date(); today.setHours(0,0,0,0);
+  const day=[null,blank(),blank(),blank(),blank(),blank()];
+  const per={}; (rowNames||[]).forEach(n=>{ per[n]=blank(); });
+  per.__unassigned=blank();
+  (list||[]).forEach(t=>{
+    const d=t.day_of_week||1; if(d<1||d>5) return;
+    const who=t.assigned_to||'__unassigned';
+    if(!per[who]) per[who]=blank();
+    /* A task with no count is still one job and one thing to finish, so it
+       never disappears from the planned figure. */
+    const n=Math.max(1, t.design_count||1);
+    const fin=(t.status==='done');
+    const dd=new Date(wpWeekStart); dd.setDate(dd.getDate()+d-1); dd.setHours(0,0,0,0);
+    [day[d], per[who]].forEach(S=>{
+      S.plan+=n; S.jobs++;
+      if(fin){ S.done+=n; S.jobsDone++; }
+      else { S.open++; if(dd<today) S.behind++; }
+    });
+  });
+  const week=blank();
+  for(let d=1;d<=5;d++) Object.keys(week).forEach(k=>{ week[k]+=day[d][k]; });
+  return {day:day, per:per, week:week};
+}
+
 function wpRender(){
   const board = document.getElementById('wpBoard');
   const today = new Date(); today.setHours(0,0,0,0);
@@ -3068,8 +3124,13 @@ function wpRender(){
     cSel.dataset.loaded='1';
   }
   const filtered = wpGetFiltered();
-  const pending = filtered.filter(t=>t.status==='pending');
-  const nonPending = filtered.filter(t=>t.status!=='pending');
+  /* THE LIVE DATA SAYS `planned`, NEVER `pending`. Measured 2026-09-14: 126
+     rows `done`, 34 `planned`, zero `pending`. This line matched the exact
+     string 'pending', so it was always empty and the unfinished bar below it
+     has never once rendered, while the Pending option in the filter matched
+     nothing at all. Read "not done" instead of guessing which word was used,
+     and the dead option is gone from both dropdowns. */
+  const pending = filtered.filter(t=>t.status!=='done');
 
   /* THE GRID: designer rows x Mon-Fri, the Video System shape. Rows are the
      people who actually have work this week, so an empty roster never renders
@@ -3088,17 +3149,43 @@ function wpRender(){
   const _mineRow = designerScope();
   const showRows = (isPlainDesigner() && _mineRow) ? [_mineRow] : rows;
 
-  const dayTotals=[0,0,0,0,0];
-  filtered.forEach(t=>{ const i=(t.day_of_week||1)-1; if(i>=0&&i<5) dayTotals[i]+=(t.design_count||0); });
-  const weekTotal = dayTotals.reduce((a,b)=>a+b,0);
+  const ST = wpStats(filtered, showRows);
+  const weekTotal = ST.week.plan;
+
+  /* DELAYED IS A THIRD STATE, not a worse kind of pending. Work still open on
+     a day that has already passed is the thing a head needs to see from across
+     the room, which is why the Video grid paints it red. */
+  const cellState = (open, dayNum)=>{
+    if(open===0) return 'done';
+    const dd=new Date(wpWeekStart); dd.setDate(dd.getDate()+dayNum-1); dd.setHours(0,0,0,0);
+    return (dd<today) ? 'delayed' : 'pending';
+  };
+  const STATE_LABEL={done:'&#10003; Done', pending:'&#9679; Pending', delayed:'&#9888; Delayed'};
 
   const cell = (who,dayNum)=>{
     const ts = filtered.filter(t=>t.day_of_week===dayNum && (who===null ? !t.assigned_to : t.assigned_to===who));
     if(!ts.length) return '<td class="wp-cell"><div class="wp-cell-empty">&mdash;</div></td>';
-    const allDone = ts.every(t=>t.status==='done');
-    return '<td class="wp-cell has '+(allDone?'done':'pending')+'">'
+    let plan=0, done=0, open=0;
+    ts.forEach(t=>{ const n=Math.max(1,t.design_count||1); plan+=n; if(t.status==='done') done+=n; else open++; });
+    const state = cellState(open, dayNum);
+    return '<td class="wp-cell has '+state+'">'
       + ts.map(t=>wpRenderItem(t)).join('')
-      + '<span class="wp-pill '+(allDone?'done':'pending')+'">'+(allDone?'&#10003; Done':'&#9679; Pending')+'</span>'
+      + '<div class="wp-cell-foot">'
+      +   '<span class="wp-pill '+state+'">'+STATE_LABEL[state]+'</span>'
+      +   '<span class="wp-count'+(done>=plan?' full':'')+'">'+done+'/'+plan+'</span>'
+      + '</div></td>';
+  };
+
+  /* THE WEEK COLUMN, the thing Thulaib pointed at in the Video screenshot:
+     how much of their week each person has actually finished, on the right,
+     without adding anything up in your head. */
+  const weekCell = (who)=>{
+    const S = ST.per[who===null?'__unassigned':who];
+    if(!S || !S.jobs) return '<td class="wp-week"><div class="wp-week-dash">&mdash;</div></td>';
+    return '<td class="wp-week">'
+      + '<div class="wp-week-num"><b>'+S.done+'</b><span>/'+S.plan+'</span></div>'
+      + '<div class="wp-week-sub">'+S.jobsDone+' of '+S.jobs+' job'+(S.jobs===1?'':'s')+'</div>'
+      + (S.behind ? '<span class="wp-behind">'+S.behind+' behind</span>' : '')
       + '</td>';
   };
 
@@ -3110,13 +3197,16 @@ function wpRender(){
         return '<th class="'+(isT?'wp-today-col':'')+'">'+name
              + '<span class="wp-day-date">'+wpFmtDate(dd)+'</span></th>';
       }).join('')
+    + '<th class="wp-week-h">Week<span class="wp-day-date">done &middot; planned</span></th>'
     + '</tr></thead><tbody>'
     + showRows.map(who=>'<tr><td class="wp-who">'+esc(who)+'</td>'
-        + [1,2,3,4,5].map(d=>cell(who,d)).join('') + '</tr>').join('')
+        + [1,2,3,4,5].map(d=>cell(who,d)).join('') + weekCell(who) + '</tr>').join('')
     + (unassigned.length ? '<tr><td class="wp-who" style="color:var(--text-3)">Unassigned</td>'
-        + [1,2,3,4,5].map(d=>cell(null,d)).join('') + '</tr>' : '')
-    + '<tr class="wp-total-row"><td class="wp-who">Total designs</td>'
-        + dayTotals.map(n=>'<td class="wp-total-row">'+(n||'&mdash;')+'</td>').join('')
+        + [1,2,3,4,5].map(d=>cell(null,d)).join('') + weekCell(null) + '</tr>' : '')
+    + '<tr class="wp-total-row"><td class="wp-who">Designs done</td>'
+        + [1,2,3,4,5].map(d=>{ const D=ST.day[d];
+            return '<td class="wp-total-row">'+(D.plan ? '<b>'+D.done+'</b>/'+D.plan : '&mdash;')+'</td>'; }).join('')
+        + '<td class="wp-total-row wp-week"><b>'+ST.week.done+'</b>/'+ST.week.plan+'</td>'
     + '</tr></tbody></table></div>';
 
   const wt = document.getElementById('wpWeekTotal');
@@ -4228,9 +4318,15 @@ async function runSelfTest(opts){
          made the designer check fail on a correct app. A check that misreads
          the thing it measures is worse than no check, because it sends you
          looking for a bug in code that is right. */
+      /* Exclude the totals row by its CLASS, never by its wording. Matching
+         the text broke the moment the row was renamed from "Total designs" to
+         "Designs done", and the check then reported a designer seeing a second
+         person who does not exist. A check that reads a label is a check that
+         breaks on a rewording. */
       const rowNames=()=>[...document.querySelectorAll('#wpBoard tbody tr')]
+        .filter(tr=>!tr.classList.contains('wp-total-row'))
         .map(tr=>((tr.querySelector('th,td')||{}).textContent||'').trim().split('\n')[0])
-        .filter(t=>t && !/^total/i.test(t));
+        .filter(Boolean);
       currentUser={name:'FARHATH', role:'graphic_head', label:'Farhath', team_member_id:17};
       try{ wpRender(); }catch(e){}
       await new Promise(r=>setTimeout(r,200));
@@ -4238,6 +4334,18 @@ async function runSelfTest(opts){
       const everyDesigner=DESIGNERS.every(d=>asHead.some(r=>r.indexOf(d.label)>-1));
       ok('Weekly Plan: a planner sees EVERY designer, even one with an empty week',
          everyDesigner, 'rows shown: '+(asHead.join(' | ')||'none')+' ; roster is '+DESIGNERS.map(d=>d.label).join(', '));
+
+      /* The column Thulaib asked for, proven on the real grid rather than in
+         the arithmetic. Folded in here rather than navigating to this page a
+         third time: the run already has a 20 second budget and every page
+         change costs about a second of it. */
+      const head=document.querySelectorAll('#wpBoard thead th');
+      const bodyRows=[...document.querySelectorAll('#wpBoard tbody tr')];
+      const weekCells=bodyRows.map(tr=>tr.querySelectorAll('td.wp-week').length);
+      ok('Weekly Plan: the grid carries a Week column', head.length===7,
+         head.length+' header cells, expected Designer, five days and Week');
+      ok('Weekly Plan: every row reports its own week', bodyRows.length>0 && weekCells.every(n=>n===1),
+         bodyRows.length+' rows, week cells per row: '+(weekCells.join(',')||'none'));
 
       currentUser={name:'NIRVANA', role:'smm', label:'Nirvana (SMM)', team_member_id:12};
       try{ wpRender(); }catch(e){}
@@ -4345,6 +4453,39 @@ async function runSelfTest(opts){
       await new Promise(r=>setTimeout(r,180));
       ok('Scroll: no page hides a finger trap of its own', Object.keys(trapPages).length===0,
          Object.keys(trapPages).length ? JSON.stringify(trapPages) : '4 pages walked, none traps a touch');
+    }
+
+    /* THE INVARIANT THAT MAKES VIDEO'S GRID TRUSTWORTHY, ported with it: every
+       number comes from one object, so the week must equal the sum of the days
+       AND the sum of the people. If those three ever disagree, the footer is
+       lying to somebody. Pure arithmetic on a fixture, no network, no DOM. */
+    {
+      const savedWS = wpWeekStart;
+      const fx=[
+        {day_of_week:1, assigned_to:'A', design_count:3, status:'done'},
+        {day_of_week:1, assigned_to:'B', design_count:2, status:'planned'},
+        {day_of_week:3, assigned_to:'A', design_count:5, status:'planned'},
+        {day_of_week:5, assigned_to:null, design_count:4, status:'done'},
+        {day_of_week:2, assigned_to:'A', design_count:null, status:'planned'}
+      ];
+      wpWeekStart = new Date(2020,0,6);            /* a Monday, long past */
+      const S = wpStats(fx, ['A','B']);
+      const sumDays  = [1,2,3,4,5].reduce((t,d)=>t+S.day[d].plan, 0);
+      const sumPeople= Object.keys(S.per).reduce((t,k)=>t+S.per[k].plan, 0);
+      ok('Weekly Plan: the week equals the sum of the days', S.week.plan===sumDays,
+         'week '+S.week.plan+', days '+sumDays);
+      ok('Weekly Plan: the week equals the sum of the people', S.week.plan===sumPeople,
+         'week '+S.week.plan+', people '+sumPeople+' (unassigned work counts as a person, or it vanishes)');
+      ok('Weekly Plan: a task carrying no number still counts as one', S.week.plan===15,
+         'expected 3+2+5+4+1 = 15, got '+S.week.plan);
+      ok('Weekly Plan: done counts DESIGNS, not tasks', S.week.done===7,
+         'expected 3+4 = 7, got '+S.week.done);
+      ok('Weekly Plan: unfinished work in a past week is behind', S.week.behind===3,
+         'expected the 3 open tasks to be behind, got '+S.week.behind);
+      wpWeekStart = new Date(Date.now()+14*864e5);  /* a week that has not happened */
+      ok('Weekly Plan: nothing in a future week is behind', wpStats(fx,['A','B']).week.behind===0,
+         'a plan for next week must never read as late');
+      wpWeekStart = savedWS;
     }
 
     /* ── E · BB APP SHELL ─────────────────────────────────────────────── */
@@ -4494,9 +4635,16 @@ async function runSelfTest(opts){
        printed a green total is worse than no harness, which is exactly the
        fault this budget was added for. */
     const _elapsed = HARNESS_BUDGET_MS - (_deadline - Date.now());
-    ok('Harness: the run finished inside its own time budget', _skipped===0,
+    /* Two different facts, so two different sentences. Skipping anything makes
+       the run INCOMPLETE and fails. Running over the budget while still
+       finishing every section is not a failure, but it must not read as if the
+       budget was honoured either: the budget only bites between sections, so a
+       single long section can carry the run past it. */
+    const _over = _elapsed > HARNESS_BUDGET_MS;
+    ok('Harness: every section ran, none was skipped for time', _skipped===0,
        _skipped ? (_skipped+' section(s) skipped after '+Math.round(_elapsed/1000)+'s, so this run is INCOMPLETE')
-                : ('finished in '+Math.round(_elapsed/1000)+'s of a '+(HARNESS_BUDGET_MS/1000)+'s budget'));
+                : (_over ? ('all sections ran, but it took '+Math.round(_elapsed/1000)+'s against a '+(HARNESS_BUDGET_MS/1000)+'s budget: the budget only checks BETWEEN sections')
+                         : ('finished in '+Math.round(_elapsed/1000)+'s of a '+(HARNESS_BUDGET_MS/1000)+'s budget')));
 
   }catch(e){
     ok('Harness completed without throwing', false, e && e.message);

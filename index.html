@@ -1172,7 +1172,6 @@ const USERS = {
   '3333': { name:'SUHANA', role:'designer', team_member_id:3, label:'Suhana' },
   '4444': { name:'FARHATH', role:'graphic_head', team_member_id:17, label:'Farhath' },
   '6666': { name:'AMJATH', role:'designer', team_member_id:18, label:'Amjath' },
-  '7777': { name:'ZULFA', role:'designer', team_member_id:19, label:'Zulfa' },
   /* The two SMM seats. Role `smm` is NOT `designer`, so they are never
      auto-assigned design work and are never scoped to their own: they see every
      client, every post and every designer's day, which is the oversight the
@@ -1194,7 +1193,11 @@ const DESIGNERS = [
   { name:'SUHANA',  label:'Suhana',  team_member_id:3,  freelancer:false },
   { name:'FARHATH', label:'Farhath', team_member_id:17, freelancer:false },
   { name:'AMJATH',  label:'Amjath',  team_member_id:18, freelancer:false },
-  { name:'ZULFA',   label:'Zulfa',   team_member_id:19, freelancer:false },
+  /* ZULFA removed 2026-09-14 on Thulaib's instruction. Her login and her
+     roster entry are gone and her team_members row is marked inactive, NOT
+     deleted, so every project and stage move she touched still says who did
+     it. Deleting a person deletes the history of their work with them, which
+     is the rule the Video System already follows for its two leavers. */
 ];
 
 /* Fill every <select data-designers="placeholder"> from DESIGNERS. Keeps the
@@ -1206,7 +1209,21 @@ function fillDesignerSelects(root){
       DESIGNERS.map(d=>'<option value="'+esc(d.label)+'" data-id="'+
         (d.team_member_id==null?'':d.team_member_id)+'">'+esc(d.label)+
         (d.freelancer?' (freelance)':'')+'</option>').join('');   /* no freelancers on the roster today */
-    if(keep) sel.value = keep;
+    if(keep){
+      sel.value = keep;
+      /* A NAME THAT HAS LEFT THE ROSTER MUST NOT SILENTLY VANISH FROM A FORM.
+         Setting a value the list does not carry leaves the select sitting on
+         its first option, so opening a leaver's job would show no designer at
+         all and saving it would quietly hand that work to nobody. Found while
+         removing Zulfa on 2026-09-14, who still owns one open HOMEDEPOT job.
+         Her name is kept as an option and marked former, so the state is
+         visible and reassigning is a decision rather than an accident. */
+      if(sel.value !== keep){
+        const opt=document.createElement('option');
+        opt.value=keep; opt.textContent=keep+' (former)';
+        sel.appendChild(opt); sel.value=keep;
+      }
+    }
   });
 }
 

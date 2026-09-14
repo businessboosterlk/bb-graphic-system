@@ -1183,3 +1183,36 @@ from "Total designs" to "Designs done", and an older check that excluded that
 row by matching the text `/^total/i` then counted it as a person. **A check
 that reads a label breaks on a rewording.** It now excludes the row by its
 class.
+
+## L-GFX-044 · removing a person can take their work history with them · HANDLED 2026-09-14
+Zulfa removed on Thulaib's instruction. Her footprint before the change,
+measured rather than assumed: **1 open project** (443, HOMEDEPOT, in progress,
+due 2 September), **3 stage moves she recorded**, 0 archived projects, 0 weekly
+plan rows, 0 comments, 0 tasks, 0 phones, 0 pillar rows, and no mention of her
+in any of the other five systems.
+
+**Removed, not deleted.** Login `7777` and her roster entry are gone from the
+app; `team_members` id 19 is `active = false`. Her row stays, because she is
+the assigned designer on that open job and the recorded author of those three
+moves. Deleting the row would strip her name off all of it and leave the
+history saying nobody did the work. The Video System already keeps its two
+leavers this way and says so in its own roster comment.
+
+**THE TRAP FOUND WHILE DOING IT, which is the reusable part.**
+`fillDesignerSelects` rebuilt every designer dropdown from `DESIGNERS` and then
+did `sel.value = keep`. Setting a select to a value the list no longer carries
+leaves it sitting on its FIRST option. So opening Zulfa's HOMEDEPOT job would
+have shown no designer at all, and saving anything else on that form would have
+quietly handed the work to nobody. Silent, and it would have looked like a
+data-entry mistake weeks later.
+
+The select now keeps an off-roster name as an option marked `(former)`. Proven:
+a select holding "Zulfa" survives a refill reading `All Designers | Suhana |
+Farhath | Amjath | Zulfa (former)` with the value still selected. **This makes
+removing ANY person safe, not just this one**, which is the point: the next
+leaver will not be handled by the person who read this entry.
+
+**Left for Thulaib:** project 443 still belongs to Zulfa. It is visible to
+Farhath, the SMMs and the heads (they see everything) and invisible to the
+three designers, so it is not lost, but nobody is picking it up. Who takes it
+is his call, not a default I should pick.

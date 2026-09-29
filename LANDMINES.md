@@ -1269,3 +1269,20 @@ images, so after a page reload the guard can only match on title, client and
 month. Adding the exact same image under the same title again in a LATER
 session would not be caught. The original incident was repeated presses in one
 session, which the in-session memory does catch.
+
+## L-GFX-046 · a late tile looked the same as a fresh one · BUILT 2026-09-29
+
+**Asked by Thulaib.** The Video System's rule, carried over: red after 48 working
+hours in one stage, green once Approved.
+
+**The block.** `@@BB_STAGEAGE_BEGIN@@`, cast from `~/bb-systems/stage-age/`, the same
+canonical block as Video with six lines of cast. The clock is the newest
+`graphic_stage_history` row for the tile's current stage.
+
+**Proven.** In a real browser on live data at 1440 and 390 wide: 42 tiles, 40 red,
+2 green, 0 page overflow, 0 errors. 37 of the red tiles are in Head Review. The
+database view counts the same 40. Self-test 113 checks, 0 failed. With the class taken
+off the tile two checks fail by name.
+
+**The read has a ceiling.** The history read asks for 1,000 rows at most. It holds 101
+today. The harness fails the day the read comes back full.

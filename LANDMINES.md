@@ -1286,3 +1286,18 @@ off the tile two checks fail by name.
 
 **The read has a ceiling.** The history read asks for 1,000 rows at most. It holds 101
 today. The harness fails the day the read comes back full.
+
+## L-GFX-047 · a designer's month could not be seen anywhere · BUILT 2026-09-30
+
+**Asked by Thulaib.** Click a designer and see what they finished this month and where the
+time went, the same as the Video System.
+
+**The block.** `@@BB_WORKTIME_BEGIN@@`, cast from `~/bb-systems/stage-age/`. Tap a name under
+Designer Workload in Analytics. Each post's detail gains Time in each stage. Tiles now turn
+orange at 24 working hours as well as red at 48.
+
+**Proven.** Suhana 3 approved in September in the sheet and in `bb_person_month`. Self-test
+122 checks, 0 failed, 17 new.
+
+**What the numbers say.** Farhath holds 34 posts, all in Head Review. He approved none in
+September. The graphic pipeline has approved 3 posts in its whole life.

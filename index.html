@@ -857,7 +857,8 @@ tr:hover td{background:var(--surface-2)}
 
       <!-- ═══ ANALYTICS ═══ -->
       <section id="section-analytics">
-        <div class="sec-header"><h2>Analytics</h2></div>
+        <!-- GFX-6, 6 Oct 2026: nothing on this page has a month, so it says all time -->
+        <div class="sec-header"><h2>Analytics, all time</h2></div>
         <div class="stat-grid" id="analyticsStats"></div>
         <div class="analytics-grid" id="analyticsCharts"></div>
       </section>
@@ -1186,8 +1187,11 @@ function gHdr(extra){ return Object.assign({'apikey':SB_KEY,'Authorization':gBea
 gLogin();  // start immediately
 
 const USERS = {
-  '1031': { name:'THULAIB', role:'head', team_member_id:1, label:'Thulaib (CEO)' },
-  '1006': { name:'SHIARA', role:'head', team_member_id:2, label:'Shiara (COO)' },
+  /* GFX-8, 6 Oct 2026: these said 1 and 2. There is no team_members row 1 and
+     row 2 is KANEESHA, a leaver. The active rows are THULAIB 23 and SHIARA 24
+     (checked with SQL on team_members where active). */
+  '1031': { name:'THULAIB', role:'head', team_member_id:23, label:'Thulaib (CEO)' },
+  '1006': { name:'SHIARA', role:'head', team_member_id:24, label:'Shiara (COO)' },
   '3333': { name:'SUHANA', role:'designer', team_member_id:3, label:'Suhana' },
   '4444': { name:'FARHATH', role:'graphic_head', team_member_id:17, label:'Farhath' },
   '6666': { name:'AMJATH', role:'designer', team_member_id:18, label:'Amjath' },
@@ -1416,7 +1420,10 @@ function timeAgo(d){
   return Math.floor(s/86400)+'d ago';
 }
 function isOverdue(p){ return p.deadline && new Date(p.deadline)<new Date() && !p.is_archived && p.current_stage!=='approved'; }
-function todayStr(){ return new Date().toISOString().slice(0,10); }
+/* GFX-10, 6 Oct 2026: this was toISOString, which is UTC, so a pillar tick
+   between midnight and 05:30 Colombo saved to yesterday. Every caller is a
+   pillar day key and wants the LOCAL date. */
+function todayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 
 // ─── LOGIN ───
 // Login input handlers
@@ -1447,7 +1454,10 @@ async function attemptLogin(){
 
   // log login
   const logData = { member_name: foundUser.name, logged_in_at: new Date().toISOString(), app:'graphic-system' };
-  if([3,4,12].includes(foundUser.team_member_id)) logData.team_member_id = foundUser.team_member_id;
+  /* GFX-8, 6 Oct 2026: the id was written only for 3, 4 and 12, so Farhath,
+     Tiana, Amjath, Shiara and Thulaib logged in with no id. Write the id from
+     USERS for everyone who has one. */
+  if(foundUser.team_member_id!=null) logData.team_member_id = foundUser.team_member_id;
   sbPost('team_login_logs', logData).catch(()=>{});
 
   showApp();
@@ -1627,6 +1637,12 @@ async function loadAll(){
   else { failed.push('images'); console.error('loadAll [images]', res[3].reason || res[3].value); }
 
   if(failed.length) toast('Could not refresh '+failed.join(', ')+'. Showing last known data.','error');
+
+  /* GFX-6, 6 Oct 2026: the recap kept its month rows for the whole session, so
+     a bulk move or a new post never reached it until the month was changed.
+     Drop the cache on every reload so the recap reads fresh. The try is for
+     the order of the script: RC_ROWS is declared further down the page. */
+  try{ RC_ROWS = null; }catch(e){}
 
   populateClientDropdowns();
   renderCurrentPage();
@@ -1922,6 +1938,9 @@ async function bulkDeleteSelected(){
 async function gfxSetStage(id, newStage, note){
   const p = projects.find(x=>x.id===id);
   const oldStage = p ? p.current_stage : null;
+  /* GFX-4, 6 Oct 2026: a bulk move re-stamped posts already in the target stage,
+     with a new finish time and a new history row. Nothing to move, so no write. */
+  if(oldStage && oldStage===newStage) return true;
   const okWrite = await sbPatch('graphic_projects','id=eq.'+id, {
     current_stage: newStage,
     updated_at: new Date().toISOString(),
@@ -2101,9 +2120,14 @@ const PENDING_IMG = {};
    the two can never drift apart. */
 const PENDING_THUMB = {};
 
+/* GFX-9, 6 Oct 2026: openAddProject calls this on every open and the add-post
+   drop zone is static markup, so each open stacked another set of listeners.
+   After ten opens one dropped image was read and compressed ten times. Each
+   element is now bound once, marked with a data flag. */
 function setupImageHost(hostId, hostTextarea) {
   const ta = hostTextarea ? document.getElementById(hostTextarea) : null;
-  if (ta) {
+  if (ta && !ta.dataset.imgPasteBound) {
+    ta.dataset.imgPasteBound = '1';
     ta.addEventListener('paste', e => {
       const items = (e.clipboardData || window.clipboardData).items;
       for (const it of items) {
@@ -2117,6 +2141,8 @@ function setupImageHost(hostId, hostTextarea) {
   }
   const dropZones = [document.querySelector(`[data-drop-host="${hostId}"]`), ta].filter(Boolean);
   dropZones.forEach(zone => {
+    if (zone.dataset.imgDropBound) return;
+    zone.dataset.imgDropBound = '1';
     zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('img-drop-hot'); });
     zone.addEventListener('dragleave', () => zone.classList.remove('img-drop-hot'));
     zone.addEventListener('drop', e => {
@@ -2218,8 +2244,21 @@ async function saveDetailImage(projId) {
 }
 
 // ─── ADD / EDIT PROJECT ───
+/* GFX-2, 6 Oct 2026: the edit form prefills the image field with the stored
+   image. Saving sent it straight back with a null thumbnail, so every title
+   fix re-uploaded about 250 kB and put the board back on full-size fetches.
+   This remembers what was prefilled, so only a NEW image is ever sent. */
+let PROJ_IMG_PREFILL = '';
+/* GFX-3, 6 Oct 2026: a new post was always stamped with this year, so a January
+   post added in December was filed a year early. A target month more than six
+   months behind the current month is next year's. */
+function gfxTargetYear(month){
+  const now = new Date();
+  return now.getFullYear() + (((now.getMonth()+1) - Number(month)) > 6 ? 1 : 0);
+}
 function openAddProject(){
   editingProjectId = null;
+  PROJ_IMG_PREFILL = '';
   document.getElementById('modalAddTitle').textContent = 'New Post';
   document.getElementById('btnSaveProject').textContent = 'Save Post';
   ['projTitle','projNotes','projImageUrl','projDriveLink','projDimensions'].forEach(id=>document.getElementById(id).value='');
@@ -2238,6 +2277,7 @@ async function openEditProject(id){
   const p = projects.find(x=>x.id===id);
   if(!p) return;
   editingProjectId = id;
+  PROJ_IMG_PREFILL = '';
   document.getElementById('modalAddTitle').textContent = 'Edit Project';
   document.getElementById('btnSaveProject').textContent = 'Update';
   document.getElementById('projTitle').value = p.title||'';
@@ -2254,7 +2294,7 @@ async function openEditProject(id){
   clearPendingImg('addProj');
   openModal('modalAddProject');
   // load existing image (base64 is not preloaded with the board) so a plain save never wipes it
-  ensureProjectImage(p).then(url=>{ if(editingProjectId===id) document.getElementById('projImageUrl').value = url||''; });
+  ensureProjectImage(p).then(url=>{ if(editingProjectId===id){ PROJ_IMG_PREFILL = url||''; document.getElementById('projImageUrl').value = url||''; } });
 }
 
 async function saveProject(){
@@ -2293,27 +2333,41 @@ async function saveProject(){
   };
 
   // Image: only send it when there's a new/known value — never overwrite an existing image with null.
-  const newImg = PENDING_IMG['addProj'] || document.getElementById('projImageUrl').value.trim();
+  const pickedImg = PENDING_IMG['addProj'] || null;
+  const typedImg = document.getElementById('projImageUrl').value.trim();
+  const newImg = pickedImg || typedImg;
   const newThumb = PENDING_THUMB['addProj'] || null;
 
-  data.target_year = new Date().getFullYear();
+  /* GFX-1, 6 Oct 2026: both writes below said done without checking the result,
+     so on a dropped connection the brief and its image were thrown away while
+     the toast said saved. A failed write now keeps the modal open and says so. */
+  const saveFailed = (what) => toast('Could not save '+what+'. Nothing was lost from the form, check your connection and try again','error');
+  try{
   if(editingProjectId){
-    if(newImg){ data.image_url = newImg; data.thumb_url = newThumb; }   // omit when empty → preserves existing image
-    await sbPatch('graphic_projects','id=eq.'+editingProjectId, data);
-    if(newImg){ IMG_IDS.add(editingProjectId); IMG_CACHE[editingProjectId] = newThumb || newImg; }
+    /* GFX-3, 6 Oct 2026: an edit rewrote target_year to this year. It is left
+       out, so the year the post was filed under stays as it is. */
+    /* GFX-2: send the image only for a newly picked file or a URL typed over the prefilled one. */
+    const imgChanged = !!pickedImg || (!!typedImg && typedImg !== PROJ_IMG_PREFILL);
+    if(imgChanged){ data.image_url = newImg; data.thumb_url = newThumb; }   // omit when unchanged → preserves existing image and thumbnail
+    const okPatch = await sbPatch('graphic_projects','id=eq.'+editingProjectId, data);
+    if(!okPatch){ saveFailed('the changes'); return; }
+    if(imgChanged){ IMG_IDS.add(editingProjectId); IMG_CACHE[editingProjectId] = newThumb || newImg; }
     toast('Post updated');
   } else {
+    data.target_year = gfxTargetYear(data.target_month);
     data.image_url = newImg || null;
     data.thumb_url = newThumb;
     data.current_stage = 'brief';
     data.created_by = currentUser.name;
     const res = await sbPost('graphic_projects', data, 'id');
-    if(Array.isArray(res) && res[0]){
-      if(newImg){ IMG_IDS.add(res[0].id); IMG_CACHE[res[0].id] = newImg; }
-      await sbPost('graphic_stage_history',{ graphic_project_id: res[0].id, stage:'brief', entered_by: currentUser.name, notes:'Post created' }, 'id');
-    }
-    toast('Post created');
+    if(!(Array.isArray(res) && res[0])){ console.error('saveProject create', res); saveFailed('the post'); return; }
+    if(newImg){ IMG_IDS.add(res[0].id); IMG_CACHE[res[0].id] = newImg; }
+    const hist = await sbPost('graphic_stage_history',{ graphic_project_id: res[0].id, stage:'brief', entered_by: currentUser.name, notes:'Post created' }, 'id');
+    /* The post exists by now, so the modal closes either way: a retry would make a second post. */
+    if(Array.isArray(hist) && hist[0]) toast('Post created');
+    else { console.error('saveProject history', hist); toast('Post created. Its first history row did not save','error'); }
   }
+  }catch(e){ console.error('saveProject', e); saveFailed(editingProjectId ? 'the changes' : 'the post'); return; }
   clearPendingImg('addProj');
   closeModal('modalAddProject');
   await loadAll();
@@ -2350,7 +2404,7 @@ async function quickAddProject(){
     priority: 'normal',
     current_stage: 'brief',
     created_by: currentUser.name,
-    target_year: now.getFullYear(),
+    target_year: gfxTargetYear(monthSel.value),   /* GFX-3, 6 Oct 2026: was always this year */
     target_month: parseInt(monthSel.value,10),
     updated_at: now.toISOString()
   };
@@ -2510,10 +2564,16 @@ async function archiveProject(id){
 async function deleteProject(id){
   if(!canDeleteForever()){ toast('Only a head or an SMM can delete for good. Archive it instead','error'); return; }
   if(!confirm('Permanently delete this project? This cannot be undone.')) return;
+  /* GFX-1, 6 Oct 2026: this deleted the history and the comments first, then the
+     post and said "Project deleted" without checking any of it. A failed post
+     delete left a live post with its history gone. pg_constraint (checked 6 Oct
+     2026) shows graphic_stage_history and graphic_project_comments both
+     reference graphic_projects ON DELETE CASCADE, so deleting the post alone
+     takes both with it. A failure leaves all three untouched. */
+  let okDel = false;
+  try{ okDel = await sbDel('graphic_projects','id=eq.'+id); }catch(e){ console.error('deleteProject', e); }
+  if(!okDel){ toast('Could not delete the project. Nothing was removed, try again','error'); return; }
   forgetBulkKeyFor(id);
-  await sbDel('graphic_stage_history','graphic_project_id=eq.'+id);
-  await sbDel('graphic_project_comments','graphic_project_id=eq.'+id);
-  await sbDel('graphic_projects','id=eq.'+id);
   toast('Project deleted');
   closeModal('modalDetail');
   await loadAll();
@@ -2856,6 +2916,9 @@ async function loadArchived(){
      column list, archiving the board would drag every image across the wire. */
   let archived = await sbGet('graphic_projects','?is_archived=eq.true&order=updated_at.desc&select='+PROJ_LIST_COLS+',completed_at');
   if(!Array.isArray(archived)) archived = [];
+  /* GFX-7, 6 Oct 2026: the archive was the one list that skipped the visibility
+     rule, so a designer could see and restore every colleague's archived post. */
+  archived = scopedProjects(archived);
   if(search) archived = archived.filter(p=>(p.title||'').toLowerCase().includes(search)||(p.client_name||'').toLowerCase().includes(search));
 
   const container = document.getElementById('archivedTable');
@@ -2923,11 +2986,14 @@ async function renderAnalytics(){
     clientCounts[c] = (clientCounts[c]||0)+1;
   });
 
+  /* GFX-6, 6 Oct 2026: these four read every post ever made, archived ones
+     included, with no month. "Active Clients" was every client name ever. Each
+     label now says all time so nobody reads it as this month. */
   document.getElementById('analyticsStats').innerHTML = `
-    <div class="stat-card accent"><div class="stat-label">Total Projects</div><div class="stat-value">${total}</div></div>
-    <div class="stat-card green"><div class="stat-label">Completed</div><div class="stat-value">${approved.length}</div></div>
-    <div class="stat-card blue"><div class="stat-label">Avg Completion</div><div class="stat-value">${avgDays}d</div></div>
-    <div class="stat-card"><div class="stat-label">Active Clients</div><div class="stat-value">${Object.keys(clientCounts).length}</div></div>
+    <div class="stat-card accent"><div class="stat-label">Total Projects, all time</div><div class="stat-value">${total}</div></div>
+    <div class="stat-card green"><div class="stat-label">Completed, all time</div><div class="stat-value">${approved.length}</div></div>
+    <div class="stat-card blue"><div class="stat-label">Avg Completion, all time</div><div class="stat-value">${avgDays}d</div></div>
+    <div class="stat-card"><div class="stat-label">Clients, all time</div><div class="stat-value">${Object.keys(clientCounts).length}</div></div>
   `;
 
   const maxClient = Math.max(...Object.values(clientCounts),1);
@@ -3303,7 +3369,11 @@ async function wpToggleTask(id){
 async function wpMoveNextWeek(id){
   const t = (wpTasks||[]).find(x=>x.id===id); if(!t) return;
   const d = new Date(t.week_start+'T00:00:00'); d.setDate(d.getDate()+7);
-  const nk = d.toISOString().slice(0,10);
+  /* GFX-5, 6 Oct 2026: toISOString turned local midnight back into UTC, which in
+     Colombo is the day before, so the Sunday key became a Saturday nobody reads
+     and the task vanished. Build the key from the local date of d, which is the
+     stored key plus seven days, the same Sunday key wpLoadWeek reads. */
+  const nk = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
   const ok = await sbPatch('graphic_weekly_plan','id=eq.'+id,{week_start:nk, updated_at:new Date().toISOString()});
   if(ok){ toast('Moved to the week of '+wpFmtDate(d)); wpLoadWeek(); }
   else toast('Could not move that task','error');
@@ -5078,7 +5148,15 @@ async function renderRecap(){
     /* VISIBILITY: the recap reads the table directly, so it scopes here. A designer's recap is their month, the head's is everyone's. */
     const r = Array.isArray(r0) ? scopedProjects(r0) : r0;
     if(myToken!==RC_TOKEN) return;      /* a newer render started while this one waited */
-    RC_ROWS = Array.isArray(r)?r:[];
+    /* GFX-6, 6 Oct 2026: a failed read was cached as an empty month, so a dropped
+       connection showed "the board was cleared on 20 August" and stayed that way
+       until the month was changed. A failed read is never cached and says so. */
+    if(!Array.isArray(r)){
+      console.error('recap read failed', r0);
+      body.innerHTML='<div class="rc-say">Could not load the recap. Check your connection and try again.</div>';
+      return;
+    }
+    RC_ROWS = r;
     RC_KEY = key;
   }
   if(myToken!==RC_TOKEN) return;

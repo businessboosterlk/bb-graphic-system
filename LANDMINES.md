@@ -24,7 +24,11 @@ canvas downscale on upload). See L-GFX-002 and L-GFX-003 for what survived.
 The permanent fix is moving images to a Supabase Storage bucket. That is an
 infra change and is gated on Thulaib.
 
-## L-GFX-002 · the archive page still runs the original unfixed query · OPEN
+## L-GFX-002 · the archive page still runs the original unfixed query · FIXED 2026-08-20 (`0d12701`)
+**Heading corrected 2026-10-06 (L-GFX-056).** It said OPEN for seven weeks after
+`0d12701` closed it. `loadArchived()` names its columns: `PROJ_LIST_COLS` plus
+`completed_at`, never `image_url`. The text below is the fault as first found.
+
 `loadArchived()` line 2055:
 `sbGet('graphic_projects','?is_archived=eq.true&order=updated_at.desc')` —
 no column list, so it pulls `image_url` for every archived project. The render
@@ -60,7 +64,13 @@ The 8 images over 1 MB are the pre-compression ones named in the old note.
 The other 353 average roughly 200 KB, not 86 KB. Quote the band table, never
 the 86 KB figure.
 
-## L-GFX-005 · thumbnails fetch the full-size original · FIXED + LIVE 2026-08-20 (`941a87a`)
+## L-GFX-005 · thumbnails fetch the full-size original · FIXED + LIVE 2026-08-20 (`941a87a`) · edit path reopened it, closed again 2026-10-06 (L-GFX-049)
+**Status corrected 2026-10-06 (L-GFX-056).** `941a87a` added `thumb_url` and the
+board reads the thumbnail first, so the heading's FIXED is true for the board.
+The "Keep it OPEN" note in the board clear section was written an hour BEFORE
+`941a87a` and is superseded. The edit form then reopened the fault for every
+post with an image: see L-GFX-049. The text below is the fault as first found.
+
 There is no thumbnail column. `observeLazyThumbs()` (lines 1177-1194) fetches
 the **whole** base64 image per card to fill an `img.lazy-thumb`, with
 `rootMargin:250px`, and caches every one in `IMG_CACHE` for the session.
@@ -409,6 +419,8 @@ a 4-key error object, so a naive `len()` reported "4 rows". A single request for
 - **L-GFX-005** (thumbnails fetch full-size originals) — no thumbnails to fetch.
   **The underlying fault is NOT fixed.** There is still no thumbnail column, so
   this returns as soon as the team uploads designs again. Keep it OPEN.
+  *(Superseded 2026-08-21 by `941a87a`, which added `thumb_url` an hour after
+  this note. See the L-GFX-005 heading.)*
 - **L-GFX-010** (346 duplicate SQUARE 1 AI rows) — gone. **The bulk-add path
   still has no dedup guard**, so it can happen again. Keep it OPEN.
 
@@ -821,9 +833,11 @@ is their `team_member_id` (the Video System's id match), falling back to the
 label only for rows written before the id was stored. Unassigned work is not
 theirs yet, exactly as in Video. `graphic_head`, `smm`, `head` and `brief` see
 everything. Designers can still ADD work for any client; the rule governs what
-they SEE. Ten call sites: dashboard counts, board, clients page, archive,
-recap (which reads the table directly, so it scopes its own result), and the
-harness.
+they SEE. Seven call sites in the app: two dashboard counts, the board, the
+clients page, Analytics, the archive and the recap (which reads the table
+directly, so it scopes its own result). The harness adds five calls of its own.
+**Corrected 2026-10-06 (L-GFX-053, L-GFX-056):** this list named the archive
+from 5 Sep, but `loadArchived()` never called `scopedProjects` until 6 Oct.
 
 **Why one function matters:** the recap was added after 43d100a and fetched
 its own rows, so under the old scoping it would have leaked everyone's month
@@ -1301,3 +1315,109 @@ orange at 24 working hours as well as red at 48.
 
 **What the numbers say.** Farhath holds 34 posts, all in Head Review. He approved none in
 September. The graphic pipeline has approved 3 posts in its whole life.
+
+## L-GFX-048 · a single save or delete said done without checking the write · FIXED 2026-10-06
+Found by the 6 Oct evening scan (GFX-1). `saveProject()` toasted "Post created"
+and closed the modal when the insert came back as an error object; the edit path
+ignored `sbPatch`. On a dropped phone connection the brief, its image and the
+typed notes were thrown away while the toast said saved. `deleteProject()`
+deleted the history, then the comments, then the post, checked none of it and
+said "Project deleted". A failed post delete left a live post with no history.
+
+**The fix.** Each write's result is checked. A failed save keeps the modal open
+with the form intact and an error toast. A failed history row after a good
+insert says so but still closes, because a retry would make a second post.
+`pg_constraint` (6 Oct) shows `graphic_stage_history` and
+`graphic_project_comments` both reference `graphic_projects` ON DELETE CASCADE,
+so `deleteProject()` now deletes the post row alone and toasts only on success.
+
+**Same class as L-GFX-023, which fixed the bulk paths only.** Still open on
+purpose, outside this job: `moveStage`, `archiveProject`, `restoreProject` and
+`saveDetailImage` ignore their results, and `bulkDeleteSelected` still deletes
+history and comments first.
+
+## L-GFX-049 · the edit form sent back what it had only displayed · FIXED 2026-10-06
+GFX-2 and GFX-3 (edit half). `openEditProject()` prefills the image field with
+the stored base64 so a plain save cannot wipe it. `saveProject()` then sent that
+value straight back as `image_url` with `thumb_url` null, because no new file
+had been picked. Every title fix on an image post re-sent about 250 kB and put
+that card back on full-size fetches: L-GFX-005 reopened. The same payload set
+`target_year` to the current year, so a January edit moved a December post a
+year forward.
+
+**The fix.** `PROJ_IMG_PREFILL` remembers what the edit prefilled. The image
+and thumbnail are sent only for a newly picked file or a URL typed over the
+prefilled one. `target_year` is left out of the edit payload.
+
+**Known gap.** Changing the target month on an edit keeps the stored year.
+
+## L-GFX-050 · dates built in UTC or with a fixed year · FIXED 2026-10-06
+Three date faults (GFX-3 create half, GFX-5, GFX-10). Colombo is UTC+5:30, so
+`toISOString()` turns local midnight into the day before.
+
+1. `wpMoveNextWeek()` parsed the Sunday key as local midnight, added seven days
+   and wrote `toISOString()`: the Saturday before. The task left every week the
+   app reads. 10 rows already sit on Saturday keys (ids 153, 162, 166, 179, 210,
+   222, 224, 230, 268, 280). **They were NOT moved:** that is a data write and
+   waits on Thulaib's yes. The key is now built from the local date of the
+   shifted day, which is the stored key plus seven.
+2. `todayStr()` was UTC, so a pillar tick between 00:00 and 05:30 saved to
+   yesterday. All four callers are pillar day keys; it now builds the local date.
+3. A single or quick add stamped this year whatever the month. `gfxTargetYear()`
+   files a target month more than six months behind the current month as next
+   year's, so a January post added in December lands in January next year.
+
+**Still UTC, untouched:** the Weekly Plan's own keys (`wpLoadWeek` and the
+writers near it) use `toISOString()` on local Monday midnight. That is the
+convention the stored Sunday keys follow, so changing it would orphan every row.
+
+## L-GFX-051 · a move to the stage a post is already in still wrote · FIXED 2026-10-06
+GFX-4. `onDrop` skipped a same-stage drop, but `gfxSetStage()` itself did not.
+A bulk move of a mixed selection to Approved gave every post already approved a
+new `completed_at` and a new history row, which moves turnaround, the recap
+month and the stage-age clock. `gfxSetStage()` now returns true with no write
+when the old stage equals the new one.
+
+## L-GFX-052 · the recap cached a failed read as an empty month · FIXED 2026-10-06
+GFX-6. A failed recap read was stored as `RC_ROWS = []` under the month key, so a
+dropped connection showed "the board was cleared on 20 August" and kept showing
+it until the month was changed. `RC_ROWS` was also never reset, so a bulk move
+or new post did not reach the recap until then.
+
+**The fix.** A failed read is never cached and the page says "Could not load".
+`loadAll()` drops `RC_ROWS`. Analytics has no month at all, so its heading and
+four stat labels now say all time. "Active Clients" counted every client name
+ever, archived included. It now reads "Clients, all time".
+
+## L-GFX-053 · the archive skipped the visibility rule · FIXED 2026-10-06
+GFX-7. `loadArchived()` read every archived row and never called
+`scopedProjects`, so a designer could see and restore every colleague's archived
+post. L-GFX-027 listed the archive as scoped from 5 Sep. It is now.
+
+## L-GFX-054 · the heads' ids pointed at no row and at a leaver · FIXED 2026-10-06
+GFX-8. `USERS` gave THULAIB `team_member_id` 1 (no such row) and SHIARA 2
+(KANEESHA, inactive). SQL on `team_members where active`: THULAIB 23, SHIARA 24.
+The login log wrote the id only for 3, 4 and 12, so 89 of 132 Graphic logins in
+30 days carried none. It now writes the id from `USERS` for everyone.
+
+**Known gap.** A session restored from `sessionStorage` keeps the id it was
+signed in with until that tab signs in again.
+
+## L-GFX-055 · the add-post drop zone stacked a listener per open · FIXED 2026-10-06
+GFX-9. `openAddProject()` calls `setupImageHost('addProj')` on every open and the
+drop zone is static markup, so each open added another dragover, dragleave and
+drop listener. After ten opens one dropped image was read and compressed ten
+times. Each element is now bound once, marked with `data-img-drop-bound` and
+`data-img-paste-bound`.
+
+## L-GFX-056 · the register said three things the code did not · FIXED 2026-10-06
+GFX-11. L-GFX-002 said OPEN after `0d12701` closed it. L-GFX-005 said FIXED in its
+heading while the board clear section said keep it OPEN. L-GFX-027 listed the
+archive among the scoped call sites when it was not. All three are corrected in
+place with a dated note; nothing was deleted.
+
+**Proven for L-GFX-048 to L-GFX-055.** A targeted Playwright run with writes
+stubbed (`prove-scan-fixes-2026-10-06.mjs` in this repo, run with
+`~/.local/node/bin/node prove-scan-fixes-2026-10-06.mjs [file]`): 24 checks,
+20 fail on the pre-fix file naming each fault, 0 fail on the fix. Self-test 122
+checks, 0 failed on phone and desk. `guard.py` PASS.

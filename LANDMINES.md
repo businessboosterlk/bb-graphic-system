@@ -1777,3 +1777,67 @@ THE LESSONS.
 - **A measurement harness in a 0x0 viewport reports success for measuring
   nothing** (L-GFX-065), and one on the login screen reports success for
   measuring the login screen. Same disease, two doors.
+
+## L-GFX-069 · the search box was 220px tall on a phone, because flex-basis is the main axis · FIXED 2026-10-07
+Found by looking at the Pipeline on a 375px screen, not by a check. The search
+box was six times its proper height on the page the graphic head uses most.
+
+`.filter-bar input[type="text"]` carries `flex:0 1 220px`. On a desk the bar is a
+row, so 220px is a WIDTH, which is what the author meant. The phone block turns
+the bar into a column with `flex-direction:column`, and flex-basis always applies
+to the MAIN axis, so the same 220px became a HEIGHT. The `height:36px` sitting
+right beside it on the line above cannot win, because a basis on the main axis
+beats a height.
+
+Fixed with `flex:0 0 auto;min-width:0` inside the phone block, plus a check that
+measures the box under 600px. 220px to 36px.
+
+LESSON: **`flex-direction` silently re-points every basis, grow and shrink in that
+container.** Any rule written for a row has to be re-read when a media query turns
+it into a column. And measure the phone: this had been shipping, in front of the
+person who reported a different scrolling complaint about the same page.
+
+## L-GFX-070 · the Graphic pipeline is two stages, because that is what it has been for six weeks · 2026-10-07
+Farhath: "I feel like the pipeline is too complexed. i dont think the 'Brief' and
+'In Progress' section will be much of a use cause we already add our tasks to the
+weekly plan, the images for the posts wont be ready till the first draft."
+
+THE EVIDENCE, read before deciding anything. `graphic_stage_history`, 24 August to
+5 October: brief 112 moves across 110 posts, approved 109 across 108, and all six
+other stages 17 moves BETWEEN them. in_progress, first_draft and head_review were
+last touched on 4 September; sent_to_client on 26 August. All 107 live posts sit
+in Approved.
+
+So the board drew eight columns and had been two for six weeks. Farhath was right
+about the complexity and half wrong about which two to cut: Brief is the one stage
+that carries every post, because it is where new work lands. Removing it would
+have removed the only stage in use.
+
+Thulaib's call: Brief is renamed **To do**, Approved stays, the middle six are
+retired. The six alert rules for them are deactivated, not deleted (reversible in
+one update); rules 12 and 19 stay, and 12's title now says post rather than brief,
+because a push must not name a stage the screen no longer shows.
+
+RETIRED, NOT DELETED, in the app too. `STAGE_LABELS` still names all eight, so the
+stage history and the archive never render a raw key, and `stageColumn()` DRAWS
+anything in a retired or unknown stage in To do rather than dropping it. Checked:
+8 posts across all 8 stages, 8 of 8 reach the board, 2 columns.
+
+THE LESSON: **ask the history which stages are used before redesigning a
+pipeline from an opinion.** The person reporting the problem was right that it
+was wrong and wrong about the fix, and only the data separated the two. The
+number that settled it was free and took one query.
+
+Also shipped with it, from Farhath's second point: a Grid view beside the Board,
+one switch, remembered per person, leading with the design because a graphic team
+recognises its work by the picture. Prior art taken from the registry row
+"Pipeline board (kanban + list, one switch)", best cast
+`bb-workshop-os/.../enquiries.component.ts`: the rule that a stage list is a board
+AND another view behind one switch, the empty state that says what to do, and the
+harness lines asserting the switch. NOT taken: the Angular CDK drag code, the
+84vw snapping columns and the per-stage drop rules, because this is a single HTML
+file and the stage set is now two.
+
+And the board opens on the CURRENT MONTH. 104 of the 110 posts are October, so a
+board showing everything ever was more of the "unmanageable" feeling than the
+column count was.

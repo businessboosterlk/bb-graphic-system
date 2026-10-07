@@ -319,6 +319,34 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .bulk-table .btn-rm{background:none;border:none;color:var(--red);cursor:pointer;font-size:1.1rem;padding:4px}
 
 /* ═══════════════ KANBAN ═══════════════ */
+/* `hidden` is only display:none at the browser's default weight, and .kanban
+   sets display:flex, which beats it. Without this the board stays on screen
+   underneath the grid. */
+.kanban[hidden],.pipe-grid[hidden]{display:none}
+.pipe-views{display:inline-flex;gap:2px;background:var(--surface-2);border:1px solid var(--border);
+  border-radius:var(--r-sm);padding:2px;margin:0 0 12px}
+.pipe-view{appearance:none;border:0;background:transparent;color:var(--text-2);font:inherit;font-size:0.8rem;
+  font-weight:600;padding:7px 16px;min-height:36px;border-radius:calc(var(--r-sm) - 2px);cursor:pointer}
+.pipe-view[aria-selected="true"]{background:var(--accent);color:#fff}
+/* One card per design, the picture doing the work. auto-fill so the row packs
+   itself at any width instead of a breakpoint guessing for it. */
+.pipe-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:12px;padding-bottom:12px}
+.pg-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden;
+  cursor:pointer;display:flex;flex-direction:column;text-align:left;padding:0;font:inherit;color:inherit;width:100%}
+.pg-shot{aspect-ratio:1/1;width:100%;background:var(--surface-3);display:block;object-fit:cover}
+.pg-none{aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;background:var(--surface-3);
+  color:var(--text-3);font-size:0.72rem;text-align:center;padding:10px}
+.pg-body{padding:9px 10px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.pg-client{font-size:0.68rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--text-3);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pg-title{font-size:0.82rem;font-weight:600;line-height:1.3;overflow:hidden;display:-webkit-box;
+  -webkit-line-clamp:2;-webkit-box-orient:vertical}
+.pg-foot{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px}
+.pg-stage{font-size:0.68rem;font-weight:600;padding:2px 7px;border-radius:10px;background:var(--surface-3);color:var(--text-2)}
+.pg-stage.approved{background:var(--accent-soft);color:var(--accent)}
+.pg-who{font-size:0.68rem;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pipe-empty{padding:28px 16px;text-align:center;color:var(--text-3);font-size:0.84rem}
+@media(max-width:420px){.pipe-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}}
 .kanban{display:flex;gap:12px;overflow-x:auto;padding-bottom:12px;min-height:400px}
 .kanban-col{min-width:250px;width:250px;flex-shrink:0;display:flex;flex-direction:column}
 .kanban-col-header{padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm) var(--r-sm) 0 0;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0}
@@ -522,8 +550,16 @@ tr:hover td{background:var(--surface-2)}
   .kanban-col{width:100%;min-width:unset}
   .kanban-cards{max-height:none}
   .stat-grid{grid-template-columns:repeat(2,1fr)}
-  .filter-bar{flex-direction:column}
+  .filter-bar{flex-direction:column;align-items:stretch}
   .filter-bar input,.filter-bar select{width:100%}
+  /* L-GFX-069, 7 Oct 2026. The search box was 220px TALL on a phone.
+     `.filter-bar input[type="text"]` carries `flex:0 1 220px`, and flex-basis
+     applies to the MAIN axis. On desk the bar is a row, so 220px is a width.
+     This block turns the bar into a column, which makes 220px a HEIGHT, and
+     the `height:36px` beside it cannot win against a basis on the main axis.
+     Found by looking at the phone, not by a check: the box was six times its
+     proper height on the one page the graphic head uses most. */
+  .filter-bar input[type="text"]{flex:0 0 auto;min-width:0}
 }
 @media(min-width:901px){
   .sidebar{transform:translateX(0)}
@@ -774,7 +810,17 @@ tr:hover td{background:var(--surface-2)}
             <option value="10">October</option><option value="11">November</option><option value="12">December</option>
           </select>
         </div>
+        <!-- Farhath, 7 Oct 2026: "instead of a List View for the pipeline, why
+             don't we go with a grid view. Grid view would look good and easy to
+             manage." A graphic team recognises its work by the picture, not the
+             title, so the grid leads with the design. The board stays, because a
+             list with stages is a board AND another view behind one switch. -->
+        <div class="pipe-views" role="tablist" aria-label="How to show the pipeline">
+          <button class="pipe-view" id="pipeViewGrid"  role="tab" onclick="setPipeView('grid')">Grid</button>
+          <button class="pipe-view" id="pipeViewBoard" role="tab" onclick="setPipeView('board')">Board</button>
+        </div>
         <div class="kanban" id="kanbanBoard"></div>
+        <div class="pipe-grid" id="pipeGrid" hidden></div>
         <div class="bulkbar" id="bulkBar">
           <span><b id="bulkCount">0</b> selected</span>
           <select id="bulkMoveTo"><option value="">Move to…</option></select>
@@ -1285,8 +1331,32 @@ function canDeleteForever(){
 const ROLE_LABELS = { head:'Head', graphic_head:'Graphic Head', designer:'Designer',
                       smm:'SMM', brief:'Brief' };
 
-const STAGES = ['brief','in_progress','first_draft','revisions','head_review','sent_to_client','client_changes','approved'];
-const STAGE_LABELS = {brief:'Brief',in_progress:'In Progress',first_draft:'First Draft',revisions:'Revisions',head_review:'Head Review',sent_to_client:'Sent to Client',client_changes:'Client Changes',approved:'Approved'};
+/* TWO STAGES. Thulaib, 7 Oct 2026, after Farhath said "the pipeline is too
+   complexed" and asked for Brief and In Progress to go.
+
+   The stage history decided the shape, not the opinion. Between 24 August and
+   5 October: brief 112 moves across 110 posts, approved 109 across 108, and
+   ALL SIX other stages 17 moves between them. in_progress, first_draft and
+   head_review were last touched on 4 September, sent_to_client on 26 August.
+   So the board has really been two columns for six weeks while drawing eight.
+
+   Farhath was right that it is too complex and half wrong about which two to
+   cut: Brief is the one stage that carries every post, because that is where
+   new work lands. So Brief stays and is renamed To do, Approved stays, and the
+   middle six are retired.
+
+   RETIRED, NOT DELETED. The labels below stay complete, because the stage
+   history and the archive still hold rows in those stages and a name must never
+   render as a raw key. And anything that somehow arrives in a retired stage is
+   DRAWN IN To do rather than silently dropped: a row filed where no column
+   reads it is a row that is gone, which is exactly how the weekly plan lost ten
+   schedules (L-GFX-064). */
+const STAGES = ['brief','approved'];
+const STAGES_RETIRED = ['in_progress','first_draft','revisions','head_review','sent_to_client','client_changes'];
+const STAGE_LABELS = {brief:'To do',in_progress:'In Progress',first_draft:'First Draft',revisions:'Revisions',head_review:'Head Review',sent_to_client:'Sent to Client',client_changes:'Client Changes',approved:'Approved'};
+/* Which column a post is DRAWN in. A live stage draws in itself; anything else
+   draws in the first column so it is seen and can be moved on. */
+function stageColumn(stage){ return STAGES.indexOf(stage)>-1 ? stage : STAGES[0]; }
 const MONTHS = ['','January','February','March','April','May','June','July','August','September','October','November','December'];
 
 let currentUser = null;
@@ -1846,11 +1916,73 @@ function emptyHTML(msg,sub=''){
 // ═══════════════════════════════════════
 // PIPELINE / KANBAN
 // ═══════════════════════════════════════
+/* GRID OR BOARD. Farhath asked for the grid; the board stays because a list
+   with stages is a board and another view behind one switch, which is
+   Thulaib's standing rule. The choice is remembered per person on this device,
+   so nobody re-picks it every morning. */
+/* THE BOARD OPENS ON THIS MONTH. Thulaib, 7 Oct 2026.
+   All 107 live posts sit in Approved and 105 of them are October, so a board
+   showing everything ever is the real reason it reads as unmanageable, more
+   than the column count. Opening on the current month shows the work in hand.
+   Set ONCE per load, and only while the filter is still untouched, so changing
+   it to All Months during a session is not undone underneath the person. */
+let _pipeMonthDefaulted = false;
+function pipeDefaultMonth(){
+  if(_pipeMonthDefaulted) return;
+  const m = document.getElementById('filterMonth');
+  if(!m) return;
+  m.value = String(new Date().getMonth()+1);
+  /* Quick Add sits in the same bar and had no default at all, so it filed every
+     post it ever made into January unless somebody noticed the dropdown. */
+  setMonthSelectToThisMonth('qaMonth', null);
+  _pipeMonthDefaulted = true;
+}
+let PIPE_VIEW = (function(){ try{ return localStorage.getItem('bbgfx_pipe_view')==='board' ? 'board' : 'grid'; }catch(e){ return 'grid'; } })();
+function setPipeView(v){
+  PIPE_VIEW = (v==='board') ? 'board' : 'grid';
+  try{ localStorage.setItem('bbgfx_pipe_view', PIPE_VIEW); }catch(e){}
+  renderPipeline();
+}
+function renderPipeGrid(filtered){
+  const el = document.getElementById('pipeGrid'); if(!el) return;
+  if(!filtered.length){
+    el.innerHTML = '<div class="pipe-empty">Nothing here. Change the month or the filters above, or add a post.</div>';
+    return;
+  }
+  el.innerHTML = filtered.map(p=>{
+    const hasImg = (p.image_url!==undefined && p.image_url!==null) || IMG_IDS.has(p.id) || IMG_CACHE[p.id];
+    const cachedSrc = (p.image_url && p.image_url!==undefined) ? p.image_url : (IMG_CACHE[p.id]||'');
+    const stage = stageColumn(p.current_stage);
+    return `
+      <button type="button" class="pg-card" onclick="openProjectDetail(${p.id})">
+        ${hasImg
+          ? `<img class="pg-shot lazy-thumb" data-pid="${p.id}"${cachedSrc?` src="${esc(cachedSrc)}"`:''} alt="" loading="lazy">`
+          : `<span class="pg-none">No image yet</span>`}
+        <span class="pg-body">
+          <span class="pg-client">${esc(p.client_name||'No client')}</span>
+          <span class="pg-title">${esc(p.title)}</span>
+          <span class="pg-foot">
+            <span class="pg-stage ${stage}">${esc(STAGE_LABELS[stage]||stage)}</span>
+            ${p.assigned_designer?`<span class="pg-who">${esc(p.assigned_designer)}</span>`:''}
+          </span>
+        </span>
+      </button>`;
+  }).join('');
+}
 function renderPipeline(){
+  pipeDefaultMonth();
   const filtered = getFilteredProjects();
+  const grid = document.getElementById('pipeGrid');
+  const bTab = document.getElementById('pipeViewBoard'), gTab = document.getElementById('pipeViewGrid');
+  const onBoard = PIPE_VIEW==='board';
+  if(bTab){ bTab.setAttribute('aria-selected', String(onBoard)); }
+  if(gTab){ gTab.setAttribute('aria-selected', String(!onBoard)); }
   const board = document.getElementById('kanbanBoard');
+  if(board) board.hidden = !onBoard;
+  if(grid)  grid.hidden  = onBoard;
+  if(!onBoard){ renderPipeGrid(filtered); requestAnimationFrame(observeLazyThumbs); bulkBarSync(); return; }
   board.innerHTML = STAGES.map(stage=>{
-    const cards = filtered.filter(p=>p.current_stage===stage);
+    const cards = filtered.filter(p=>stageColumn(p.current_stage)===stage);
     return `
       <div class="kanban-col" data-stage="${stage}">
         <div class="kanban-col-header">
@@ -3798,13 +3930,23 @@ let bulkRowCount = 0;
    that opened and closed it released a freeze it did not own and six unrelated
    freeze checks failed afterwards. A check must not change the state the next
    check reads. */
-function bulkSetTargetToThisMonth(){
+/* ONE PRODUCER FOR "THIS MONTH". L-GFX-067, 7 Oct 2026.
+   The same dead guard, `if(!sel.value)`, was written in THREE places: Bulk Add,
+   the Pipeline filter and Quick Add. A <select> whose first option is January
+   reports "1", never "", so none of them ever ran and all three sat on January
+   while the board worked in October. Quick Add never even tried: it had the
+   guard and no default at all. Nothing was lost, because people changed it by
+   hand every time (104 of the 110 posts are October, none are January), but a
+   trap nobody has stepped in yet is still a trap. */
+function setMonthSelectToThisMonth(monthId, yearId){
   const now = new Date();
-  const m = document.getElementById('bkMonth'), y = document.getElementById('bkYear');
+  const m = monthId && document.getElementById(monthId);
+  const y = yearId  && document.getElementById(yearId);
   if(m) m.value = String(now.getMonth()+1);
-  if(y) y.value = String(now.getFullYear());
+  if(y && y.options.length) y.value = String(now.getFullYear());
   return {month: now.getMonth()+1, year: now.getFullYear()};
 }
+function bulkSetTargetToThisMonth(){ return setMonthSelectToThisMonth('bkMonth','bkYear'); }
 function openBulkPipeline(){
   const yEl=document.getElementById('bkYear'), mEl=document.getElementById('bkMonth');
   if(yEl && !yEl.options.length){
@@ -4428,8 +4570,13 @@ async function runSelfTest(opts){
     ok('Undo: reversing a move does not record a new one',
        BBU.stack.length===_u0+1, 'stack still '+BBU.stack.length);
     const _ul = bbuLabel({items:[{id:-4,from:'brief',to:'head_review',title:'AUG POST 3'}]});
+    /* READ the stage's name, never type it. This check hardcoded "Brief" and
+       failed the moment the stage was renamed To do on 7 Oct 2026, pointing at
+       the undo bar when nothing about the undo bar had changed. A check that
+       repeats a label owns that label. */
     ok('Undo: the bar says what will happen',
-       /AUG POST 3/.test(_ul) && /Brief/.test(_ul), '"'+_ul+'"');
+       /AUG POST 3/.test(_ul) && _ul.indexOf(STAGE_LABELS.brief)>-1,
+       '"'+_ul+'" should name '+STAGE_LABELS.brief);
     BBU.stack.length=_u0;
     ok('Undo: the check cleaned up after itself', BBU.stack.length===_u0, 'stack back to '+_u0);
     /* All four writers must be gone. A leftover copy is a move that records no
@@ -4898,6 +5045,106 @@ async function runSelfTest(opts){
       ok('Week key: one producer exists', false, 'wpKey is missing, so the six call sites are free to drift again');
     }
 
+    });
+
+    await section('Pipeline: two stages, grid and board', async () => {
+    /* Thulaib + Farhath, 7 Oct 2026. */
+    ok('Pipeline: the board draws two stages, To do and Approved',
+       STAGES.length===2 && STAGES[0]==='brief' && STAGES[1]==='approved' && STAGE_LABELS.brief==='To do',
+       STAGES.map(x=>STAGE_LABELS[x]).join(' then '));
+    ok('Pipeline: a retired stage still has a name, for the history and the archive',
+       STAGES_RETIRED.every(x=>!!STAGE_LABELS[x]) && STAGES_RETIRED.length===6,
+       STAGES_RETIRED.filter(x=>!STAGE_LABELS[x]).join(', ') || 'all six named');
+    ok('Pipeline: a post in a retired stage is DRAWN in To do, never dropped',
+       STAGES_RETIRED.every(x=>stageColumn(x)==='brief') && stageColumn('approved')==='approved'
+         && stageColumn('something_nobody_wrote')==='brief',
+       'a row filed where no column reads it is a row that is gone (L-GFX-064)');
+
+    /* The real test: render a board from posts in every stage and count the
+       cards, so none can go missing between the data and the screen. */
+    const _keepP=projects, _keepV=PIPE_VIEW;
+    try{
+      const all=STAGES.concat(STAGES_RETIRED);
+      projects = all.map((st,i)=>({id:-9000-i, title:'T'+i, client_name:'C', current_stage:st,
+        type:'post', priority:'normal', target_month:new Date().getMonth()+1,
+        target_year:new Date().getFullYear(), is_archived:false}));
+      PIPE_VIEW='board'; renderPipeline();
+      const drawn=document.querySelectorAll('#kanbanBoard .k-card').length;
+      ok('Pipeline: every post reaches the board, including the retired stages',
+         drawn===all.length, drawn+' of '+all.length+' drawn');
+      const cols=document.querySelectorAll('#kanbanBoard .kanban-col').length;
+      ok('Pipeline: the board shows exactly two columns', cols===2, cols+' columns');
+
+      PIPE_VIEW='grid'; renderPipeline();
+      const cards=document.querySelectorAll('#pipeGrid .pg-card').length;
+      ok('Pipeline: the grid shows every post too', cards===all.length, cards+' of '+all.length);
+      const bd=document.getElementById('kanbanBoard'), gd=document.getElementById('pipeGrid');
+      ok('Pipeline: the grid actually replaces the board on screen',
+         gd && !gd.hidden && bd && bd.hidden && getComputedStyle(bd).display==='none',
+         'board hidden '+(bd&&bd.hidden)+', computed '+(bd?getComputedStyle(bd).display:'?')
+          +'; hidden alone loses to display:flex');
+      const gTab=document.getElementById('pipeViewGrid'), bTab=document.getElementById('pipeViewBoard');
+      ok('Pipeline: the switch says which view is on',
+         gTab.getAttribute('aria-selected')==='true' && bTab.getAttribute('aria-selected')==='false',
+         'grid '+gTab.getAttribute('aria-selected')+', board '+bTab.getAttribute('aria-selected'));
+      ok('Pipeline: a grid card carries the picture, the client and the title',
+         !!document.querySelector('#pipeGrid .pg-client') && !!document.querySelector('#pipeGrid .pg-title')
+           && !!document.querySelector('#pipeGrid .pg-shot, #pipeGrid .pg-none'));
+
+      projects=[]; renderPipeline();
+      ok('Pipeline: an empty grid says what to do, it does not go blank',
+         !!document.querySelector('#pipeGrid .pipe-empty'),
+         (document.getElementById('pipeGrid')||{}).textContent||'');
+    } finally { projects=_keepP; PIPE_VIEW=_keepV; }
+
+    /* The board opens on this month. */
+    const _fm=document.getElementById('filterMonth');
+    if(_fm){
+      const _kv=_fm.value, _kd=_pipeMonthDefaulted;
+      _fm.value=''; _pipeMonthDefaulted=false; pipeDefaultMonth();
+      ok('Pipeline: the board opens on THIS month, not on everything ever',
+         parseInt(_fm.value,10)===new Date().getMonth()+1,
+         'opened on month "'+_fm.value+'"; 105 of the 107 live posts are this month');
+      _fm.value='';  _pipeMonthDefaulted=false; pipeDefaultMonth(); pipeDefaultMonth();
+      const _after=_fm.value; _fm.value='';
+      ok('Pipeline: a person who picks All Months is not overruled on the next render',
+         _after!=='' && (pipeDefaultMonth(), _fm.value===''),
+         'the default must set itself once per load, not on every paint');
+      _fm.value=_kv; _pipeMonthDefaulted=_kd;
+    }
+
+    /* The THIRD place the same dead guard was written. */
+    const _qa=document.getElementById('qaMonth');
+    if(_qa){
+      const _kq=_qa.value;
+      _qa.value='1'; _pipeMonthDefaulted=false; pipeDefaultMonth();
+      ok('Quick add: it files a post into THIS month, not January',
+         parseInt(_qa.value,10)===new Date().getMonth()+1,
+         'quick add month is "'+_qa.value+'"; it had the guard and no default at all');
+      _qa.value=_kq;
+    }
+    /* Every month select in the app must go through the one producer, so the
+       next one added cannot repeat this for a fourth time. */
+    /* A card whose thumbnail has not arrived yet must not print its title in
+       place of the picture: the title is already the line underneath, so the
+       card read it twice and looked broken while loading. */
+    ok('Pipeline: a grid card does not print its title where the picture goes',
+       /class="pg-shot[^"]*"[^>]*alt=""/.test(String(renderPipeGrid)),
+       'alt on the shot must be empty; the title sits beside it in .pg-title');
+
+    /* L-GFX-069: flex-basis is the MAIN axis, and the phone bar is a column. */
+    if(window.innerWidth<=600){
+      const _si=document.getElementById('filterSearch');
+      if(_si){ const _h=Math.round(_si.getBoundingClientRect().height);
+        ok('Pipeline: the search box is a search box, not a panel',
+           _h>0 && _h<=56, _h+'px tall; flex:0 1 220px in a COLUMN bar makes 220px a height'); }
+    }
+
+    ok('Months: there is one producer for "this month"',
+       typeof setMonthSelectToThisMonth==='function'
+         && /setMonthSelectToThisMonth/.test(String(bulkSetTargetToThisMonth))
+         && /setMonthSelectToThisMonth/.test(String(pipeDefaultMonth)),
+       'Bulk Add, the Pipeline filter and Quick Add all had the same dead if(!sel.value)');
     });
 
     await section('Pages, layout, onboarding and copy', async () => {

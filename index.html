@@ -1162,29 +1162,22 @@ tr:hover td{background:var(--surface-2)}
 // ─── CONFIG ───
 const SB_URL = 'https://yyviiwnqgphyklcoijyd.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5dmlpd25xZ3BoeWtsY29panlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MjE5OTEsImV4cCI6MjA5MTI5Nzk5MX0.I8YiBr-rfLVcc6DE8Z1PxEP2oxXCelv6mxqAY_wY7lc';
-/* GUARD-ALLOW L-015 — ACCEPTED RISK, signed off by Thulaib 2026-08-14.
-   This is a shared APP credential, not a per-user secret: it is how every BB
-   single-file system reads login-only tables, and it grants exactly what this
-   app's own tables already allow. It is published in a public repo, so treat it
-   as public. It is NOT a substitute for real auth.
-   This marker is a DEFERRAL WITH AN OWNER, not a fix. The real fix is the
-   role-floor project (per-user Supabase Auth). See L-GFX-006 and L-GFX-012 in
-   LANDMINES.md. Revisit before any further non-staff login is added. */
-// ── Silent app auth: obtain a real JWT so login-only tables stay readable here ──
-const GAPP = { email:'nirvana@bb-leads.app', password:'pin2222secure' };
+/* L-GFX-006 CLOSED 7 Oct 2026 (bb_pending 96, Thulaib: "yes, build it").
+   This page used to sign in silently as a shared staff account whose password
+   sat right here in public source. That session could delete rows on 76 tables
+   and read invoices and costs, far wider than this app ever needs. Measured the
+   same day: the public key alone already holds every right this app uses
+   (graphic_projects, graphic_stage_history, graphic_weekly_plan,
+   graphic_project_comments, agent_alerts, daily_pillar_state, pillars,
+   team_login_logs, system_bug_log, clients, team_members). So the app now
+   talks to the database with the public key only. Nothing is signed in from
+   this page; the names below are kept so every caller still works.
+   Next step is per-person sign-in (the role floor), not a new shared login. */
 let GAUTH=null, GEXP=0;
-async function gLogin(){
-  try{
-    const r=await fetch(SB_URL+'/auth/v1/token?grant_type=password',{method:'POST',headers:{'apikey':SB_KEY,'Content-Type':'application/json'},body:JSON.stringify(GAPP)});
-    const d=await r.json();
-    if(d&&d.access_token){ GAUTH=d.access_token; GEXP=Date.now()+((d.expires_in||3600)*1000); return true; }
-  }catch(e){ console.warn('[auth]',e); }
-  GAUTH=null; return false;
-}
-async function gEnsure(){ if(!GAUTH||Date.now()>GEXP-120000) await gLogin(); return GAUTH; }
-function gBearer(){ return 'Bearer '+(GAUTH||SB_KEY); }
+async function gLogin(){ GAUTH=null; return false; }
+async function gEnsure(){ return null; }
+function gBearer(){ return 'Bearer '+SB_KEY; }
 function gHdr(extra){ return Object.assign({'apikey':SB_KEY,'Authorization':gBearer(),'Content-Type':'application/json'}, extra||{}); }
-gLogin();  // start immediately
 
 const USERS = {
   /* GFX-8, 6 Oct 2026: these said 1 and 2. There is no team_members row 1 and
@@ -5310,7 +5303,7 @@ async function renderRecap(){
      BB GRAPHIC SENTINEL — boot health-check + global error capture
      Mirrors the Video/SMM watchdog. INSERT-only into system_bug_log
      (no schema change). Hardened: network blips are filtered, core
-     tables are probed with the app's authenticated session (gBearer),
+     tables are probed with the same public key the app reads with (gBearer),
      and a 0-row core read is re-verified before it is ever flagged.
      ============================================================ -->
 <script>

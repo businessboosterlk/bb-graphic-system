@@ -83,7 +83,12 @@ their own work (8aeb61c) so they see a subset; heads see all 362.
 Cannot be fixed without either a new thumbnail column or the Storage bucket.
 Both need Thulaib's sign-off.
 
-## L-GFX-006 · a shared Supabase Auth password is hardcoded in public source · OPEN
+## L-GFX-006 · a shared Supabase Auth password is hardcoded in public source · CLOSED 2026-10-07 (code); password change OPEN
+**7 Oct 2026, Thulaib's go (bb_pending 96):** GAPP and the silent sign-in are gone from the page. Measured first: the public key already
+holds every right this app uses, so the app now reads and writes with the public key only (107 projects load, 0 auth calls, every
+write table answers 204 on a no-op). The account itself is Nirvana's own Leads sign-in, so it cannot be deleted: its password must
+be changed by Thulaib and its old sessions revoked, because the old password stays in git history and in every earlier deploy.
+
 Line 937: `const GAPP = { email:'nirvana@bb-leads.app', password:'pin2222secure' };`
 served on a public GitHub Pages URL. The app silently signs in as this one
 shared account for every user; the name+PIN screen is local only.
@@ -95,7 +100,7 @@ silently to anon reads and every authenticated-only table starts returning 401.
 This is the role-floor (Mold 6) item. **Not to be touched without Thulaib's
 per-system go.** Related: L-CC-001 in the Command Centre register.
 
-## L-GFX-012 · the live system FAILS BB's own quality gate · DEFERRED 2026-08-14 (GUARD-ALLOW)
+## L-GFX-012 · the live system FAILS BB's own quality gate · CLOSED 2026-10-07: guard.py passes with no GUARD-ALLOW (one warning left: the PIN table, L-016w, closed only by per-person sign-in)
 `guard.py` was updated on this machine (mtime 2026-08-12 11:00) and now hard-fails
 rule **L-015, a live credential written into a page that ships**:
 

@@ -347,6 +347,9 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .k-advance{margin-top:8px;width:100%;background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent);border-radius:var(--r-sm);padding:7px;font-size:0.76rem;font-weight:700;cursor:pointer;transition:all .15s}
 .k-advance:hover{background:var(--accent);color:#fff}
 .k-doneflag{margin-top:8px;text-align:center;font-size:0.72rem;font-weight:700;color:var(--green);background:var(--green-soft);border-radius:var(--r-sm);padding:6px}
+/* F3 review fix, 7 Oct 2026 (L-GFX-063): a quiet label, not a button, where a designer would see Move to Approved */
+.gfx-wait{display:inline-block;font-size:0.72rem;font-weight:600;color:var(--text-3);line-height:1.35;padding:6px 2px}
+.k-card .gfx-wait{display:block;margin-top:8px;text-align:center;background:var(--surface-2);border-radius:var(--r-sm);padding:6px}
 
 /* ═══════════════ ACTIVITY FEED ═══════════════ */
 .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:18px 20px;margin-bottom:20px}
@@ -1426,7 +1429,7 @@ function gfxIsLedger(p){
   const done = p && (p.first_done_at || p.completed_at);
   return !!(p && p.created_at && done && (new Date(done) - new Date(p.created_at)) < GFX_LEDGER_MS);
 }
-/* Reads the approved history rows of the approved posts in rows, 100 ids a call,
+/* Reads the approved history rows of the approved posts in rows, 100 ids a call
    and keeps the earliest on each row as first_done_at. A failed read stamps what
    it has and leaves the rest on completed_at. Never selects image_url. */
 async function gfxStampFirstApproved(rows){
@@ -1868,7 +1871,7 @@ function renderKCard(p){
       </div>
       ${window.BBAGE?BBAGE.chip(p):''}
       ${(()=>{ const i=STAGES.indexOf(p.current_stage); return (i>=0 && i<STAGES.length-1)
-        ? `<button class="k-advance" onclick="event.stopPropagation();quickMove(${p.id},'${STAGES[i+1]}')">Move to ${esc(STAGE_LABELS[STAGES[i+1]])} &#9654;&#xFE0E;</button>`
+        ? (gfxWaitsForApprover(STAGES[i+1]) ? gfxWaitHTML() : `<button class="k-advance" onclick="event.stopPropagation();quickMove(${p.id},'${STAGES[i+1]}')">Move to ${esc(STAGE_LABELS[STAGES[i+1]])} &#9654;&#xFE0E;</button>`)
         : `<div class="k-doneflag">&#10003; Approved</div>`; })()}
     </div>
   `;
@@ -1992,6 +1995,13 @@ const GFX_MSG = {
 function canApprove(){
   return !!currentUser && ['head','graphic_head','smm'].indexOf(currentUser.role)>-1;
 }
+/* F3 review fix, 7 Oct 2026 (L-GFX-063): a designer saw Move to Approved on a Client
+   Changes post and the press always failed with advice meant for another stage. Where
+   the next stage is Approved and this person cannot approve, the card, My Work and the
+   detail show this label in place of the button. The gate itself is unchanged. */
+const GFX_WAIT_LABEL = 'Waiting for a head or an SMM to approve';
+function gfxWaitsForApprover(next){ return next==='approved' && !canApprove(); }
+function gfxWaitHTML(){ return '<span class="gfx-wait">'+GFX_WAIT_LABEL+'</span>'; }
 async function gfxApproveBlock(id, undo){
   if(!undo && !canApprove()) return GFX_MSG.role;
   const p = projects.find(x=>x.id===id);
@@ -2644,7 +2654,7 @@ async function openProjectDetail(id){
   document.getElementById('detailBody').innerHTML = `
     <div class="detail-actions">
       ${canMovePrev?`<button class="btn btn-ghost btn-sm" onclick="moveStage(${p.id},'prev')">&#9664; Previous Stage</button>`:''}
-      ${canMoveNext?`<button class="btn btn-accent btn-sm" onclick="moveStage(${p.id},'next')">Next Stage &#9654;&#xFE0E;</button>`:''}
+      ${canMoveNext?(gfxWaitsForApprover(STAGES[stageIdx+1])?gfxWaitHTML():`<button class="btn btn-accent btn-sm" onclick="moveStage(${p.id},'next')">Next Stage &#9654;&#xFE0E;</button>`):''}
       <button class="btn btn-ghost btn-sm" onclick="closeModal('modalDetail');openEditProject(${p.id})">Edit</button>
       <button class="btn btn-ghost btn-sm" onclick="archiveProject(${p.id})">Archive</button>
       ${canDeleteForever()?`<button class="btn btn-danger btn-sm" onclick="deleteProject(${p.id})">Delete</button>`:''}
@@ -2989,7 +2999,7 @@ function renderMyWork(){
           <div class="work-item-sub">${esc(p.client_name||'No client')} &middot; ${esc(p.type||'post')} &middot; Due ${fmtDate(p.deadline)}</div>
         </div>
         <div class="work-item-actions">
-          ${nextStage?`<button class="btn btn-accent btn-sm" onclick="quickMove(${p.id},'${nextStage}')">${STAGE_LABELS[nextStage]} &#9654;&#xFE0E;</button>`:'<span class="badge" style="background:var(--green-soft);color:var(--green)">Done</span>'}
+          ${nextStage?(gfxWaitsForApprover(nextStage)?gfxWaitHTML():`<button class="btn btn-accent btn-sm" onclick="quickMove(${p.id},'${nextStage}')">${STAGE_LABELS[nextStage]} &#9654;&#xFE0E;</button>`):'<span class="badge" style="background:var(--green-soft);color:var(--green)">Done</span>'}
         </div>
       </div>`;
     });

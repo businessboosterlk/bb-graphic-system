@@ -1593,3 +1593,34 @@ checks; replay harness 137 checks (134 before), 0 failed, 0 page errors.
 **Still open.** Until the Command Centre commit e733575 is live, a CC approval
 the database refuses still writes an approved history row (L-CC-046), and that
 row would count as a first arrival here too. 0 such rows exist on 7 Oct 2026.
+
+## L-GFX-063 · a designer was offered Move to Approved and every press failed · FIXED 2026-10-07
+
+**Seen.** Review finding F3 after decision 98. The Approved gate (L-GFX-059) lets only a
+head, the graphic head or an SMM approve. A designer still saw "Move to Approved" on the
+kanban card of a Client Changes post, "Approved" in My Work and "Next Stage" in the post
+detail. Every press failed with "Only a head or an SMM can approve a post. Move it to Head
+Review instead", which is wrong advice for a post that has already been through Head Review.
+
+**Fix.** `gfxWaitsForApprover(next)` is true when the next stage is Approved and
+`canApprove()` is false. In those three places the button gives way to a quiet label,
+"Waiting for a head or an SMM to approve" (`.gfx-wait`). The gate itself is unchanged: every
+move into Approved still goes through `gfxSetStage` and `gfxApproveBlock`.
+
+**Block.** A control the current person can never complete is not drawn. Where a role gate
+exists, every button that leads into it asks the same role check before it renders. The
+person sees who the work is waiting for.
+
+**Proven.** Replay probe `runners/probe-gfx-f3.mjs` (REPLAY=1, live guard, live=0), phone
+and desk: as a designer the card, My Work and the detail each show the label; as a head
+they show "Move to Approved", "Approved" and "Next Stage" as before. 0 page errors, no
+sideways overflow. Replay harness 137 checks, 0 failed, output identical to the run before.
+
+**Also.** Review finding F4: the `gfxStampFirstApproved` comment had a comma before "and"
+right after "100 ids a call". Comments are copy too; run `house_style.py` on the diff, not
+only on pages.
+
+**Same day, module side.** Review findings F1 (the image undo matched a folder, not the
+exact URL it wrote) and F2 (the Approved gate also stopped the service role, so the August
+backup restore could not run) are fixed and registered in
+`~/bb-systems/graphic-images/README.md` (migration 006, `rehearsal/gate-roles-proof.sql`).

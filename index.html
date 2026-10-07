@@ -1412,6 +1412,14 @@ function timeAgo(d){
   if(s<86400) return Math.floor(s/3600)+'h ago';
   return Math.floor(s/86400)+'d ago';
 }
+/* Decision 98, 7 Oct 2026: a post that went from created to Approved in under
+   five minutes was typed in after the work as a ledger (104 of them on 2 and
+   5 Oct). It still counts as approved. It is never a turnaround. The database
+   uses the same rule (is_ledger in bb_work_items, kept out of bb_person_month). */
+const GFX_LEDGER_MS = 5*60*1000;
+function gfxIsLedger(p){
+  return !!(p && p.created_at && p.completed_at && (new Date(p.completed_at) - new Date(p.created_at)) < GFX_LEDGER_MS);
+}
 function isOverdue(p){ return p.deadline && new Date(p.deadline)<new Date() && !p.is_archived && p.current_stage!=='approved'; }
 /* GFX-10, 6 Oct 2026: this was toISOString, which is UTC, so a pillar tick
    between midnight and 05:30 Colombo saved to yesterday. Every caller is a
@@ -1870,15 +1878,20 @@ async function bulkMoveSelected(){
   if(!to){ toast('Pick a stage to move them to','error'); return; }
   const ids=[...BULK_PICKED];
   if(!ids.length) return;
+  /* Decision 98, 7 Oct 2026: said once, before anything moves. */
+  if(to==='approved' && !canApprove()){ toast('Only a head or an SMM can approve a post. Move it to Head Review instead','error'); return; }
   if(!confirm('Move '+ids.length+' post'+(ids.length!==1?'s':'')+' to '+STAGE_LABELS[to]+'?')) return;
-  let moved=0;
+  let moved=0, blocked=0;
   BBU.batch=[];                       /* many moves, ONE undo */
   for(const id of ids){
-    if(await gfxSetStage(id, to, 'Moved in bulk')) moved++;
+    if(await gfxSetStage(id, to, 'Moved in bulk', true)) moved++;
+    else if(GFX_STAGE_BLOCK) blocked++;
   }
   const _b=BBU.batch; BBU.batch=null;
   if(_b && _b.length) bbuRecord(_b);
-  toast(moved+' of '+ids.length+' moved to '+STAGE_LABELS[to], moved===ids.length?'success':'error');
+  toast(moved+' of '+ids.length+' moved to '+STAGE_LABELS[to]
+        +(blocked?'. '+blocked+' not moved: '+(blocked===1?'it has':'they have')+' not been through Head Review':''),
+        moved===ids.length?'success':'error');
   BULK_PICKED.clear(); await loadAll(); bulkBarSync();
 }
 /* Archive in bulk: reversible, so a plain confirm is enough. Every designer
@@ -1928,12 +1941,36 @@ async function bulkDeleteSelected(){
    five real rows did exactly that on 2 July and would have been counted as
    finished with a false turnaround. A stage that is not finished has no
    finish. */
-async function gfxSetStage(id, newStage, note){
+/* Decision 98, 7 Oct 2026: the pipeline is the record and designers move their
+   own cards. A post reaches Approved only after it has been in Head Review (a
+   head_review row in graphic_stage_history), and only a head or an SMM approves.
+   104 posts went from Brief to Approved in under a minute on 2 and 5 Oct.
+   The database refuses the same move (trigger gfx_guard_approved), so a stale
+   tab or another app cannot get round it. GFX_STAGE_BLOCK holds why the last
+   gfxSetStage call refused (null when it did not). */
+let GFX_STAGE_BLOCK = null;
+function canApprove(){
+  return !!currentUser && ['head','graphic_head','smm'].indexOf(currentUser.role)>-1;
+}
+async function gfxApproveBlock(id){
+  if(!canApprove()) return 'Only a head or an SMM can approve a post. Move it to Head Review instead';
+  let r = null;
+  try{ r = await sbGet('graphic_stage_history','?graphic_project_id=eq.'+id+'&stage=eq.head_review&select=id&limit=1'); }catch(e){ r = null; }
+  if(!Array.isArray(r)) return 'Could not check the history of this post, so it was not approved. Try again';
+  if(!r.length) return 'This post has not been through Head Review yet, so it cannot be Approved';
+  return null;
+}
+async function gfxSetStage(id, newStage, note, quiet){
+  GFX_STAGE_BLOCK = null;
   const p = projects.find(x=>x.id===id);
   const oldStage = p ? p.current_stage : null;
   /* GFX-4, 6 Oct 2026: a bulk move re-stamped posts already in the target stage,
      with a new finish time and a new history row. Nothing to move, so no write. */
   if(oldStage && oldStage===newStage) return true;
+  if(newStage==='approved'){
+    const why = await gfxApproveBlock(id);
+    if(why){ GFX_STAGE_BLOCK = why; if(!quiet) toast(why,'error'); return false; }
+  }
   const okWrite = await sbPatch('graphic_projects','id=eq.'+id, {
     current_stage: newStage,
     updated_at: new Date().toISOString(),
@@ -2083,8 +2120,11 @@ async function onDrop(e,el){
   const newStage = el.dataset.stage;
   const proj = projects.find(p=>p.id===dragId);
   if(!proj || proj.current_stage===newStage) return;
-  await gfxSetStage(dragId, newStage);
-  toast('Moved to '+STAGE_LABELS[newStage]);
+  /* Decision 98, 7 Oct 2026: a refused move said "Moved" anyway. The card now
+     goes back to its column and the reason is shown by gfxSetStage. */
+  const okMove = await gfxSetStage(dragId, newStage);
+  if(okMove) toast('Moved to '+STAGE_LABELS[newStage]);
+  else if(!GFX_STAGE_BLOCK) toast('Could not move the post. Check your connection and try again','error');
   renderPipeline();
 }
 
@@ -2183,6 +2223,76 @@ function makeThumbDataUrl(dataUrl, maxDim = 360, quality = 0.62){
   return compressImageDataUrl(dataUrl, maxDim, quality);
 }
 
+/* ══ DECISION 106, 7 Oct 2026: IMAGES LIVE IN FILE STORAGE (L-GFX-001, L-GFX-058) ══
+   A post image used to be a base64 data URL inside graphic_projects.image_url:
+   108 rows and 26.5 MB on 7 Oct. A new or replaced image is now uploaded to the
+   graphic-images bucket first and the row keeps only its public URL. The file
+   name is the sha-256 of the bytes, so the same picture saved twice is one file
+   and the bucket needs no overwrite or delete right. Cast from inspo-shots
+   (~/bb-systems/inspo-hub). Module home: ~/bb-systems/graphic-images/.
+   The compress step above still runs first and still returns a data URL; that
+   is only ever the preview in the form, never what is written to a row. */
+const GFX_BUCKET = 'graphic-images';
+const GFX_EXT = { 'image/jpeg':'jpg', 'image/png':'png', 'image/webp':'webp' };
+function gfxDataUrlToBlob(dataUrl){
+  const m = /^data:([^;,]+)(;base64)?,([\s\S]*)$/.exec(String(dataUrl||''));
+  if(!m) return null;
+  try{
+    let bytes;
+    if(m[2]){ const bin = atob(m[3]); bytes = new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i); }
+    else bytes = new TextEncoder().encode(decodeURIComponent(m[3]));
+    return new Blob([bytes], { type: m[1].toLowerCase() });
+  }catch(e){ return null; }
+}
+async function gfxSha256(blob){
+  const buf = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+/* The duplicate fingerprint for the bulk add: the hash of the file that will be
+   stored. Text that is not a readable picture is hashed as text, so two
+   different strings still never share a key. */
+async function gfxHashDataUrl(dataUrl){
+  if(!dataUrl) return '';
+  return gfxSha256(gfxDataUrlToBlob(dataUrl) || new Blob([String(dataUrl)]));
+}
+function gfxUuid(){
+  if(window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  const a = crypto.getRandomValues(new Uint8Array(16)); a[6] = (a[6]&15)|64; a[8] = (a[8]&63)|128;
+  const h = Array.from(a).map(b=>b.toString(16).padStart(2,'0')).join('');
+  return h.slice(0,8)+'-'+h.slice(8,12)+'-'+h.slice(12,16)+'-'+h.slice(16,20)+'-'+h.slice(20);
+}
+function gfxPublicUrl(path){ return SB_URL+'/storage/v1/object/public/'+GFX_BUCKET+'/'+path; }
+async function gfxPutFile(path, blob){
+  const r = await fetch(SB_URL+'/storage/v1/object/'+GFX_BUCKET+'/'+path, { method:'POST',
+    headers:{ 'apikey':SB_KEY, 'Authorization':gBearer(), 'Content-Type':blob.type, 'x-upsert':'false', 'cache-control':'max-age=31536000' },
+    body: blob });
+  if(r.ok) return;
+  const t = await r.text().catch(()=> '');
+  /* The name is the hash of the bytes, so "already exists" means this exact file is there. */
+  if(r.status===409 || /already exists|duplicate/i.test(t)) return;
+  throw new Error('upload '+r.status+' '+t.slice(0,120));
+}
+/* Upload one image and its thumbnail under posts/<post id or a uuid>/.
+   Returns { image_url, thumb_url, hash }. Throws on any failure; every
+   caller then writes nothing to the row and keeps its form open. */
+async function gfxUploadImage(folder, imgDataUrl, thumbDataUrl){
+  const img = gfxDataUrlToBlob(imgDataUrl);
+  if(!img || !GFX_EXT[img.type]){ const e = new Error('type'); e.userMsg = 'This picture type cannot be stored. Save it as JPG or PNG and try again'; throw e; }
+  if(img.size > 3*1024*1024){ const e = new Error('size'); e.userMsg = 'This picture is still over 3 MB after shrinking. Export a smaller one and try again'; throw e; }
+  const hash = await gfxSha256(img);
+  const base = 'posts/'+folder+'/'+hash;
+  const imgPath = base+'.'+GFX_EXT[img.type];
+  await gfxPutFile(imgPath, img);
+  let thumbUrl = gfxPublicUrl(imgPath);
+  const th = thumbDataUrl ? gfxDataUrlToBlob(thumbDataUrl) : null;
+  if(th && GFX_EXT[th.type]){ const tp = base+'-thumb.'+GFX_EXT[th.type]; await gfxPutFile(tp, th); thumbUrl = gfxPublicUrl(tp); }
+  return { image_url: gfxPublicUrl(imgPath), thumb_url: thumbUrl, hash: hash };
+}
+function gfxUploadFailed(e){
+  console.error('image upload', e);
+  toast((e && e.userMsg) || 'The image did not upload, so nothing was saved. Check your connection and try again', 'error');
+}
+
 function readImageFile(file, hostId) {
   if (file.size > 15 * 1024 * 1024) { toast('Image too large (max 15 MB)', 'error'); return; }
   if (PENDING_IMG[hostId]) { toast('Replaced previous image', 'info'); }
@@ -2226,10 +2336,17 @@ function handleFileSelect(input, hostId) {
 async function saveDetailImage(projId) {
   const img = PENDING_IMG['detailImg'];
   if (!img) return;
-  const th = PENDING_THUMB['detailImg'] || null;
-  await sbPatch('graphic_projects', 'id=eq.' + projId, { image_url: img, thumb_url: th, updated_at: new Date().toISOString() });
-  IMG_IDS.add(projId); IMG_CACHE[projId] = th || img;
-  const pp = projects.find(x=>x.id===projId); if(pp) pp.image_url = img;
+  /* Decision 106, 7 Oct 2026: the file goes to storage first and the row gets
+     its URL. A failed upload or save keeps the picked image and says so. */
+  let up;
+  try{ up = await gfxUploadImage(projId, img, PENDING_THUMB['detailImg'] || null); }
+  catch(e){ gfxUploadFailed(e); return; }
+  let okImg = false;
+  try{ okImg = await sbPatch('graphic_projects', 'id=eq.' + projId, { image_url: up.image_url, thumb_url: up.thumb_url, updated_at: new Date().toISOString() }); }
+  catch(e){ okImg = false; }
+  if(!okImg){ toast('The image did not save to the post. Press Save again','error'); return; }
+  IMG_IDS.add(projId); IMG_CACHE[projId] = up.thumb_url || up.image_url;
+  const pp = projects.find(x=>x.id===projId); if(pp) pp.image_url = up.image_url;
   clearPendingImg('detailImg');
   toast('Image saved!', 'success');
   renderCurrentPage();
@@ -2328,8 +2445,20 @@ async function saveProject(){
   // Image: only send it when there's a new/known value — never overwrite an existing image with null.
   const pickedImg = PENDING_IMG['addProj'] || null;
   const typedImg = document.getElementById('projImageUrl').value.trim();
-  const newImg = pickedImg || typedImg;
-  const newThumb = PENDING_THUMB['addProj'] || null;
+  let newImg = pickedImg || typedImg;
+  let newThumb = PENDING_THUMB['addProj'] || null;
+  /* GFX-2: send the image only for a newly picked file or a URL typed over the prefilled one. */
+  const imgChanged = editingProjectId ? (!!pickedImg || (!!typedImg && typedImg !== PROJ_IMG_PREFILL)) : !!newImg;
+  /* Decision 106, 7 Oct 2026: a picture goes to file storage BEFORE the row is
+     written. The row keeps the URL. A failed upload keeps the form open and
+     writes nothing. A typed web address is stored as it is. */
+  if(imgChanged && /^data:/i.test(newImg)){
+    try{
+      if(!newThumb) newThumb = await makeThumbDataUrl(newImg);
+      const up = await gfxUploadImage(editingProjectId || gfxUuid(), newImg, newThumb);
+      newImg = up.image_url; newThumb = up.thumb_url;
+    }catch(e){ gfxUploadFailed(e); return; }
+  }
 
   /* GFX-1, 6 Oct 2026: both writes below said done without checking the result,
      so on a dropped connection the brief and its image were thrown away while
@@ -2339,8 +2468,6 @@ async function saveProject(){
   if(editingProjectId){
     /* GFX-3, 6 Oct 2026: an edit rewrote target_year to this year. It is left
        out, so the year the post was filed under stays as it is. */
-    /* GFX-2: send the image only for a newly picked file or a URL typed over the prefilled one. */
-    const imgChanged = !!pickedImg || (!!typedImg && typedImg !== PROJ_IMG_PREFILL);
     if(imgChanged){ data.image_url = newImg; data.thumb_url = newThumb; }   // omit when unchanged → preserves existing image and thumbnail
     const okPatch = await sbPatch('graphic_projects','id=eq.'+editingProjectId, data);
     if(!okPatch){ saveFailed('the changes'); return; }
@@ -2543,7 +2670,9 @@ async function moveStage(id, dir){
   const newIdx = dir==='next' ? idx+1 : idx-1;
   if(newIdx<0||newIdx>=STAGES.length) return;
   const newStage = STAGES[newIdx];
-  await gfxSetStage(id, newStage);
+  /* Decision 98, 7 Oct 2026: stay on the post when the move is refused. */
+  const okMove = await gfxSetStage(id, newStage);
+  if(!okMove){ if(!GFX_STAGE_BLOCK) toast('Could not move the post. Check your connection and try again','error'); return; }
   toast('Moved to '+STAGE_LABELS[newStage]);
   closeModal('modalDetail');
   await loadAll();
@@ -2594,8 +2723,13 @@ async function updateImage(id){
 
 async function addComment(projId){
   const body = document.getElementById('commentText').value.trim();
-  const imgUrl = PENDING_IMG['detailComment'] || document.getElementById('commentImageUrl').value.trim();
+  let imgUrl = PENDING_IMG['detailComment'] || document.getElementById('commentImageUrl').value.trim();
   if(!body && !imgUrl){ toast('Comment cannot be empty','error'); return; }
+  /* Decision 106, 7 Oct 2026: a comment picture was a data URL in its row too. */
+  if(/^data:/i.test(imgUrl)){
+    try{ imgUrl = (await gfxUploadImage(projId, imgUrl, null)).image_url; }
+    catch(e){ gfxUploadFailed(e); return; }
+  }
   await sbPost('graphic_project_comments',{ graphic_project_id: projId, author: currentUser.name, body: body||null, image_url: imgUrl||null });
   clearPendingImg('detailComment');
   toast('Comment posted');
@@ -2817,8 +2951,10 @@ function renderMyWork(){
 async function quickMove(id, newStage){
   const p = projects.find(x=>x.id===id);
   if(!p) return;
-  await gfxSetStage(id, newStage);
-  toast('Moved to '+STAGE_LABELS[newStage]);
+  /* Decision 98, 7 Oct 2026: a refused move no longer says "Moved". */
+  const okMove = await gfxSetStage(id, newStage);
+  if(okMove) toast('Moved to '+STAGE_LABELS[newStage]);
+  else if(!GFX_STAGE_BLOCK) toast('Could not move the post. Check your connection and try again','error');
   await loadAll();
 }
 
@@ -2962,7 +3098,7 @@ async function renderAnalytics(){
 
   // Avg completion time
   let avgDays = 0;
-  const withTime = approved.filter(p=>p.created_at && p.completed_at);
+  const withTime = approved.filter(p=>p.created_at && p.completed_at && !gfxIsLedger(p));   /* decision 98: ledger entries are not a turnaround */
   if(withTime.length>0){
     const totalDays = withTime.reduce((s,p)=>{
       return s + (new Date(p.completed_at)-new Date(p.created_at))/(1000*60*60*24);
@@ -3599,6 +3735,8 @@ function bulkRowImg(input){
     const compressed = await compressImageDataUrl(ev.target.result);
     tr._img = compressed;
     tr._thumb = await makeThumbDataUrl(ev.target.result);
+    /* Decision 106: the duplicate fingerprint is the sha-256 of the stored file. */
+    try{ tr._hash = await gfxHashDataUrl(compressed); }catch(e){ tr._hash = ''; }
     const thumb = tr.querySelector('.bk-img-thumb');
     const icon = tr.querySelector('.bk-img-icon');
     if(thumb){ thumb.src = compressed; thumb.style.display=''; }
@@ -3616,12 +3754,9 @@ function bulkRowImg(input){
    as a "duplicate" of the one above it. A repeated SAVE still carries the
    identical image, so the guard against the 456 duplicates of 31 August holds.
    A row with no image keys exactly as it always did. */
-function imgFingerprint(dataUrl){
-  if(!dataUrl) return '';
-  let h=5381;
-  for(let i=0;i<dataUrl.length;i++){ h=((h<<5)+h+dataUrl.charCodeAt(i))|0; }
-  return (h>>>0).toString(36)+':'+dataUrl.length;
-}
+/* Decision 106, 7 Oct 2026: the image part of the key was a string hash of the
+   data URL (imgFingerprint). It is now the sha-256 of the stored file, the same
+   hash that names the file in the graphic-images bucket (gfxHashDataUrl). */
 function bulkKey(title, clientName, month, year, img){
   return [String(title||'').trim().toLowerCase(),
           String(clientName||'').trim().toLowerCase(),
@@ -3706,9 +3841,19 @@ async function bulkSaveAll(){
          old per-row "no client" skip can no longer happen. */
       const clientId = sharedClientId;
       const clientName = sharedClientName;
-      const k = bulkKey(title, clientName, month, year, imgFingerprint(row._thumb || row._img));
+      if(row._img && !row._hash){ try{ row._hash = await gfxHashDataUrl(row._img); }catch(e){ row._hash = ''; } }
+      const k = bulkKey(title, clientName, month, year, row._hash || '');
       if(seen.has(k)){ skipped++; continue; }
       seen.add(k);
+      /* Decision 106, 7 Oct 2026: the picture goes to file storage before the row
+         is written. A failed upload writes nothing for that row and counts as a
+         failure, so the form stays open for a retry. One folder per row, kept
+         across retries, so a retry finds its own file. */
+      let up = null;
+      if(row._img){
+        try{ row._folder = row._folder || gfxUuid(); up = await gfxUploadImage(row._folder, row._img, row._thumb || null); }
+        catch(e){ console.error('bulk image upload', e); seen.delete(k); failed++; continue; }
+      }
       const data = {
         title,
         client_id: clientId,
@@ -3718,8 +3863,8 @@ async function bulkSaveAll(){
         assigned_designer_id: sharedDesignerId,
         priority: row.querySelector('.bk-priority').value,
         deadline: sharedDeadline,
-        image_url: row._img || null,
-        thumb_url: row._thumb || null,
+        image_url: up ? up.image_url : null,
+        thumb_url: up ? up.thumb_url : null,
         current_stage: 'brief',
         target_month: month,
         target_year: year,
@@ -3738,7 +3883,7 @@ async function bulkSaveAll(){
         _bulkInserted.add(k);        /* remembered the moment the post exists */
         _bulkKeyById.set(res[0].id, k);
         count++;
-        if(row._img){ IMG_IDS.add(res[0].id); IMG_CACHE[res[0].id] = row._thumb || row._img; }
+        if(up){ IMG_IDS.add(res[0].id); IMG_CACHE[res[0].id] = up.thumb_url || up.image_url; }
         try{ await sbPost('graphic_stage_history',{graphic_project_id:res[0].id, stage:'brief', entered_by:currentUser.name, notes:'Bulk added'}, 'id'); }catch(e){}
       } else {
         seen.delete(k);              /* it did not land, so it may be retried */
@@ -4181,6 +4326,9 @@ async function runSelfTest(opts){
       const holder=document.getElementById('bulkRows'); const had=holder.innerHTML;
       const inserted=[]; const keepPost=sbPost;
       sbPost = async (t,d)=>{ if(t==='graphic_projects'){ inserted.push(d); return [{id:-(inserted.length)}]; } return [{id:-1}]; };
+      /* Decision 106: the upload is stubbed too, so a self test never puts a file in the live bucket. */
+      const keepUp=gfxUploadImage;
+      gfxUploadImage = async (folder,img)=>{ const h=await gfxHashDataUrl(img); return {image_url:'https://selftest.invalid/posts/'+folder+'/'+h+'.jpg', thumb_url:'https://selftest.invalid/posts/'+folder+'/'+h+'-thumb.jpg', hash:h}; };
       const cTop=document.getElementById('bkClient');
       if(cTop){ if(cTop.options.length<2) cTop.innerHTML='<option value="">x</option>'+(clients||[]).slice(0,1).map(c=>'<option value="'+c.id+'" data-name="'+esc(c.name)+'">'+esc(c.name)+'</option>').join(''); cTop.selectedIndex=1; }
       const dTop=document.getElementById('bkDesigner'); fillDesignerSelects(dTop.parentNode);
@@ -4192,8 +4340,10 @@ async function runSelfTest(opts){
         bulkAddRow(); const tr=holder.querySelector('tr:last-child');
         tr.querySelector('.bk-title').value=title; tr._img=img; tr._thumb=img;
       });
-      await bulkSaveAll();
-      sbPost=keepPost; holder.innerHTML=had;
+      try{ await bulkSaveAll(); } finally { sbPost=keepPost; gfxUploadImage=keepUp; holder.innerHTML=had; }
+      ok('Decision 106: a bulk post stores a file URL, never a data URL',
+         inserted.length>0 && inserted.every(d=>/^https:/.test(d.image_url||'') && /^https:/.test(d.thumb_url||'')),
+         inserted.map(d=>String(d.image_url||'none').slice(0,40)).join(' | '));
       ok('Bulk add: posts sharing a title but not an image are all kept', inserted.length===2,
          '3 rows, 2 distinct images: '+inserted.length+' inserted (1 means same-title images are being dropped, 3 means the repeat image got through)');
       const withId = inserted.filter(d=>d.assigned_designer && Number.isInteger(d.assigned_designer_id)).length;
@@ -4202,6 +4352,73 @@ async function runSelfTest(opts){
     }catch(e){
       ok('Bulk add: posts sharing a title but not an image are all kept', false, e && e.message);
     }
+
+    /* ── Decision 106, 7 Oct 2026 · images live in file storage ── */
+    try{
+      const pngSig='data:image/png;base64,iVBORw0KGgo=';
+      /* Ggo= and Ggq= differ only in padding bits, so they are the same 8 bytes and must
+         hash the same; GgA= is a different last byte and must not. */
+      const hA=await gfxHashDataUrl(pngSig), hSame=await gfxHashDataUrl('data:image/png;base64,iVBORw0KGgq='),
+            hB=await gfxHashDataUrl('data:image/png;base64,iVBORw0KGgA=');
+      ok('Decision 106: the duplicate fingerprint is the sha-256 of the file bytes',
+         hA==='4c4b6a3be1314ab86138bef4314dde022e600960d8689a2c8f8631802d20dab6' && hSame===hA && hB!==hA,
+         hA.slice(0,16)+', same bytes '+(hSame===hA)+', other bytes differ '+(hB!==hA));
+    }catch(e){ ok('Decision 106: the duplicate fingerprint is the sha-256 of the file bytes', false, e && e.message); }
+    ok('Decision 106: every image writer uploads before it writes',
+       [saveProject, bulkSaveAll, saveDetailImage, addComment].every(f=>/gfxUploadImage\(/.test(f.toString())),
+       'saveProject, bulkSaveAll, saveDetailImage, addComment');
+    try{
+      const holder=document.getElementById('bulkRows'); const had=holder.innerHTML;
+      const writes=[]; const keepPost=sbPost, keepUp=gfxUploadImage;
+      sbPost = async (t)=>{ writes.push(t); return [{id:-1}]; };
+      gfxUploadImage = async ()=>{ throw new Error('selftest, upload refused'); };
+      const cTop=document.getElementById('bkClient');
+      if(cTop && cTop.options.length>1 && !cTop.value) cTop.selectedIndex=1;
+      const bm=document.getElementById('bkMonth'); if(bm && !bm.value) bm.value=new Date().getMonth()+1;
+      holder.innerHTML='';
+      bulkAddRow(); const tr=holder.querySelector('tr:last-child');
+      tr.querySelector('.bk-title').value='SELFTEST UPLOAD FAILS '+Date.now();
+      tr._img='data:image/jpeg;base64,/9j/'; tr._thumb=tr._img;
+      try{ await bulkSaveAll(); } finally { sbPost=keepPost; gfxUploadImage=keepUp; holder.innerHTML=had; }
+      ok('Decision 106: a failed image upload writes no row', writes.length===0, writes.length+' writes after a refused upload, 0 expected');
+    }catch(e){ ok('Decision 106: a failed image upload writes no row', false, e && e.message); }
+
+    /* ── Decision 98, 7 Oct 2026 · Approved needs Head Review and a head or an SMM ── */
+    {
+      const keepGet=sbGet, keepPatch=sbPatch, keepPost=sbPost, keepUser=currentUser;
+      const patched=[]; let hist=[];
+      const fake={id:-990098, title:'SELFTEST APPROVE', current_stage:'client_changes'};
+      try{
+        sbGet = async (t)=> t==='graphic_stage_history' ? hist : [];
+        sbPatch = async (t,q,d)=>{ patched.push(d); return true; };
+        sbPost = async ()=>[{id:-1}];
+        projects.push(fake); BBU.suspended=true;
+        currentUser=Object.assign({}, keepUser, {role:'designer'});
+        const r1=await gfxSetStage(fake.id,'approved',null,true);
+        const n1=patched.length;
+        currentUser=Object.assign({}, keepUser, {role:'head'});
+        hist=[];
+        const r2=await gfxSetStage(fake.id,'approved',null,true);
+        const n2=patched.length, why2=GFX_STAGE_BLOCK||'';
+        hist=[{id:1}];
+        const r3=await gfxSetStage(fake.id,'approved',null,true);
+        ok('Decision 98: a designer cannot approve', r1===false && n1===0, 'returned '+r1+', '+n1+' writes');
+        ok('Decision 98: a post that skipped Head Review cannot be approved', r2===false && n2===0 && /Head Review/.test(why2),
+           'returned '+r2+', '+n2+' writes, said: '+why2);
+        ok('Decision 98: a head approves a post that has been in Head Review', r3===true && patched.length===1 && patched[0].current_stage==='approved',
+           'returned '+r3+', '+patched.length+' writes');
+      }catch(e){ ok('Decision 98: a head approves a post that has been in Head Review', false, e && e.message); }
+      finally{
+        sbGet=keepGet; sbPatch=keepPatch; sbPost=keepPost; currentUser=keepUser; BBU.suspended=false;
+        const ix=projects.indexOf(fake); if(ix>-1) projects.splice(ix,1);
+        GFX_STAGE_BLOCK=null;
+      }
+    }
+    ok('Decision 98: a post approved inside five minutes is a ledger, not a turnaround',
+       gfxIsLedger({created_at:'2026-10-02T04:00:00Z', completed_at:'2026-10-02T04:00:30Z'})
+       && !gfxIsLedger({created_at:'2026-10-02T04:00:00Z', completed_at:'2026-10-02T04:06:00Z'})
+       && !gfxIsLedger({created_at:'2026-10-02T04:00:00Z', completed_at:null}),
+       '30 seconds is a ledger; 6 minutes and no finish are not');
 
     /* ── REGRESSION L-GFX-005 · thumbnails ── */
     ok('REGRESSION L-GFX-005: thumbnail maker exists', typeof makeThumbDataUrl==='function');
@@ -5184,8 +5401,11 @@ async function renderRecap(){
   }
 
   /* Durations, and ONLY where both ends exist. */
-  const measurable = finished.filter(p=>p.created_at && p.completed_at);
-  const unmeasurable = finished.length - measurable.length;
+  /* Decision 98, 7 Oct 2026: ledger entries (created to Approved in under five
+     minutes) stay in Finished, are left out of the turnaround and say so. */
+  const ledgerN = finished.filter(gfxIsLedger).length;
+  const measurable = finished.filter(p=>p.created_at && p.completed_at && !gfxIsLedger(p));
+  const unmeasurable = finished.length - measurable.length - ledgerN;
   const days = measurable.map(p=>rcDays(p.created_at,p.completed_at));
   const med = rcMedian(days), longest = days.length?Math.max.apply(null,days):null;
   const rate = opened.length ? Math.round(100*finished.length/opened.length) : null;
@@ -5199,7 +5419,8 @@ async function renderRecap(){
       +rcDur(med)+'</div>'
       +'<div class="rc-sub">'+(med===null?'nothing finished with both dates'
         :'measured on '+measurable.length+' of '+finished.length)+'</div>'
-      +(unmeasurable>0?'<div class="rc-gap">'+unmeasurable+' had no finish time</div>':'')+'</div>'
+      +(unmeasurable>0?'<div class="rc-gap">'+unmeasurable+' had no finish time</div>':'')
+      +(ledgerN>0?'<div class="rc-gap">'+ledgerN+' went straight to Approved, left out</div>':'')+'</div>'
     +'<div class="rc-tile d"><div class="rc-lbl">Still open</div><div class="rc-num">'+stillOpen.length+'</div>'
       +'<div class="rc-sub">across every month, not just this one</div></div>'
     +'</div>';
@@ -5213,8 +5434,9 @@ async function renderRecap(){
   body.innerHTML = list.map(name=>{
     const mine=(arr)=>arr.filter(p=>(p.client_name||'(No client)')===name);
     const o=mine(opened), f=mine(finished), so=mine(stillOpen);
-    const meas=f.filter(p=>p.created_at&&p.completed_at);
-    const un=f.length-meas.length;
+    const lgN=f.filter(gfxIsLedger).length;     /* decision 98 */
+    const meas=f.filter(p=>p.created_at&&p.completed_at&&!gfxIsLedger(p));
+    const un=f.length-meas.length-lgN;
     const d=meas.map(p=>rcDays(p.created_at,p.completed_at));
     const m=rcMedian(d), lg=d.length?Math.max.apply(null,d):null;
     const ages=so.filter(p=>p.created_at).map(p=>rcDays(p.created_at,now));
@@ -5233,7 +5455,8 @@ async function renderRecap(){
     if(m!==null) say+= (m<1/24 ? ' Half were done inside an hour'
                                : ' Half were done within '+rcDur(m))
                        +' and the slowest took '+rcDur(lg)+'.';
-    else if(f.length>0) say+=' None of the finished work has a recorded finish time, so the turnaround cannot be measured.';
+    else if(f.length>lgN) say+=' None of the finished work has a recorded finish time, so the turnaround cannot be measured.';
+    if(lgN>0) say+=' '+lgN+' went from Brief to Approved in under five minutes, so '+rcPlural(lgN,'it was','they were')+' entered after the work and '+rcPlural(lgN,'is','are')+' left out of the timing.';
     if(un>0 && m!==null) say+=' '+un+' of the finished '+rcPlural(un,'job has','jobs have')+' no finish time and '+rcPlural(un,'is','are')+' left out of that figure.';
     if(so.length>0) say+=' '+so.length+' '+rcPlural(so.length,'job is','jobs are')+' still open'
                         +(oldest!==null?' and the oldest has been waiting '+rcDur(oldest):'')+'.';

@@ -24,6 +24,12 @@ canvas downscale on upload). See L-GFX-002 and L-GFX-003 for what survived.
 The permanent fix is moving images to a Supabase Storage bucket. That is an
 infra change and is gated on Thulaib.
 
+**7 Oct 2026, decision 106 (Thulaib: yes).** The storage fix is BUILT: bucket
+`graphic-images` and every image writer uploads there first (L-GFX-058). The
+old rows (108, 26.5 MB on 7 Oct) are moved by
+`~/bb-systems/graphic-images/migrate.mjs`, which the coordinator runs. This
+entry closes when that run reports 0 rows still holding a data URL.
+
 ## L-GFX-002 · the archive page still runs the original unfixed query · FIXED 2026-08-20 (`0d12701`)
 **Heading corrected 2026-10-06 (L-GFX-056).** It said OPEN for seven weeks after
 `0d12701` closed it. `loadArchived()` names its columns: `PROJ_LIST_COLS` plus
@@ -1449,3 +1455,71 @@ insert aborted): before, modal open, toast "Could not save the post" and the
 retry sent a second post insert; after, modal closed, toast "Post created. Its
 first history row did not save" and the retry sent 0 post inserts. Self-test
 122 checks, 0 failed on phone and desk. `guard.py` PASS.
+
+## L-GFX-058 · images go to file storage, upload first and write second · BUILT 2026-10-07
+Decision 106, Thulaib's yes on 7 Oct. Closes the build half of L-GFX-001.
+
+**The change.** `gfxUploadImage` uploads the compressed image and its thumbnail
+to the `graphic-images` bucket under `posts/<post id or a uuid>/<sha-256>.jpg`
+and `...-thumb.jpg`, and the row stores the two public links. The add and edit
+form, the detail image, the bulk add and a comment picture all call it BEFORE
+they write. A refused upload keeps the form open, shows a toast and writes
+nothing. The bulk add duplicate fingerprint is now the same sha-256 of the file
+(it was a string hash of the data URL, L-GFX-045). Cast from the Inspo Hub
+bucket `inspo-shots`; module home `~/bb-systems/graphic-images/`.
+
+**The rule.** A file is named by the hash of its bytes, so the bucket needs no
+overwrite or delete right and "already exists" means the file is there. Any
+self test that runs a writer must stub the upload as well as the insert.
+Otherwise a person pressing Run self test would put a test file in the live bucket.
+
+**Proven.** Self test 130 checks, 0 failed on phone and desk (replay runner, 0
+page errors). With the upload taken out of the bulk add, three checks fail by
+name: "a bulk post stores a file URL, never a data URL" (it stored
+`data:image/png;base64,AAAA1`), "every image writer uploads before it writes",
+"a failed image upload writes no row" (2 writes, 0 expected). Bucket rights
+proven in SQL as anon: a file under `posts/` is accepted, a name outside
+`posts/` and the `inspo-shots` bucket are refused. `guard.py` PASS.
+
+## L-GFX-059 · anyone could approve a post that never saw Head Review · FIXED 2026-10-07
+Decision 98. 104 posts went from Brief to Approved in 6 to 47 seconds on 2 and
+5 October, all filed under Farhath. The pipeline is the record and designers
+move their own cards, so a post reaches Approved only after a `head_review` row
+exists in `graphic_stage_history`, and only a head, the graphic head or an SMM
+approves.
+
+**Where it is enforced.** `gfxSetStage` (the one writer behind drag and drop,
+Previous and Next, the My Work button, bulk move and undo) asks
+`gfxApproveBlock` first. Bulk move refuses a designer once before anything moves
+and counts the posts that were held back. Drag and drop, Next and the My Work
+button no longer say "Moved" when the move was refused. In the database,
+trigger `gfx_guard_approved` (BEFORE INSERT OR UPDATE OF current_stage) raises
+when a post becomes Approved with no head_review history, so a stale tab or the
+Command Centre cannot get round it. The database cannot check the role: the app
+runs on the public key.
+
+**Proven.** In SQL as anon, each rolled back: a post with no head_review row is
+refused, the same post with a head_review row is allowed, an already approved
+post can still be edited, an insert straight into Approved is refused. Self test:
+a designer gets 0 writes, a head gets 0 writes on a post that skipped Head
+Review and 1 write once it has been there. With the check removed from
+`gfxSetStage` both refusals fail by name ("returned true, 1 writes").
+
+## L-GFX-060 · a ledger typed in after the work counted as a month of work · FIXED 2026-10-07
+Decision 98, the record so far. The 104 posts above made `bb_person_month` read
+Farhath 104 finished in October at 0.0 hours each and pulled every average
+towards zero. **Rule: a graphic post whose finish came less than five minutes
+after it was created is a ledger entry, not work.** It stays approved and keeps
+its history. It is not a month's output and not a turnaround.
+
+**Where.** `bb_work_items` has a new last column `is_ledger` and gives a ledger
+post no `finished_month`, so the person sheet and `bb_person_month` (which also
+says `not is_ledger`) leave it out and still agree with each other. In the app,
+`gfxIsLedger` keeps ledger posts out of the recap's median turnaround (the tile
+says how many were left out) and the Analytics average completion. Video is not
+touched: 70 videos also finished inside five minutes and that is the Video
+System's own decision.
+
+**Before and after.** `bb_person_month`, graphic, October: Farhath 104 and
+Suhana 1, then Suhana 1 and no Farhath row. September: Suhana 3 before and
+after, its checksum unchanged. Every video month's checksum unchanged.

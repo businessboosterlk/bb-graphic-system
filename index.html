@@ -3321,6 +3321,39 @@ function wpFmtDate(d){
   return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'});
 }
 
+/* THE WEEK KEY. Read this before touching any date on this page.
+   L-GFX-064, 7 Oct 2026.
+
+   Every row in graphic_weekly_plan is filed under the SUNDAY before its Monday.
+   That was never a decision, it was an accident: the old code wrote
+   wpWeekStart.toISOString().slice(0,10), and in Colombo (UTC+5:30) a local
+   Monday midnight is 18:30 the previous day in UTC, so the string came out as
+   the Sunday. Six places all made the same mistake the same way, so the page
+   read back what it wrote and nobody noticed for months.
+
+   Two things made that dangerous. First, it is a trap: anyone who "corrects"
+   toISOString to local formatting in ONE of those six places starts writing
+   Mondays, which no reader queries, and the task silently disappears. That is
+   exactly what happened in reverse on 6 October, when the Move to next week
+   button was fixed on its own and ten real schedules (88 designs for Hire
+   Panther, Sapphire Trails, C-Clarke, Sastho, Crab Island, Ceylon Carrier
+   Travels and Cherry Kitchen) had already been stranded on Saturday keys since
+   29 August. Farhath reported it as "the schedule disappears". Second, the key
+   depended on the laptop's timezone: open this page in London and it would
+   start writing Mondays on its own.
+
+   So there is now exactly ONE producer of a week key, below, and it does not
+   use UTC at all. Keep it that way. If the stored key ever has to change from
+   Sunday to Monday, it is a data migration plus this one function, not an edit
+   in six call sites. */
+function wpYmd(d){
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function wpKey(monday){
+  const d = new Date(monday); d.setHours(0,0,0,0); d.setDate(d.getDate()-1);
+  return wpYmd(d);
+}
+
 function wpChangeWeek(dir){
   const d = new Date(wpWeekStart);
   d.setDate(d.getDate() + dir*7);
@@ -3335,15 +3368,15 @@ function wpGoToday(){
 
 async function wpLoadWeek(){
   if(!wpWeekStart) wpWeekStart = wpGetMonday(new Date());
-  const ws = wpWeekStart.toISOString().slice(0,10);
+  const ws = wpKey(wpWeekStart);
   const label = document.getElementById('wpWeekLabel');
   /* Last week's unfinished work, but ONLY while looking at the CURRENT week.
      Browsing back through history should not nag about the week before it. */
   _wpCarry = []; _wpCarryKey = null;
   const thisMon = wpGetMonday(new Date());
-  if(ws === thisMon.toISOString().slice(0,10)){
+  if(ws === wpKey(thisMon)){
     const prev = new Date(wpWeekStart); prev.setDate(prev.getDate()-7);
-    const pk = prev.toISOString().slice(0,10);
+    const pk = wpKey(prev);
     const pr = await sbGet('graphic_weekly_plan','?week_start=eq.'+pk+'&order=day_of_week.asc');
     if(Array.isArray(pr)){
       _wpCarryKey = pk;
@@ -3568,7 +3601,7 @@ async function wpMoveNextWeek(id){
      Colombo is the day before, so the Sunday key became a Saturday nobody reads
      and the task vanished. Build the key from the local date of d, which is the
      stored key plus seven days, the same Sunday key wpLoadWeek reads. */
-  const nk = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const nk = wpYmd(d);   /* local, never UTC: see wpKey above */
   const ok = await sbPatch('graphic_weekly_plan','id=eq.'+id,{week_start:nk, updated_at:new Date().toISOString()});
   if(ok){ toast('Moved to the week of '+wpFmtDate(d)); wpLoadWeek(); }
   else toast('Could not move that task','error');
@@ -3628,7 +3661,7 @@ function wpRenderCarry(){
     + '</div></div>';
 }
 async function wpCarryAct(id,action){
-  const ws = wpWeekStart.toISOString().slice(0,10);
+  const ws = wpKey(wpWeekStart);
   let ok=false;
   if(action==='move')      ok = await sbPatch('graphic_weekly_plan','id=eq.'+id,{week_start:ws, updated_at:new Date().toISOString()});
   else if(action==='done') ok = await sbPatch('graphic_weekly_plan','id=eq.'+id,{status:'done', updated_at:new Date().toISOString()});
@@ -3643,7 +3676,7 @@ async function wpCarryAll(action){
   wpLoadWeek();
 }
 async function wpCarryActQuiet(id,action){
-  const ws = wpWeekStart.toISOString().slice(0,10);
+  const ws = wpKey(wpWeekStart);
   if(action==='move') return sbPatch('graphic_weekly_plan','id=eq.'+id,{week_start:ws, updated_at:new Date().toISOString()});
   return sbPatch('graphic_weekly_plan','id=eq.'+id,{status:'done', updated_at:new Date().toISOString()});
 }
@@ -3707,7 +3740,7 @@ async function wpSaveTask(){
   const clientName = document.getElementById('wpClient').value;
   if(!clientName){ toast('Select a client','error'); return; }
   const data = {
-    week_start: wpWeekStart.toISOString().slice(0,10),
+    week_start: wpKey(wpWeekStart),
     day_of_week: parseInt(document.getElementById('wpDay').value),
     client_name: clientName,
     task_type: document.getElementById('wpTaskType').value,
@@ -4005,7 +4038,7 @@ async function wpBulkSaveAll(){
   try{
   const rows = document.querySelectorAll('#wpBulkRows tr');
   let count=0, skipped=0, failed=0;
-  const ws = wpWeekStart.toISOString().slice(0,10);
+  const ws = wpKey(wpWeekStart);
   for(const row of rows){
     const clientName = row.querySelector('.wbk-client').value;
     if(!clientName) continue;
@@ -4165,11 +4198,28 @@ async function runSelfTest(opts){
   const withLimit = (p, ms, what) => Promise.race([p,
     new Promise((_,rej)=>setTimeout(()=>rej(new Error((what||'request')+' took longer than '+(ms/1000)+'s')), ms))]);
 
+  /* A PER-SECTION LIMIT. L-GFX-065, 7 Oct 2026.
+     The budget above is only read BETWEEN sections, so any single section that
+     stalls hangs the whole run for ever. The 35s failsafe below puts the stubs
+     back but never resolves the promise, so the caller waits and no verdict is
+     ever printed. That is how this harness came to be the thing nobody runs:
+     at a 0x0 viewport it finished in under 45s while silently skipping every
+     layout check, and at a real 1280x900 it ran past 100s and returned nothing.
+     Either way the answer was useless.
+     So every section now has its own ceiling and a breadcrumb. A section that
+     overruns is a FAILURE with the name of the section in it, and the run
+     always comes back with a verdict. A race cannot cancel the stuck work, so
+     the rest of the run may be slower than usual; a finished honest report
+     beats a hang. */
+  const SECTION_LIMIT_MS = 15000;
   const section = async (label, fn) => {
     if(overBudget()){ _skipped++; ok(label+': skipped, the harness ran out of time', false,
       'the run passed its '+(HARNESS_BUDGET_MS/1000)+'s budget before this section, so it proved NOTHING here'); return; }
-    try{ await fn(); }
+    window.__BBGFX_SECTION = label;           /* where a run died, if it ever does again */
+    const t0 = Date.now();
+    try{ await withLimit(Promise.resolve(fn()), SECTION_LIMIT_MS, 'section "'+label+'"'); }
     catch(e){ ok(label+': section threw', false, (e && e.message) || String(e)); }
+    window.__BBGFX_SECTION_MS = (window.__BBGFX_SECTION_MS||{}); window.__BBGFX_SECTION_MS[label] = Date.now()-t0;
   };
 
   try{
@@ -4180,6 +4230,29 @@ async function runSelfTest(opts){
     const idSeen={}; document.querySelectorAll('[id]').forEach(el=>idSeen[el.id]=(idSeen[el.id]||0)+1);
     const idDupes=Object.keys(idSeen).filter(k=>idSeen[k]>1);
     ok('Boot: no duplicate DOM ids', idDupes.length===0, idDupes.join(', '));
+
+    /* ONE SIGNED-IN OPERATOR FOR THE WHOLE RUN. L-GFX-066, 7 Oct 2026.
+       The harness used to start on the login screen and leave currentUser null,
+       then each section that needed a user set one for itself. Everything that
+       ran before the first of those measured a page that was not on screen:
+       the bulk add checks died on currentUser.name with "Cannot read properties
+       of null", and the width checks reported 0px of 1280px and read as layout
+       faults. Five failures, four of them this one cause, every one of them
+       pointing at the wrong thing. A check that fails for the wrong reason is
+       worse than no check, because it spends the trust of the person reading it.
+       So the operator and the shell are established ONCE, here, before any
+       section runs, and both are asserted. restoreAll puts the real user,
+       clients and page back when the run ends. */
+    if(!currentUser) currentUser = {name:'THULAIB', role:'head', team_member_id:1, label:'Thulaib (CEO)'};
+    if(!clients || !clients.length) clients = [{id:1, name:'SELFTEST CLIENT'}];
+    const _bootLs=document.getElementById('loginScreen'), _bootAs=document.getElementById('appShell');
+    if(_bootLs && _bootAs){ _bootLs.hidden=true; _bootAs.classList.add('active'); }
+    ok('Boot: the run has a signed-in operator before any check measures the app',
+       !!(currentUser && currentUser.name) && !!_bootAs && _bootAs.classList.contains('active'),
+       currentUser? ('as '+currentUser.name+', shell active '+(!!_bootAs && _bootAs.classList.contains('active'))) : 'NO USER');
+    const _bootW = Math.round(((document.querySelector('.content')||document.body).getBoundingClientRect()||{width:0}).width);
+    ok('Boot: the app shell has real width, so the layout checks measure something',
+       _bootW > 320, _bootW+'px of '+window.innerWidth+'px; 0 means every width check below proves nothing');
     const seen={}; const re=/^(?:const|let|function|async function)\s+([A-Za-z_$][\w$]*)/gm; let m;
     while((m=re.exec(src))) seen[m[1]]=(seen[m[1]]||0)+1;
     const dupes=Object.keys(seen).filter(k=>seen[k]>1);
@@ -4576,6 +4649,41 @@ async function runSelfTest(opts){
       ok('Weekly plan: ticking flips planned to done', wpTasks[0].status==='done', before+' -> '+wpTasks[0].status);
       await wpToggleTask(1);
       ok('Weekly plan: ticking again flips it back', wpTasks[0].status==='planned');
+    }
+
+    /* ── THE WEEK KEY ──
+       L-GFX-064, 7 Oct 2026. Ten real schedules (88 designs) were invisible for
+       five weeks because one of six places that built a week key was changed on
+       its own. These checks make that impossible to repeat quietly: the key must
+       be a Sunday, it must not come from UTC, and nothing may build one by hand. */
+    if(typeof wpKey==='function'){
+      let notSunday=0, drift=0;
+      for(let i=0;i<400;i++){
+        const b=new Date(2026,0,1); b.setDate(b.getDate()+i);
+        const k=wpKey(wpGetMonday(b));
+        if(new Date(k+'T00:00:00').getDay()!==0) notSunday++;
+        /* the key must be the day before that week's Monday, always */
+        const m=wpGetMonday(b); m.setDate(m.getDate()-1);
+        if(k!==wpYmd(m)) drift++;
+      }
+      ok('Week key: every one of 400 weeks files under a Sunday', notSunday===0, notSunday+' were not Sunday');
+      ok('Week key: it is always the day before that week\'s Monday', drift===0, drift+' drifted');
+      ok('Week key: it does not come from UTC, so it survives a change of timezone',
+         wpKey.toString().indexOf('toISOString')===-1 && wpYmd.toString().indexOf('toISOString')===-1,
+         'in New York the old UTC version produced a Sunday 0 times out of 400');
+      const _names=['wpSaveTask','wpCarryAct','wpCarryActQuiet','wpLoadWeek','wpMoveNextWeek','wpBulkSaveAll'];
+      const _missing=_names.filter(n=>typeof window[n]!=='function');
+      ok('Week key: all six week-writing functions are present under these names', _missing.length===0,
+         _missing.length? 'renamed or gone, so the check below proves nothing: '+_missing.join(', ') : _names.join(', '));
+      const movers=_names.filter(n=>typeof window[n]==='function').map(n=>window[n]);
+      const handmade=movers.filter(f=>/toISOString\(\)\.slice\(0,\s*10\)/.test(f.toString()));
+      ok('Week key: no function builds a week key by hand', handmade.length===0,
+         handmade.length? 'these bypass wpKey: '+handmade.map(f=>f.name).join(', ') : 'all six go through wpKey');
+      const nk=(function(){const d=new Date('2026-09-27T00:00:00'); d.setDate(d.getDate()+7); return wpYmd(d);})();
+      ok('Week key: Move to next week lands on the next Sunday, not a Saturday',
+         nk==='2026-10-04', 'got '+nk+'; a Saturday key is one no reader queries, so the task vanishes');
+    } else {
+      ok('Week key: one producer exists', false, 'wpKey is missing, so the six call sites are free to drift again');
     }
 
     });

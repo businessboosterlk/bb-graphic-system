@@ -1624,3 +1624,91 @@ only on pages.
 exact URL it wrote) and F2 (the Approved gate also stopped the service role, so the August
 backup restore could not run) are fixed and registered in
 `~/bb-systems/graphic-images/README.md` (migration 006, `rehearsal/gate-roles-proof.sql`).
+
+## L-GFX-064 · ten real schedules were invisible for five weeks, because one of six places that built a week key was fixed on its own · FIXED 2026-10-07
+Farhath: "There was a bug when trying to move a schedule from the current week
+to next week. The schedule disappears if you move it from the current week to
+the next week."
+
+Every row in `graphic_weekly_plan` is filed under the SUNDAY before its Monday.
+That was never a decision. The code wrote `wpWeekStart.toISOString().slice(0,10)`,
+and in Colombo (UTC+5:30) a local Monday midnight is 18:30 the previous day in
+UTC, so the string came out as the Sunday. Six places all made the same mistake
+in the same way, so the page read back exactly what it wrote and the fault was
+invisible.
+
+That left a trap. On 6 October the "Move to next week" button was corrected on
+its own, from UTC to local formatting, in one of the six places. Before that fix
+it had been writing a SATURDAY key, which no reader ever queries, so the task
+simply vanished. The cause was closed but the damage was never repaired: TEN real
+schedules, 88 designs, had been stranded since 29 August for Hire Panther,
+Sapphire Trails (four), C-Clarke, Sastho, Crab Island, Ceylon Carrier Travels and
+Cherry Kitchen, belonging to Suhana, Amjath and Farhath.
+
+Repaired by moving every Saturday key forward one day onto its real Sunday, 0
+collisions, verified at 0 Saturday rows and 269 of 269 on Sundays.
+
+There is now exactly ONE producer of a week key, `wpKey()`, and it never touches
+UTC. All seven call sites go through it. Proof it was safe: across 400 weeks the
+new producer gives the identical key to the old one in Colombo, so no data
+migration was needed. Proof it was worth doing: the old producer returned a
+Sunday only 210 times out of 400 in London and **0 times out of 400** in New
+York. The week key depended on where the laptop was sitting. Anyone opening this
+page outside Colombo's offset would have started writing keys nobody reads.
+
+THE LESSONS.
+- **A value produced in six places is one value with five copies of a bug.** Fix
+  it in one of them and you have not fixed it, you have split the system in two.
+- **Repairing the cause is not repairing the damage.** The 6 October fix stopped
+  new orphans and left ten real schedules lost. Always ask what the bug already
+  did, then go and count it.
+- **A key no reader queries loses data silently.** There is no error, no empty
+  state, nothing: the work is simply gone from view. Prefer a shape where a
+  wrong key fails loudly.
+- Six checks now hold it: the key is a Sunday across 400 weeks, it is always the
+  day before that week's Monday, neither producer mentions `toISOString`, all six
+  week-writing functions exist under the names the check uses, none of them builds
+  a key by hand, and Move to next week lands on a Sunday.
+
+## L-GFX-065 · the harness hung for ever at a real window size, and finished in 45s at 0x0 by skipping every layout check · FIXED 2026-10-07
+The 20s budget was only read BETWEEN sections, so any single section that stalled
+hung the whole run, and the 35s failsafe put the stubs back without ever resolving
+the promise. The caller waited and no verdict was ever printed. That is how the
+one tool meant to catch bugs became the tool nobody ran.
+
+Worse, it looked fine from the wrong chair. In a hidden browser pane the viewport
+is 0x0, the run finished in under 45 seconds, and every check that measures a
+rectangle was skipped. At a real 1280x900 the same run went past 100 seconds and
+returned nothing. Both answers were useless and neither said so.
+
+Every section now has its own 15s ceiling, records how long it took, and leaves a
+breadcrumb in `window.__BBGFX_SECTION`. A section that overruns is a FAILURE
+naming the section. The run always comes back with a verdict.
+
+LESSON: **a timeout checked between units of work is not a timeout.** Put the
+limit on the thing that can actually hang. And verify at a real window size: a
+measurement harness in a 0x0 viewport reports success for having measured nothing.
+
+## L-GFX-066 · the harness ran on the login screen, so four of its five failures pointed at the wrong thing · FIXED 2026-10-07
+The run started with `currentUser` null and the login screen still covering the
+app, and each section that needed a user set one up for itself. Everything that
+ran before the first of those measured a page that was not on screen.
+
+The visible result was five failures, four of them this single cause:
+- two bulk add checks dying on `currentUser.name` with "Cannot read properties of
+  null", reported as bulk add dedup regressions
+- `REGRESSION L-GFX-015: the page uses the width it has :: 0px of 1280px`, which
+  reads exactly like a real layout fault
+- `L-GFX-017: exactly one "+ Add Task" button :: 0 visible`, which reads like a
+  missing button
+
+Not one of those was true. The operator and the shell are now established ONCE in
+Boot, before any section runs, and both are asserted: the run must have a
+signed-in operator, and `.content` must be wider than 320px or the width checks
+below are declared to prove nothing. `restoreAll` puts the real user, clients and
+page back afterwards. Result: 128 checks with 5 misleading failures became 144
+checks with 0.
+
+LESSON: **a check that fails for the wrong reason is worse than no check**, because
+it spends the trust of the person reading it and sends them hunting the wrong
+thing. Set the fixture once, at the top, and assert the fixture itself.

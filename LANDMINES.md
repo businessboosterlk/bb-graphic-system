@@ -1712,3 +1712,68 @@ checks with 0.
 LESSON: **a check that fails for the wrong reason is worse than no check**, because
 it spends the trust of the person reading it and sends them hunting the wrong
 thing. Set the fixture once, at the top, and assert the fixture itself.
+
+## L-GFX-067 · Bulk Add opened on January all year, because its default never ran · FIXED 2026-10-07
+Found by opening the screen and reading it, not by a check. Building Farhath's
+"add all the images at once", the Bulk Add modal showed **Target month: January**
+on 7 October, with the board working in October.
+
+The line meant to prevent that read:
+```
+if(mEl && !mEl.value) mEl.value = new Date().getMonth()+1;
+```
+A `<select>` whose first option is January reports `"1"`, never `""`. So the
+condition was false every single time and the line never once ran. It looked
+like a default and was none. The save only rejects an EMPTY month, so nobody who
+forgot to change it saw an error either: the posts just went to January.
+
+Posts filed into a month nobody opens are posts that are gone. That is the same
+loss as L-GFX-064, by a different door.
+
+Fixed with `bulkSetTargetToThisMonth()`, which sets month and year outright on
+every open, plus three checks: the month is this month, the year is this year,
+and `openBulkPipeline` actually calls it.
+
+LESSON: **a falsy test against a control that is never falsy is not a default.**
+When a guard is written, make it fail once on purpose and watch it fail. The
+same shape bit me twice in one sitting: I wrote `btn.disabled = true` on a
+`<label>`, which has no disabled property, so a second pick during a long batch
+would have run straight through.
+
+## L-GFX-068 · the harness passed only when nobody was signed in · FIXED 2026-10-07
+The run's verdict depended on something it never mentioned: whether a session
+already existed in the tab.
+
+- Signed out: 144 checks, 0 failures.
+- Signed in, same file, same window size: 6 failures, including "App: the page
+  behind an open sheet is frozen :: none of 8 overlays froze it" and "a page
+  frozen with no sheet open frees itself :: still pinned, the watchdog did not
+  fire".
+
+Both answers were produced by the same bytes. Found only because signing in as
+Farhath to test the bulk add left a session in `sessionStorage`, and the next
+run reported six failures on a file that had just passed.
+
+Nothing was wrong with the app. Signed in, it opens the first-run walkthrough
+(`gdWrap`) over everything, so the page is MEANT to be pinned and the watchdog is
+MEANT to leave it alone. The checks were reading a different screen from the one
+they describe. Verified by hand at phone size: with the walkthrough dismissed the
+Pipeline is 28,220px tall in an 812px window and scrolls correctly.
+
+But the green verdict was the dangerous half. Every person who uses this app is
+signed in. The state in which the harness passed is the state nobody is ever in.
+
+Boot now closes whatever sits on top, through the freeze layer's own close path,
+and asserts two things before any section runs: nothing is open over the page,
+and the page is not frozen. Proven by running the identical file in both states:
+156 checks, 0 failures, signed in and signed out.
+
+THE LESSONS.
+- **A harness that gives different answers in different hidden states has no
+  answer.** Make the starting state explicit and assert it, or the verdict is
+  about the tab, not the product.
+- **Check the state your users are actually in.** Signed out was the convenient
+  state, not the real one.
+- **A measurement harness in a 0x0 viewport reports success for measuring
+  nothing** (L-GFX-065), and one on the login screen reports success for
+  measuring the login screen. Same disease, two doors.

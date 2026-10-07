@@ -306,6 +306,12 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .bulk-shared-field select,.bulk-shared-field input{width:100%;height:36px;font-size:0.84rem;background:var(--surface-2);
   border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);padding:0 10px}
 .bulk-shared-note{font-size:0.72rem;color:var(--text-3);margin:0 0 12px}
+.bulk-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:10px}
+.bulk-actions-note{font-size:0.72rem;color:var(--text-3)}
+.bulk-actions .is-busy{opacity:0.65;pointer-events:none}
+@media(max-width:700px){.bulk-actions{flex-direction:column;align-items:stretch}
+  .bulk-actions .btn{width:100%;justify-content:center;text-align:center}
+  .bulk-actions-note{text-align:center}}
 @media(max-width:700px){.bulk-shared{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .bulk-table th{text-align:left;padding:6px 8px;font-size:0.72rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;border-bottom:1px solid var(--border)}
 .bulk-table td{padding:4px 4px}
@@ -1104,7 +1110,16 @@ tr:hover td{background:var(--surface-2)}
           <tbody id="bulkRows"></tbody>
         </table>
       </div>
-      <button class="btn btn-ghost btn-sm" onclick="bulkAddRow()" style="margin-top:8px">+ Add Row</button>
+      <div class="bulk-actions">
+        <!-- Farhath, 7 Oct 2026: add every image at once, not a row at a time.
+             This is the primary way in, so it sits first and reads as a button. -->
+        <label class="btn btn-accent btn-sm" id="bulkImagesBtn" style="cursor:pointer;margin:0">
+          Choose images
+          <input type="file" accept="image/*" multiple id="bulkImagesInput" style="display:none" onchange="bulkAddImages(this)">
+        </label>
+        <button class="btn btn-ghost btn-sm" onclick="bulkAddRow()">+ Add Row</button>
+        <span class="bulk-actions-note">One post per image. Titles come from the file names and stay editable.</span>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modalBulkPipeline')">Cancel</button>
@@ -3778,13 +3793,35 @@ async function wpDeleteTask(){
 // BULK ADD — PIPELINE
 // ═══════════════════════════════════════
 let bulkRowCount = 0;
+/* Its own function so it can be checked without opening the modal. Opening it
+   takes the freeze layer's lock, which the login screen also holds, so a check
+   that opened and closed it released a freeze it did not own and six unrelated
+   freeze checks failed afterwards. A check must not change the state the next
+   check reads. */
+function bulkSetTargetToThisMonth(){
+  const now = new Date();
+  const m = document.getElementById('bkMonth'), y = document.getElementById('bkYear');
+  if(m) m.value = String(now.getMonth()+1);
+  if(y) y.value = String(now.getFullYear());
+  return {month: now.getMonth()+1, year: now.getFullYear()};
+}
 function openBulkPipeline(){
   const yEl=document.getElementById('bkYear'), mEl=document.getElementById('bkMonth');
   if(yEl && !yEl.options.length){
     const y=new Date().getFullYear();
     yEl.innerHTML=[y,y+1].map(v=>'<option value="'+v+'">'+v+'</option>').join('');
   }
-  if(mEl && !mEl.value) mEl.value = new Date().getMonth()+1;
+  /* THE TARGET MONTH DEFAULTS TO THIS MONTH. L-GFX-067, 7 Oct 2026.
+     The line here used to read `if(mEl && !mEl.value)`, which never once ran:
+     a <select> whose first option is January reports "1", not "". So the guard
+     looked like a default and was none, and every bulk batch opened on January
+     while the board was working on October. Nobody who forgot to change it
+     would see an error either, because the save only rejects an EMPTY month.
+     Posts filed into a month nobody opens are posts that are gone, which is the
+     same way the weekly plan lost ten schedules (L-GFX-064).
+     The rows are cleared on every open, so this is always a fresh batch and
+     setting it outright is safe. */
+  bulkSetTargetToThisMonth();
   /* Rebuilt on every open, because clients load after the app does and a list
      built once at boot can be empty. */
   const cSel=document.getElementById('bkClient');
@@ -3818,25 +3855,111 @@ function bulkAddRow(){
   `;
   document.getElementById('bulkRows').appendChild(tr);
 }
-function bulkRowImg(input){
+/* ONE PATH FOR ATTACHING AN IMAGE TO A BULK ROW.
+   Farhath asked to add every image at once instead of a row at a time, which
+   means there are now two ways in: the camera icon on one row, and Choose
+   images for a whole batch. They must compress, thumbnail, fingerprint and
+   draw identically, so they share this. Written as one function on purpose:
+   L-GFX-064 was a value produced in six places, which is one value with five
+   copies of a bug. */
+const BULK_MAX_BYTES = 15*1024*1024;
+function bulkAttachImage(tr, file){
+  return new Promise(resolve=>{
+    if(!tr || !file){ resolve(false); return; }
+    if(file.size > BULK_MAX_BYTES){ resolve('too-big'); return; }
+    const r = new FileReader();
+    r.onerror = ()=> resolve(false);
+    r.onload = async ev=>{
+      try{
+        const compressed = await compressImageDataUrl(ev.target.result);
+        tr._img = compressed;
+        tr._thumb = await makeThumbDataUrl(ev.target.result);
+        /* Decision 106: the duplicate fingerprint is the sha-256 of the stored file. */
+        try{ tr._hash = await gfxHashDataUrl(compressed); }catch(e){ tr._hash = ''; }
+        const thumb = tr.querySelector('.bk-img-thumb');
+        const icon  = tr.querySelector('.bk-img-icon');
+        if(thumb){ thumb.src = compressed; thumb.style.display=''; }
+        if(icon){ icon.textContent = '\u2713'; icon.style.color = 'var(--green)'; }
+        resolve(true);
+      }catch(e){ resolve(false); }
+    };
+    r.readAsDataURL(file);
+  });
+}
+async function bulkRowImg(input){
   const tr = input.closest('tr');
   const file = input.files && input.files[0];
-  if(!file){ return; }
-  if(file.size > 15*1024*1024){ toast('Image too large (max 15 MB)','error'); input.value=''; return; }
-  const r = new FileReader();
-  r.onerror = ()=> toast('Could not read image','error');
-  r.onload = async ev=>{
-    const compressed = await compressImageDataUrl(ev.target.result);
-    tr._img = compressed;
-    tr._thumb = await makeThumbDataUrl(ev.target.result);
-    /* Decision 106: the duplicate fingerprint is the sha-256 of the stored file. */
-    try{ tr._hash = await gfxHashDataUrl(compressed); }catch(e){ tr._hash = ''; }
-    const thumb = tr.querySelector('.bk-img-thumb');
-    const icon = tr.querySelector('.bk-img-icon');
-    if(thumb){ thumb.src = compressed; thumb.style.display=''; }
-    if(icon){ icon.textContent = '✓'; icon.style.color = 'var(--green)'; }
-  };
-  r.readAsDataURL(file);
+  if(!file) return;
+  const res = await bulkAttachImage(tr, file);
+  if(res==='too-big'){ toast('Image too large (max 15 MB)','error'); input.value=''; return; }
+  if(!res) toast('Could not read image','error');
+}
+
+/* A TITLE FROM THE FILE NAME. A designer exports 01-opening.jpg, 02-offer.jpg,
+   so the name is the only thing that tells the posts apart on screen. It is a
+   starting point, not a decision: every title stays editable in its row. */
+function bulkTitleFromFile(name){
+  return String(name||'').replace(/\.[^.]+$/,'').replace(/[_-]+/g,' ').replace(/\s+/g,' ').trim().slice(0,120);
+}
+
+/* ADD EVERY IMAGE AT ONCE. Farhath, 7 Oct 2026: "There should be an option to
+   add all the images at once instead of manually clicking the button to add
+   rows and add images one by one."
+   The modal opens with three blank rows, so those get filled before any new
+   row is added: a person who picks four images should end with four posts, not
+   four plus three empties they have to go and delete. Files are ordered by
+   name the way a person reads them, so 2 comes before 10. */
+let _bulkImgBusy = false;
+async function bulkAddImages(input){
+  const files = Array.from((input && input.files) || []);
+  input.value = '';                       /* so the same pick works twice */
+  if(!files.length) return;
+  /* The control is a <label>, and a label has no disabled property, so setting
+     one would have looked like a guard and been none: a second pick during a
+     long batch would have run a second pass over the same blank rows. */
+  if(_bulkImgBusy){ toast('Still adding the last batch','error'); return; }
+  _bulkImgBusy = true;
+  files.sort((a,b)=>a.name.localeCompare(b.name, undefined, {numeric:true, sensitivity:'base'}));
+
+  const btn = document.getElementById('bulkImagesBtn');
+  const firstNode = btn ? btn.firstChild : null;     /* the text, not the hidden input */
+  const label = firstNode ? firstNode.textContent : null;
+  const setLabel = txt => { if(firstNode) firstNode.textContent = txt; };
+  if(btn){ btn.classList.add('is-busy'); }
+  if(input) input.disabled = true;
+
+  const holder = document.getElementById('bulkRows');
+  const isBlank = tr => !tr._img && !(tr.querySelector('.bk-title')||{}).value;
+  let added = 0, tooBig = [], failed = [];
+
+  for(let i=0;i<files.length;i++){
+    const f = files[i];
+    setLabel(' Adding image '+(i+1)+' of '+files.length+'\u2026 ');
+    let tr = Array.from(holder.querySelectorAll('tr')).find(isBlank);
+    if(!tr){ bulkAddRow(); tr = holder.querySelector('tr:last-child'); }
+    const res = await bulkAttachImage(tr, f);
+    if(res===true){
+      const t = tr.querySelector('.bk-title');
+      if(t && !t.value) t.value = bulkTitleFromFile(f.name);
+      added++;
+    } else {
+      /* Nothing was attached, so the row must not be left behind looking ready
+         to save. Drop it if this call created it and it is still empty. */
+      if(isBlank(tr) && holder.querySelectorAll('tr').length>1 && tr!==holder.querySelector('tr')) tr.remove();
+      (res==='too-big' ? tooBig : failed).push(f.name);
+    }
+  }
+
+  if(btn) btn.classList.remove('is-busy');
+  if(input) input.disabled = false;
+  if(label!=null) setLabel(label);
+  _bulkImgBusy = false;
+
+  const notes = [];
+  if(added) notes.push(added+' image'+(added!==1?'s':'')+' added');
+  if(tooBig.length) notes.push(tooBig.length+' over 15 MB skipped');
+  if(failed.length) notes.push(failed.length+' could not be read');
+  toast(notes.join(', ') || 'Nothing added', (tooBig.length||failed.length)?'error':'success');
 }
 /* L-GFX-010. The key a duplicate is judged on. Deliberately does NOT include
    designer or priority: the same post for the same client in the same month is
@@ -4253,6 +4376,34 @@ async function runSelfTest(opts){
     const _bootW = Math.round(((document.querySelector('.content')||document.body).getBoundingClientRect()||{width:0}).width);
     ok('Boot: the app shell has real width, so the layout checks measure something',
        _bootW > 320, _bootW+'px of '+window.innerWidth+'px; 0 means every width check below proves nothing');
+
+    /* AND A PAGE WITH NOTHING OPEN ON TOP OF IT. L-GFX-068, 7 Oct 2026.
+       The run's verdict used to depend on something it never mentioned: whether
+       a session already existed in this tab. Signed out, the login overlay was
+       up and the whole run passed, 0 of 144 failing. Signed in, the app opened
+       the first-run walkthrough over everything, and six freeze checks failed
+       with things like "none of 8 overlays froze it" and "still pinned, the
+       watchdog did not fire". Nothing was wrong with the app in either case:
+       with the walkthrough genuinely open the page is MEANT to be pinned, and
+       the watchdog is MEANT to leave it alone. The checks were simply reading a
+       different screen from the one they describe, and every person who uses
+       this app is signed in, so the green answer was the one nobody lives in.
+       So the run now closes whatever is on top, through the freeze layer's own
+       close path, and asserts it starts from an unfrozen page. */
+    let _closed=0;
+    for(let i=0;i<10 && BBF.anyOpen();i++){
+      const _top = BBF.anyOpen();
+      if(_top && _top.id==='gdWrap' && typeof gdEnd==='function') gdEnd(); else BBF.sync && BBF.sync();
+      if(BBF.anyOpen()===_top) break;      /* it will not close, so stop rather than spin */
+      _closed++;
+    }
+    try{ BBF.sync(); }catch(e){}
+    const _still = BBF.anyOpen();
+    ok('Boot: nothing is left open over the page before the checks begin',
+       !_still, _still? ('"'+(_still.id||_still.className)+'" is still open, so every freeze check below is reading that screen, not the app') : (_closed+' closed'));
+    ok('Boot: the page starts unfrozen, the way a person finds it',
+       getComputedStyle(document.body).position!=='fixed' && !document.body.classList.contains('sheet-open'),
+       'body is '+getComputedStyle(document.body).position+', sheet-open '+document.body.classList.contains('sheet-open'));
     const seen={}; const re=/^(?:const|let|function|async function)\s+([A-Za-z_$][\w$]*)/gm; let m;
     while((m=re.exec(src))) seen[m[1]]=(seen[m[1]]||0)+1;
     const dupes=Object.keys(seen).filter(k=>seen[k]>1);
@@ -4485,6 +4636,67 @@ async function runSelfTest(opts){
          withId+' of '+inserted.length+' carry assigned_designer_id; without it the doer alert never fires');
     }catch(e){
       ok('Bulk add: posts sharing a title but not an image are all kept', false, e && e.message);
+    }
+
+    /* ── Farhath, 7 Oct 2026 · add every image at once ── */
+    try{
+      const holder=document.getElementById('bulkRows'); const had=holder.innerHTML;
+      ok('Bulk add: there is one code path for attaching an image',
+         typeof bulkAttachImage==='function' && /bulkAttachImage/.test(String(bulkRowImg)),
+         'the single-row icon and Choose images must compress, hash and draw identically');
+      ok('Bulk add: the many-image picker exists and accepts more than one file',
+         typeof bulkAddImages==='function' && !!(document.getElementById('bulkImagesInput')||{}).multiple,
+         'without multiple on the input a person is back to one image at a time');
+      ok('Bulk add: a title is read from the file name, numbers in reading order',
+         bulkTitleFromFile('02-opening_shot.JPG')==='02 opening shot'
+           && ['10.jpg','2.jpg'].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}))[0]==='2.jpg',
+         'got "'+bulkTitleFromFile('02-opening_shot.JPG')+'"');
+
+      /* The three blank rows the modal opens with must be USED, not left behind:
+         four images must give four posts, not four plus three empties. */
+      holder.innerHTML=''; bulkAddRow(); bulkAddRow(); bulkAddRow();
+      const png='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==';
+      const bytes=Uint8Array.from(atob(png.split(',')[1]), c=>c.charCodeAt(0));
+      const mk=n=>new File([bytes], n, {type:'image/png'});
+      const keepC=window.compressImageDataUrl, keepT=window.makeThumbDataUrl;
+      /* stubbed so the check never depends on canvas encoding, only on the wiring */
+      let seq=0; compressImageDataUrl=async u=>png+'#'+(++seq); makeThumbDataUrl=async u=>png;
+      const fakeInput={files:[mk('03-c.png'),mk('01-a.png'),mk('02-b.png'),mk('10-d.png')], value:'x', disabled:false};
+      try{ await bulkAddImages(fakeInput); } finally { compressImageDataUrl=keepC; makeThumbDataUrl=keepT; }
+      const rows=Array.from(holder.querySelectorAll('tr'));
+      const titles=rows.map(r=>(r.querySelector('.bk-title')||{}).value||'');
+      ok('Bulk add: four images give exactly four rows, the blank ones reused',
+         rows.length===4, rows.length+' rows for 4 images (7 means the three blanks were left behind)');
+      ok('Bulk add: every row came away with an image attached',
+         rows.length>0 && rows.every(r=>!!r._img), rows.filter(r=>!r._img).length+' rows have no image');
+      ok('Bulk add: the file names are in reading order, so 2 comes before 10',
+         titles.join('|')==='01 a|02 b|03 c|10 d', titles.join('|'));
+      ok('Bulk add: the picker is handed back ready for the next batch',
+         fakeInput.value==='' && fakeInput.disabled===false && _bulkImgBusy===false,
+         'value "'+fakeInput.value+'", disabled '+fakeInput.disabled+', busy '+_bulkImgBusy);
+      /* L-GFX-067: the batch must open on the month the board is working in.
+         Checked WITHOUT opening the modal: opening it takes the freeze lock the
+         login screen holds, and closing it released a freeze this check did not
+         own, which failed six unrelated freeze checks further down the run. */
+      const _mEl=document.getElementById('bkMonth'), _yEl=document.getElementById('bkYear');
+      const _km=_mEl?_mEl.value:null, _ky=_yEl?_yEl.value:null;
+      if(_mEl) _mEl.value='1';
+      const _set = (typeof bulkSetTargetToThisMonth==='function') ? bulkSetTargetToThisMonth() : null;
+      const _now2=new Date();
+      ok('Bulk add: a new batch targets THIS month, not January',
+         !!_set && _mEl && parseInt(_mEl.value,10)===_now2.getMonth()+1,
+         'set month '+(_mEl&&_mEl.value)+', today is month '+(_now2.getMonth()+1)
+          +'; the old line read if(!mEl.value), which a <select> never satisfies');
+      ok('Bulk add: a new batch targets THIS year',
+         !!_set && _yEl && parseInt(_yEl.value,10)===_now2.getFullYear(), 'set '+(_yEl&&_yEl.value));
+      ok('Bulk add: opening a batch actually applies that default',
+         /bulkSetTargetToThisMonth\s*\(\s*\)/.test(String(openBulkPipeline)),
+         'openBulkPipeline must call it, or the default exists and nothing uses it');
+      if(_mEl && _km!==null) _mEl.value=_km;
+      if(_yEl && _ky!==null) _yEl.value=_ky;
+      holder.innerHTML=had;
+    }catch(e){
+      ok('Bulk add: four images give exactly four rows, the blank ones reused', false, e && e.message);
     }
 
     /* ── Decision 106, 7 Oct 2026 · images live in file storage ── */

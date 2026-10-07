@@ -1556,6 +1556,7 @@ an undo test before it ships, because undo is the first thing a gate breaks.
 before and after 004: undo of a legacy approved post REFUSED then ALLOWED; in
 Head Review now with no row REFUSED then ALLOWED; no Head Review, a false
 approved row after the gate and an insert into Approved REFUSED both times; a
-head_review row and an edit of an approved post ALLOWED both times. Self test: 5
+head_review row and an edit of an approved post ALLOWED both times. Self test: 4
 new checks (designer undo, a late approved row, Head Review now with the history
-read down, a failed read named as such, `updateImage` in the upload list).
+read down, a failed read named as such) and `updateImage` joins the upload list
+check. Replay harness 134 checks (130 before), 0 failed.

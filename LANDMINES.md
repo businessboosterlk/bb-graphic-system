@@ -1485,7 +1485,7 @@ proven in SQL as anon: a file under `posts/` is accepted, a name outside
 Decision 98. 104 posts went from Brief to Approved in 6 to 47 seconds on 2 and
 5 October, all filed under Farhath. The pipeline is the record and designers
 move their own cards, so a post reaches Approved only after a `head_review` row
-exists in `graphic_stage_history`, and only a head, the graphic head or an SMM
+exists in `graphic_stage_history`. Only a head, the graphic head or an SMM
 approves.
 
 **Where it is enforced.** `gfxSetStage` (the one writer behind drag and drop,
@@ -1523,3 +1523,39 @@ System's own decision.
 **Before and after.** `bb_person_month`, graphic, October: Farhath 104 and
 Suhana 1, then Suhana 1 and no Farhath row. September: Suhana 3 before and
 after, its checksum unchanged. Every video month's checksum unchanged.
+
+## L-GFX-061 · the Approved gate locked out the undo and a failed history row · FIXED 2026-10-07
+An independent review of L-GFX-058 and L-GFX-059 found four faults in this app.
+
+1. **Undo could not put a post back into Approved.** `bbuUndo` goes through
+   `gfxSetStage`, which asked `gfxApproveBlock`. A designer was refused by role
+   and every one of the 107 approved posts had no `head_review` row, so one wrong
+   drag out of Approved could not be undone. The undo now passes `undo` and skips
+   the role check (it only reverses this person's own move in this session).
+2. **A failed history insert locked a post out for good.** `gfxSetStage` does not
+   check the history POST. A post in Head Review with no `head_review` row was
+   refused for ever. Being in Head Review now is proof on its own.
+3. **The proof is the trigger's rule, word for word.** A `head_review` row, the
+   post in Head Review now or an `approved` row entered before the gate went
+   live (`GFX_GATE_AT`, 04:04 UTC on 7 Oct 2026, the migration version). An
+   approved row written after the gate never counts: the old Command Centre wrote
+   one even when the database refused its move (L-CC-046). The database side is
+   `~/bb-systems/graphic-images/migrations/004_approved_gate_proof_2026_10_07.sql`.
+4. **Bulk move called a failed read a missing Head Review.** The reasons are
+   counted apart now. `GFX_MSG` holds the three texts, so a caller compares the
+   reason by value and never by matching words.
+5. **`updateImage` wrote a pasted data URL into the row.** It now uploads a
+   `data:` value through `gfxUploadImage` first, like every other image writer.
+   It is in the self test list.
+
+**Block.** A gate in the app and the same gate in the database are one rule in
+two places: change both in the same commit and say so in each. Every gate gets
+an undo test before it ships, because undo is the first thing a gate breaks.
+
+**Proven.** Rehearsal as anon in SQL, everything rolled back, the same script
+before and after 004: undo of a legacy approved post REFUSED then ALLOWED; in
+Head Review now with no row REFUSED then ALLOWED; no Head Review, a false
+approved row after the gate and an insert into Approved REFUSED both times; a
+head_review row and an edit of an approved post ALLOWED both times. Self test: 5
+new checks (designer undo, a late approved row, Head Review now with the history
+read down, a failed read named as such, `updateImage` in the upload list).

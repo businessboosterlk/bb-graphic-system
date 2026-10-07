@@ -1881,16 +1881,20 @@ async function bulkMoveSelected(){
   /* Decision 98, 7 Oct 2026: said once, before anything moves. */
   if(to==='approved' && !canApprove()){ toast('Only a head or an SMM can approve a post. Move it to Head Review instead','error'); return; }
   if(!confirm('Move '+ids.length+' post'+(ids.length!==1?'s':'')+' to '+STAGE_LABELS[to]+'?')) return;
-  let moved=0, blocked=0;
+  /* Review fix, 7 Oct 2026: a history read that failed was counted as "not been
+     through Head Review". The two reasons are counted apart (L-GFX-061). */
+  let moved=0, blocked=0, unread=0;
   BBU.batch=[];                       /* many moves, ONE undo */
   for(const id of ids){
     if(await gfxSetStage(id, to, 'Moved in bulk', true)) moved++;
+    else if(GFX_STAGE_BLOCK===GFX_MSG.read) unread++;
     else if(GFX_STAGE_BLOCK) blocked++;
   }
   const _b=BBU.batch; BBU.batch=null;
   if(_b && _b.length) bbuRecord(_b);
   toast(moved+' of '+ids.length+' moved to '+STAGE_LABELS[to]
-        +(blocked?'. '+blocked+' not moved: '+(blocked===1?'it has':'they have')+' not been through Head Review':''),
+        +(blocked?'. '+blocked+' not moved: '+(blocked===1?'it has':'they have')+' not been through Head Review':'')
+        +(unread?'. '+unread+' not moved: '+(unread===1?'its':'their')+' history could not be read, try again':''),
         moved===ids.length?'success':'error');
   BULK_PICKED.clear(); await loadAll(); bulkBarSync();
 }
@@ -1943,24 +1947,40 @@ async function bulkDeleteSelected(){
    finish. */
 /* Decision 98, 7 Oct 2026: the pipeline is the record and designers move their
    own cards. A post reaches Approved only after it has been in Head Review (a
-   head_review row in graphic_stage_history), and only a head or an SMM approves.
+   head_review row in graphic_stage_history). Only a head or an SMM approves.
    104 posts went from Brief to Approved in under a minute on 2 and 5 Oct.
    The database refuses the same move (trigger gfx_guard_approved), so a stale
    tab or another app cannot get round it. GFX_STAGE_BLOCK holds why the last
-   gfxSetStage call refused (null when it did not). */
+   gfxSetStage call refused (null when it did not).
+   Review fix, 7 Oct 2026 (L-GFX-061). The proof is the trigger's own rule, kept
+   in step with migrations/004 in ~/bb-systems/graphic-images: the post is in
+   Head Review now, it has a head_review row or it has an approved row from
+   before the gate went live (GFX_GATE_AT). A history insert that failed on the
+   way into Head Review no longer locks a post out. Undo skips the role check:
+   it only reverses this person's own move, so one wrong drag out of Approved can
+   be put back. An approved row written after the gate never counts, because the
+   old Command Centre wrote one even when the database refused its move. */
 let GFX_STAGE_BLOCK = null;
+const GFX_GATE_AT = Date.parse('2026-10-07T04:04:00Z');
+const GFX_MSG = {
+  role:   'Only a head or an SMM can approve a post. Move it to Head Review instead',
+  read:   'Could not check the history of this post, so it was not approved. Try again',
+  review: 'This post has not been through Head Review yet, so it cannot be Approved'
+};
 function canApprove(){
   return !!currentUser && ['head','graphic_head','smm'].indexOf(currentUser.role)>-1;
 }
-async function gfxApproveBlock(id){
-  if(!canApprove()) return 'Only a head or an SMM can approve a post. Move it to Head Review instead';
+async function gfxApproveBlock(id, undo){
+  if(!undo && !canApprove()) return GFX_MSG.role;
+  const p = projects.find(x=>x.id===id);
+  if(p && p.current_stage==='head_review') return null;
   let r = null;
-  try{ r = await sbGet('graphic_stage_history','?graphic_project_id=eq.'+id+'&stage=eq.head_review&select=id&limit=1'); }catch(e){ r = null; }
-  if(!Array.isArray(r)) return 'Could not check the history of this post, so it was not approved. Try again';
-  if(!r.length) return 'This post has not been through Head Review yet, so it cannot be Approved';
-  return null;
+  try{ r = await sbGet('graphic_stage_history','?graphic_project_id=eq.'+id+'&stage=in.(head_review,approved)&select=stage,entered_at&limit=50'); }catch(e){ r = null; }
+  if(!Array.isArray(r)) return GFX_MSG.read;
+  const proof = r.some(h=>h && (h.stage==='head_review' || (h.stage==='approved' && Date.parse(h.entered_at) < GFX_GATE_AT)));
+  return proof ? null : GFX_MSG.review;
 }
-async function gfxSetStage(id, newStage, note, quiet){
+async function gfxSetStage(id, newStage, note, quiet, undo){
   GFX_STAGE_BLOCK = null;
   const p = projects.find(x=>x.id===id);
   const oldStage = p ? p.current_stage : null;
@@ -1968,7 +1988,7 @@ async function gfxSetStage(id, newStage, note, quiet){
      with a new finish time and a new history row. Nothing to move, so no write. */
   if(oldStage && oldStage===newStage) return true;
   if(newStage==='approved'){
-    const why = await gfxApproveBlock(id);
+    const why = await gfxApproveBlock(id, !!undo);
     if(why){ GFX_STAGE_BLOCK = why; if(!quiet) toast(why,'error'); return false; }
   }
   const okWrite = await sbPatch('graphic_projects','id=eq.'+id, {
@@ -2024,7 +2044,8 @@ async function bbuUndo(){
       const p=projects.find(x=>x.id===i.id);
       if(!p){ failed++; continue; }
       if(p.current_stage===i.from) continue;          /* already back */
-      const okMove=await gfxSetStage(i.id, i.from, 'Undo, back from '+(STAGE_LABELS[i.to]||i.to));
+      /* Review fix, 7 Oct 2026: an undo back into Approved skips the role check (L-GFX-061). */
+      const okMove=await gfxSetStage(i.id, i.from, 'Undo, back from '+(STAGE_LABELS[i.to]||i.to), false, true);
       if(okMove) done++; else failed++;
     }
   } finally {
@@ -2707,7 +2728,14 @@ async function deleteProject(id){
 }
 
 async function updateImage(id){
-  const url = document.getElementById('detailImageInput').value.trim();
+  let url = document.getElementById('detailImageInput').value.trim();
+  /* Review fix, decision 106, 7 Oct 2026: a pasted data URL (and the legacy one
+     this box is filled with until the migration runs) went straight into the row.
+     It now goes to file storage first, the same as every other image writer. */
+  if(/^data:/i.test(url)){
+    try{ url = (await gfxUploadImage(id, url, null)).image_url; }
+    catch(e){ gfxUploadFailed(e); return; }
+  }
   /* This one takes a URL rather than a file, so the link IS the thumbnail.
      Leaving thumb_url null here meant anything set this way had no thumbnail
      for ever and fell back to fetching the full column on every board load. */
@@ -4365,8 +4393,8 @@ async function runSelfTest(opts){
          hA.slice(0,16)+', same bytes '+(hSame===hA)+', other bytes differ '+(hB!==hA));
     }catch(e){ ok('Decision 106: the duplicate fingerprint is the sha-256 of the file bytes', false, e && e.message); }
     ok('Decision 106: every image writer uploads before it writes',
-       [saveProject, bulkSaveAll, saveDetailImage, addComment].every(f=>/gfxUploadImage\(/.test(f.toString())),
-       'saveProject, bulkSaveAll, saveDetailImage, addComment');
+       [saveProject, bulkSaveAll, saveDetailImage, addComment, updateImage].every(f=>/gfxUploadImage\(/.test(f.toString())),
+       'saveProject, bulkSaveAll, saveDetailImage, addComment, updateImage');
     try{
       const holder=document.getElementById('bulkRows'); const had=holder.innerHTML;
       const writes=[]; const keepPost=sbPost, keepUp=gfxUploadImage;
@@ -4400,13 +4428,32 @@ async function runSelfTest(opts){
         hist=[];
         const r2=await gfxSetStage(fake.id,'approved',null,true);
         const n2=patched.length, why2=GFX_STAGE_BLOCK||'';
-        hist=[{id:1}];
+        hist=[{id:1, stage:'head_review', entered_at:'2026-10-07T06:00:00Z'}];
         const r3=await gfxSetStage(fake.id,'approved',null,true);
         ok('Decision 98: a designer cannot approve', r1===false && n1===0, 'returned '+r1+', '+n1+' writes');
         ok('Decision 98: a post that skipped Head Review cannot be approved', r2===false && n2===0 && /Head Review/.test(why2),
            'returned '+r2+', '+n2+' writes, said: '+why2);
         ok('Decision 98: a head approves a post that has been in Head Review', r3===true && patched.length===1 && patched[0].current_stage==='approved',
            'returned '+r3+', '+patched.length+' writes');
+        /* Review fix, 7 Oct 2026 (L-GFX-061): undo, the history write that failed, the read that failed. */
+        currentUser=Object.assign({}, keepUser, {role:'designer'});
+        fake.current_stage='client_changes'; hist=[{id:2, stage:'approved', entered_at:'2026-10-05T04:00:00Z'}];
+        const r4=await gfxSetStage(fake.id,'approved','Undo',true,true);
+        fake.current_stage='client_changes'; hist=[{id:3, stage:'approved', entered_at:'2026-10-07T05:00:00Z'}];
+        const n5=patched.length, r5=await gfxSetStage(fake.id,'approved','Undo',true,true), why5=GFX_STAGE_BLOCK||'';
+        ok('Decision 98: a designer can undo a wrong drag out of Approved', r4===true && patched.length===n5,
+           'returned '+r4+', '+(n5-1)+' write for the undo');
+        ok('Decision 98: an approved row written after the gate does not open it', r5===false && patched.length===n5 && why5===GFX_MSG.review,
+           'returned '+r5+', '+(patched.length-n5)+' writes, said: '+why5);
+        currentUser=Object.assign({}, keepUser, {role:'head'});
+        fake.current_stage='head_review'; hist={message:'selftest, no history read'};
+        const n6=patched.length, r6=await gfxSetStage(fake.id,'approved',null,true);
+        ok('Decision 98: a post in Head Review now is approved even when its history row is missing', r6===true && patched.length===n6+1,
+           'returned '+r6+', '+(patched.length-n6)+' writes');
+        fake.current_stage='client_changes';
+        const n7=patched.length, r7=await gfxSetStage(fake.id,'approved',null,true), why7=GFX_STAGE_BLOCK||'';
+        ok('Decision 98: a history read that fails says so and is not called a missing Head Review', r7===false && patched.length===n7 && why7===GFX_MSG.read,
+           'returned '+r7+', said: '+why7);
       }catch(e){ ok('Decision 98: a head approves a post that has been in Head Review', false, e && e.message); }
       finally{
         sbGet=keepGet; sbPatch=keepPatch; sbPost=keepPost; currentUser=keepUser; BBU.suspended=false;

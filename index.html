@@ -2362,7 +2362,12 @@ async function saveProject(){
     const res = await sbPost('graphic_projects', data, 'id');
     if(!(Array.isArray(res) && res[0])){ console.error('saveProject create', res); saveFailed('the post'); return; }
     if(newImg){ IMG_IDS.add(res[0].id); IMG_CACHE[res[0].id] = newImg; }
-    const hist = await sbPost('graphic_stage_history',{ graphic_project_id: res[0].id, stage:'brief', entered_by: currentUser.name, notes:'Post created' }, 'id');
+    /* GFX-1 repair, 7 Oct 2026: a throw here used to reach the outer catch, which
+       said the post did not save and kept the modal open, so Save made a second
+       post. It has its own catch now and falls to the history row branch below. */
+    let hist;
+    try{ hist = await sbPost('graphic_stage_history',{ graphic_project_id: res[0].id, stage:'brief', entered_by: currentUser.name, notes:'Post created' }, 'id'); }
+    catch(e){ console.error('saveProject history', e); hist = null; }
     /* The post exists by now, so the modal closes either way: a retry would make a second post. */
     if(Array.isArray(hist) && hist[0]) toast('Post created');
     else { console.error('saveProject history', hist); toast('Post created. Its first history row did not save','error'); }

@@ -1421,3 +1421,26 @@ stubbed (`prove-scan-fixes-2026-10-06.mjs` in this repo, run with
 `~/.local/node/bin/node prove-scan-fixes-2026-10-06.mjs [file]`): 24 checks,
 20 fail on the pre-fix file naming each fault, 0 fail on the fix. Self-test 122
 checks, 0 failed on phone and desk. `guard.py` PASS.
+
+## L-GFX-057 · a follow-on write shared the catch of the write before it · FIXED 2026-10-07
+Repair of L-GFX-048, found by the 7 Oct review of `3025944`. In `saveProject()`
+the first history insert sat in the same `try` as the post insert. When that
+history insert threw (a dropped connection after the post was made), the outer
+catch said "Could not save the post" and kept the modal open. The post was
+already in the database, so pressing Save again made a second post. The fix's
+own comment said the modal closes either way.
+
+**The fix.** The history insert has its own `try` and a throw sets `hist` to
+null, so it reaches the "Post created. Its first history row did not save"
+branch and the modal closes. The outer catch now only ever sees the post insert
+or the edit patch.
+
+**The rule.** When a second write depends on a first write that has already
+succeeded, give it its own catch. One catch around both reports the second
+failure as the first and invites a retry that repeats the first.
+
+**Proven.** Reviewer probe `probe-gfx-r2.mjs` (post insert stubbed 201, history
+insert aborted): before, modal open, toast "Could not save the post" and the
+retry sent a second post insert; after, modal closed, toast "Post created. Its
+first history row did not save" and the retry sent 0 post inserts. Self-test
+122 checks, 0 failed on phone and desk. `guard.py` PASS.

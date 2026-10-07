@@ -1560,3 +1560,36 @@ head_review row and an edit of an approved post ALLOWED both times. Self test: 4
 new checks (designer undo, a late approved row, Head Review now with the history
 read down, a failed read named as such) and `updateImage` joins the upload list
 check. Replay harness 134 checks (130 before), 0 failed.
+
+## L-GFX-062 · the ledger rule read the LATEST approval, so an undo made a ledger post real work · FIXED 2026-10-07
+An independent review of L-GFX-060 found that both readers keyed the ledger on
+the last arrival in Approved. `bb_work_items` (migration 002) compared
+`finished_at`, which is the latest done row, with `created_at`. `gfxIsLedger`
+compared `completed_at`, which `gfxSetStage` stamps again on every move into
+Approved. L-GFX-061 lets a designer undo a wrong drag out of Approved, so one
+undo on a ledger post read as a real October finish for Farhath with 0.0 hours.
+The recap then timed it from 2 Oct to the undo.
+
+**Fix.** The rule is keyed on the FIRST arrival in Approved in both places.
+`~/bb-systems/graphic-images/migrations/005_ledger_first_approval_2026_10_07.sql`
+uses the earliest done row and falls back to `completed_at` only when a post
+has no history. `gfxStampFirstApproved` reads the approved history rows of the
+approved posts (100 ids a call, two columns) and keeps the earliest on the row as
+`first_done_at`; `gfxIsLedger` reads it first. The analytics page and the recap
+stamp their rows before they count. A failed read falls back to `completed_at`.
+
+**Block.** A rule about how a record STARTED never reads a field that a later
+move rewrites. Any "first time" rule takes the minimum of the history. Every
+gate or rule gets an out and back test (rehearsal T8 and the self test).
+
+**Proven.** Rehearsal T8 as anon, rolled back: before 005 post 1131 read
+is_ledger true to false, month 2026-10, graphic person month 1 to 2; after 005
+true to true, no month, 1 to 1. T1 to T7 read the same both times. Ledger posts
+104 before and after; `bb_person_month` graphic Sep SUHANA 3 and Oct SUHANA 1
+both times; video checksum unchanged. The app rule run as anon in SQL agrees
+with the view on all 108 approved posts (104 ledger, 0 disagree). Self test 3 new
+checks; replay harness 137 checks (134 before), 0 failed, 0 page errors.
+
+**Still open.** Until the Command Centre commit e733575 is live, a CC approval
+the database refuses still writes an approved history row (L-CC-046), and that
+row would count as a first arrival here too. 0 such rows exist on 7 Oct 2026.

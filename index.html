@@ -1417,8 +1417,30 @@ function timeAgo(d){
    5 Oct). It still counts as approved. It is never a turnaround. The database
    uses the same rule (is_ledger in bb_work_items, kept out of bb_person_month). */
 const GFX_LEDGER_MS = 5*60*1000;
+/* Decision 98 review fix, 7 Oct 2026 (L-GFX-062): the rule is keyed on the FIRST
+   arrival in Approved, as bb_work_items is (migration 005). completed_at is
+   stamped again on every move into Approved, so one undo of a wrong drag made a
+   ledger post read as real work. first_done_at is the first approved history row
+   (gfxStampFirstApproved); completed_at counts only when a post has none. */
 function gfxIsLedger(p){
-  return !!(p && p.created_at && p.completed_at && (new Date(p.completed_at) - new Date(p.created_at)) < GFX_LEDGER_MS);
+  const done = p && (p.first_done_at || p.completed_at);
+  return !!(p && p.created_at && done && (new Date(done) - new Date(p.created_at)) < GFX_LEDGER_MS);
+}
+/* Reads the approved history rows of the approved posts in rows, 100 ids a call,
+   and keeps the earliest on each row as first_done_at. A failed read stamps what
+   it has and leaves the rest on completed_at. Never selects image_url. */
+async function gfxStampFirstApproved(rows){
+  const list = (Array.isArray(rows) ? rows : []).filter(p=>p && p.id!=null && p.current_stage==='approved');
+  const first = {};
+  for(let i=0; i<list.length; i+=100){
+    const ids = list.slice(i, i+100).map(p=>p.id).join(',');
+    let r = null;
+    try{ r = await sbGet('graphic_stage_history','?stage=eq.approved&graphic_project_id=in.('+ids+')&select=graphic_project_id,entered_at&order=entered_at.asc&limit=5000'); }catch(e){ r = null; }
+    if(!Array.isArray(r)){ console.warn('first approval read failed, completed_at is used', r); break; }
+    r.forEach(h=>{ const k = h.graphic_project_id; if(h.entered_at && (!first[k] || new Date(h.entered_at) < new Date(first[k]))) first[k] = h.entered_at; });
+  }
+  list.forEach(p=>{ if(first[p.id]) p.first_done_at = first[p.id]; });
+  return rows;
 }
 function isOverdue(p){ return p.deadline && new Date(p.deadline)<new Date() && !p.is_archived && p.current_stage!=='approved'; }
 /* GFX-10, 6 Oct 2026: this was toISOString, which is UTC, so a pillar tick
@@ -3123,6 +3145,7 @@ async function renderAnalytics(){
 
   const total = allProjects.length;
   const approved = allProjects.filter(p=>p.current_stage==='approved');
+  await gfxStampFirstApproved(approved);   /* decision 98 review fix, 7 Oct 2026: the ledger reads the first approval */
 
   // Avg completion time
   let avgDays = 0;
@@ -4466,6 +4489,33 @@ async function runSelfTest(opts){
        && !gfxIsLedger({created_at:'2026-10-02T04:00:00Z', completed_at:'2026-10-02T04:06:00Z'})
        && !gfxIsLedger({created_at:'2026-10-02T04:00:00Z', completed_at:null}),
        '30 seconds is a ledger; 6 minutes and no finish are not');
+    /* Decision 98 review fix, 7 Oct 2026 (L-GFX-062): out and back keeps a ledger a ledger. */
+    ok('Decision 98: a ledger post dragged out of Approved and undone stays a ledger',
+       gfxIsLedger({created_at:'2026-10-02T04:00:00Z', first_done_at:'2026-10-02T04:00:30Z', completed_at:'2026-10-07T09:00:00Z'})
+       && !gfxIsLedger({created_at:'2026-10-02T04:00:00Z', first_done_at:'2026-10-02T04:06:00Z', completed_at:'2026-10-02T04:06:00Z'}),
+       'first approval 30 seconds in is a ledger with completed_at five days later; 6 minutes is not');
+    {
+      const keepGet=sbGet;
+      try{
+        let asked='';
+        sbGet = async (t,q)=>{ asked=t+(q||''); return t==='graphic_stage_history' ? [
+          {graphic_project_id:-990101, entered_at:'2026-10-07T09:00:00Z'},
+          {graphic_project_id:-990101, entered_at:'2026-10-02T04:00:40Z'}] : []; };
+        const rows=[{id:-990101, current_stage:'approved', created_at:'2026-10-02T04:00:00Z', completed_at:'2026-10-07T09:00:00Z'},
+                    {id:-990102, current_stage:'approved', created_at:'2026-10-02T04:00:00Z', completed_at:'2026-10-02T04:00:20Z'}];
+        await gfxStampFirstApproved(rows);
+        ok('Decision 98: the first approved history row keys the ledger, completed_at only without one',
+           rows[0].first_done_at==='2026-10-02T04:00:40Z' && gfxIsLedger(rows[0]) && !rows[1].first_done_at && gfxIsLedger(rows[1])
+           && asked.indexOf('stage=eq.approved')>-1 && asked.indexOf('image_url')===-1,
+           'first '+rows[0].first_done_at+', second row '+(rows[1].first_done_at||'none'));
+        sbGet = async ()=>({message:'down'});
+        const r3=[{id:-990103, current_stage:'approved', created_at:'2026-10-02T04:00:00Z', completed_at:'2026-10-02T05:00:00Z'}];
+        await gfxStampFirstApproved(r3);
+        ok('Decision 98: a failed first approval read falls back to completed_at', !r3[0].first_done_at && !gfxIsLedger(r3[0]),
+           'first_done_at '+(r3[0].first_done_at||'none'));
+      }catch(e){ ok('Decision 98: the first approved history row keys the ledger', false, e && e.message); }
+      finally{ sbGet=keepGet; }
+    }
 
     /* ── REGRESSION L-GFX-005 · thumbnails ── */
     ok('REGRESSION L-GFX-005: thumbnail maker exists', typeof makeThumbDataUrl==='function');
@@ -5418,6 +5468,8 @@ async function renderRecap(){
       body.innerHTML='<div class="rc-say">Could not load the recap. Check your connection and try again.</div>';
       return;
     }
+    await gfxStampFirstApproved(r);       /* decision 98 review fix, 7 Oct 2026: the ledger reads the first approval */
+    if(myToken!==RC_TOKEN) return;
     RC_ROWS = r;
     RC_KEY = key;
   }

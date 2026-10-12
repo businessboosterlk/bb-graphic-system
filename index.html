@@ -702,6 +702,11 @@ tr:hover td{background:var(--surface-2)}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
         Pillars
       </div>
+      <!-- Team morning brief: the graphic head alone (Thulaib, 12 Oct 2026). showApp() turns it on. -->
+      <div class="nav-item" data-page="teambrief" id="navTeamBrief" onclick="navigateTo('teambrief')" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Team morning brief
+      </div>
       <div class="nav-section">Hub</div>
       <div class="nav-item" data-page="archived" onclick="navigateTo('archived')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5" rx="1"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
@@ -914,6 +919,12 @@ tr:hover td{background:var(--surface-2)}
         <div class="pillar-section" id="pillarsContent"></div>
       </section>
 
+      <!-- ═══ TEAM MORNING BRIEF (Thulaib, 12 Oct 2026) ═══ -->
+      <section id="section-teambrief">
+        <div class="sec-header"><h2>Team morning brief</h2></div>
+        <div id="tmbContent"></div>
+      </section>
+
       <!-- ═══ ARCHIVED ═══ -->
       <section id="section-archived">
         <div class="sec-header"><h2>Archived Projects</h2></div>
@@ -1112,6 +1123,43 @@ tr:hover td{background:var(--surface-2)}
       <button class="btn btn-ghost" onclick="closeModal('modalWpTask')">Cancel</button>
       <button class="btn btn-danger btn-sm" id="wpDeleteBtn" style="display:none" onclick="wpDeleteTask()">Delete</button>
       <button class="btn btn-accent" onclick="wpSaveTask()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TEAM MORNING BRIEF check-in sheet (Thulaib, 12 Oct 2026) ══ -->
+<div class="modal-overlay" id="modalTmb">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2 id="tmbModalTitle">Morning check-in</h2>
+      <button class="modal-close" onclick="closeModal('modalTmb')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group full">
+          <label>What did they finish yesterday</label>
+          <textarea id="tmbYesterday" rows="2" style="width:100%;resize:vertical;min-height:44px"></textarea>
+          <div id="tmbPrefillHint" style="display:none;font-size:11px;color:var(--text-muted,#8a8d96);margin-top:4px">Prefilled from their last recorded plan. Edit it to what really got done.</div>
+        </div>
+        <div class="form-group full"><label>Questions for you</label><textarea id="tmbQuestions" rows="2" style="width:100%;resize:vertical;min-height:44px"></textarea></div>
+        <div class="form-group full"><label>Blocker, if any</label><textarea id="tmbBlocker" rows="2" style="width:100%;resize:vertical;min-height:44px"></textarea></div>
+        <div class="form-group full">
+          <label>The alternative while blocked</label>
+          <textarea id="tmbAlternative" rows="2" style="width:100%;resize:vertical;min-height:44px"></textarea>
+          <div style="font-size:11px;color:var(--text-muted,#8a8d96);margin-top:4px">What they work on instead until the blocker clears.</div>
+        </div>
+        <div class="form-group full"><label>Plan for today</label><textarea id="tmbToday" rows="2" style="width:100%;resize:vertical;min-height:44px"></textarea></div>
+        <div class="form-group full">
+          <label style="display:flex;align-items:center;gap:12px;min-height:44px;cursor:pointer;text-transform:none">
+            <input type="checkbox" id="tmbOnTrack" style="width:20px;height:20px">
+            <span>Everything on track<span style="display:block;font-size:11px;color:var(--text-muted,#8a8d96)">Counts into the done figure in the staff message.</span></span>
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer" style="display:block">
+      <button class="btn btn-accent" id="tmbSaveBtn" style="width:100%;min-height:44px" onclick="tmbSave()">Save brief</button>
+      <button class="btn btn-ghost" style="width:100%;min-height:44px;margin-top:8px" onclick="closeModal('modalTmb')">Cancel</button>
     </div>
   </div>
 </div>
@@ -1617,6 +1665,10 @@ function showApp(){
   document.getElementById('userName').textContent = currentUser.label;
   document.getElementById('userRole').textContent = ROLE_LABELS[currentUser.role] || currentUser.role;
   document.getElementById('topbarGreeting').textContent = 'Hey, ' + currentUser.label.split(' ')[0];
+  /* The Team morning brief nav shows for the graphic head alone (Thulaib, 12 Oct 2026).
+     Set here so both the login path and the session-restore path agree. */
+  const tmbNav = document.getElementById('navTeamBrief');
+  if(tmbNav) tmbNav.style.display = isGraphicHead() ? '' : 'none';
   loadAll();
   loadAgentAlerts();
   renderGuideRow();
@@ -1671,7 +1723,7 @@ function navigateTo(page){
   document.querySelectorAll('.content section').forEach(s=>s.classList.remove('active'));
   target.classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
-  document.getElementById('topbarTitle').textContent = {dashboard:'Dashboard',pipeline:'Pipeline',clients:'Clients',mywork:'My Work',weeklyplan:'Weekly Plan',pillars:'Daily Pillars',archived:'Archived',analytics:'Analytics',recap:'Monthly Recap',agents:'Agents'}[page]||page;
+  document.getElementById('topbarTitle').textContent = {dashboard:'Dashboard',pipeline:'Pipeline',clients:'Clients',mywork:'My Work',weeklyplan:'Weekly Plan',pillars:'Daily Pillars',teambrief:'Team morning brief',archived:'Archived',analytics:'Analytics',recap:'Monthly Recap',agents:'Agents'}[page]||page;
   closeSidebar();
   // topbar actions per page
   const pa = document.getElementById('pageActions');
@@ -1688,6 +1740,7 @@ function navigateTo(page){
   if(page==='mywork') renderMyWork();
   if(page==='weeklyplan') wpLoadWeek();
   if(page==='pillars') renderPillars();
+  if(page==='teambrief') renderTeamBrief();
   if(page==='archived') loadArchived();
   if(page==='analytics') renderAnalytics();
   if(page==='agents') renderAgents();
@@ -3290,6 +3343,142 @@ async function togglePillar(who, item, done){
   try{ await sbUpsert('pillars',{ who, done_ids: JSON.stringify(Object.keys(state).filter(k=>state[k])), updated_at: new Date().toISOString() },'who'); }catch(e){}
   return true;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// @@BBGFX_TEAMBRIEF_BEGIN@@  TEAM MORNING BRIEF (Thulaib, 12 Oct 2026)
+// Every morning the graphic head speaks to each designer, one by one: what
+// they finished yesterday, questions, blockers and the alternative, today's
+// plan, on track or not. Each check-in is recorded in morning_briefs (unique
+// on brief_date, head, member; RLS copied from the delivery ledger pattern),
+// then ONE message is built for the staff chat. The head copies and pastes it
+// into WhatsApp; BB never auto-sends.
+// ═══════════════════════════════════════════════════════════════════════════
+let TMB = { rows: [], prev: {}, filter: 'all', search: '', openMember: null };
+function tmbMembers(){
+  /* The design team from the app's own roster surface, minus the head. */
+  const meId = currentUser ? currentUser.team_member_id : null;
+  return DESIGNERS.filter(d => d.team_member_id !== meId);
+}
+function tmbHeadId(){ return currentUser ? currentUser.team_member_id : null; }
+function tmbDateLabel(){ return new Date().toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}).replace(',',''); }
+async function tmbLoad(){
+  const head = tmbHeadId(); if(!head) return;
+  const today = todayStr();
+  const from = new Date(); from.setDate(from.getDate()-4);
+  const fromStr = from.getFullYear()+'-'+String(from.getMonth()+1).padStart(2,'0')+'-'+String(from.getDate()).padStart(2,'0');
+  /* One read covers today plus the last four days, so the prefill survives a weekend. */
+  const r = await sbGet('morning_briefs','?head=eq.'+head+'&brief_date=gte.'+fromStr+'&brief_date=lte.'+today+'&order=brief_date.desc&select=*');
+  if(!Array.isArray(r)){ toast('Could not load the morning briefs','error'); return; }
+  TMB.rows = r.filter(x => x.brief_date === today);
+  TMB.prev = {};
+  r.forEach(x => { if(x.brief_date !== today && !TMB.prev[x.member]) TMB.prev[x.member] = x; });
+}
+function tmbRowFor(mid){ return TMB.rows.find(x => x.member === mid) || null; }
+function tmbMessageText(){
+  const ms = tmbMembers();
+  const onTrack = ms.filter(m => { const r = tmbRowFor(m.team_member_id); return r && r.on_track; }).length;
+  const lines = ['GRAPHICS TEAM, '+tmbDateLabel(), 'Yesterday: done '+onTrack+' of '+ms.length, 'Today:'];
+  ms.forEach(m => { const r = tmbRowFor(m.team_member_id); lines.push(m.name+': '+(((r && r.today_plan)||'').trim()||'nothing recorded')); });
+  const blocked = ms.filter(m => { const r = tmbRowFor(m.team_member_id); return r && (r.blocker||'').trim(); });
+  lines.push('Blockers:');
+  if(!blocked.length) lines.push('none');
+  else blocked.forEach(m => { const r = tmbRowFor(m.team_member_id); let l = m.name+': '+r.blocker.trim(); const alt = (r.alternative||'').trim(); if(alt) l += '. Alternative: '+alt; lines.push(l); });
+  return lines.join('\n');
+}
+async function tmbCopyMessage(){
+  const txt = tmbMessageText();
+  let ok = false;
+  try{ await navigator.clipboard.writeText(txt); ok = true; }catch(e){
+    try{ const ta = document.createElement('textarea'); ta.value = txt; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); ta.remove(); }catch(e2){ ok = false; }
+  }
+  toast(ok ? 'Message copied. Paste it into the staff chat.' : 'Copy failed. Long-press the preview and copy it by hand.', ok ? 'success' : 'error');
+}
+function tmbChip(r){
+  if(!r) return '<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:var(--bg-2,#f3f3f5);border:1px solid var(--border,#e2e2e6);color:var(--text-muted,#8a8d96);flex-shrink:0">To brief</span>';
+  if((r.blocker||'').trim()) return '<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:rgba(230,160,60,0.12);border:1px solid rgba(230,160,60,0.5);color:#c98a2e;flex-shrink:0">Blocker noted</span>';
+  return '<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:rgba(60,180,110,0.12);border:1px solid rgba(60,180,110,0.5);color:#2f9e63;flex-shrink:0">Done</span>';
+}
+function tmbPaintList(){
+  const box = document.getElementById('tmbList'); if(!box) return;
+  const q = (TMB.search||'').toLowerCase().trim();
+  let ms = tmbMembers();
+  if(q) ms = ms.filter(m => m.name.toLowerCase().includes(q));
+  if(TMB.filter==='todo') ms = ms.filter(m => !tmbRowFor(m.team_member_id));
+  if(TMB.filter==='done') ms = ms.filter(m => !!tmbRowFor(m.team_member_id));
+  if(TMB.filter==='blockers') ms = ms.filter(m => { const r = tmbRowFor(m.team_member_id); return r && (r.blocker||'').trim(); });
+  if(!ms.length){ box.innerHTML = '<div style="padding:26px 14px;text-align:center;color:var(--text-muted,#8a8d96);font-size:13px">No one matches this filter.</div>'; return; }
+  box.innerHTML = ms.map(m => {
+    const r = tmbRowFor(m.team_member_id);
+    const plan = ((r && r.today_plan)||'').trim();
+    return '<div onclick="tmbOpenSheet('+m.team_member_id+')" style="display:flex;align-items:center;gap:12px;min-height:56px;padding:10px 14px;border-bottom:1px solid var(--border,#e2e2e6);cursor:pointer">'
+      +'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">'+esc(m.label)+'</div>'
+      +'<div style="font-size:11px;color:var(--text-muted,#8a8d96);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(plan?esc(plan):'Graphic designer')+'</div></div>'
+      +(r && r.on_track===false ? '<span style="width:8px;height:8px;border-radius:50%;background:#d64545;flex-shrink:0"></span>' : '')
+      +tmbChip(r)
+      +(r ? '<span style="font-size:11px;color:var(--text-muted,#8a8d96);flex-shrink:0">Edit</span>' : '')
+      +'</div>';
+  }).join('');
+}
+async function renderTeamBrief(){
+  const box = document.getElementById('tmbContent'); if(!box) return;
+  if(!isGraphicHead()){ box.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text-muted,#8a8d96)">This page belongs to the graphic head.</div>'; return; }
+  await tmbLoad();
+  const ms = tmbMembers();
+  const briefed = ms.filter(m => !!tmbRowFor(m.team_member_id)).length;
+  const allDone = ms.length > 0 && briefed === ms.length;
+  box.innerHTML =
+    '<div style="font-size:13px;color:var(--text-muted,#8a8d96);margin-bottom:14px">'+tmbDateLabel()+'. Speak to each person, record it, then copy one message for the staff chat. '+briefed+' of '+ms.length+' briefed.</div>'
+    +'<div style="background:var(--card,#fff);border:1px solid var(--border,#e2e2e6);border-radius:12px;max-width:720px;overflow:hidden">'
+    +'<div style="display:flex;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border,#e2e2e6);flex-wrap:wrap">'
+    +'<input id="tmbSearch" placeholder="Search the team" value="'+esc(TMB.search)+'" oninput="TMB.search=this.value;tmbPaintList()" style="flex:1;min-width:150px;min-height:44px;padding:8px 12px;border:1px solid var(--border,#e2e2e6);border-radius:8px;background:transparent;color:inherit">'
+    +'<select id="tmbFilter" onchange="TMB.filter=this.value;tmbPaintList()" style="width:150px;min-height:44px;padding:8px 12px;border:1px solid var(--border,#e2e2e6);border-radius:8px;background:transparent;color:inherit">'
+    +'<option value="all"'+(TMB.filter==='all'?' selected':'')+'>All</option>'
+    +'<option value="todo"'+(TMB.filter==='todo'?' selected':'')+'>To brief</option>'
+    +'<option value="done"'+(TMB.filter==='done'?' selected':'')+'>Done</option>'
+    +'<option value="blockers"'+(TMB.filter==='blockers'?' selected':'')+'>Blockers</option>'
+    +'</select></div>'
+    +'<div id="tmbList"></div>'
+    +'<div style="padding:14px">'
+    +'<button class="btn btn-accent" style="width:100%;min-height:44px" '+(allDone?'onclick="tmbCopyMessage()"':'disabled')+'>'+(allDone?'Copy the staff chat message':'Copy unlocks when every person is briefed')+'</button>'
+    +(allDone?'<pre style="margin-top:12px;padding:12px;background:var(--bg-2,#f3f3f5);border:1px solid var(--border,#e2e2e6);border-radius:9px;font-size:12px;white-space:pre-wrap;font-family:inherit">'+esc(tmbMessageText())+'</pre>':'')
+    +'</div></div>';
+  tmbPaintList();
+}
+function tmbOpenSheet(mid){
+  const m = tmbMembers().find(x => x.team_member_id === mid); if(!m) return;
+  const r = tmbRowFor(mid);
+  const prev = TMB.prev[mid];
+  const yPrefill = r ? (r.yesterday_done||'') : ((prev && prev.today_plan)||'');
+  TMB.openMember = mid;
+  document.getElementById('tmbModalTitle').textContent = m.label+', '+tmbDateLabel();
+  document.getElementById('tmbYesterday').value = yPrefill;
+  document.getElementById('tmbPrefillHint').style.display = (!r && yPrefill) ? '' : 'none';
+  document.getElementById('tmbQuestions').value = r ? (r.questions||'') : '';
+  document.getElementById('tmbBlocker').value = r ? (r.blocker||'') : '';
+  document.getElementById('tmbAlternative').value = r ? (r.alternative||'') : '';
+  document.getElementById('tmbToday').value = r ? (r.today_plan||'') : '';
+  document.getElementById('tmbOnTrack').checked = !!(r && r.on_track);
+  document.getElementById('tmbSaveBtn').textContent = r ? 'Save changes' : 'Save brief';
+  openModal('modalTmb');
+}
+async function tmbSave(){
+  const head = tmbHeadId(); const mid = TMB.openMember;
+  if(!head || !mid){ toast('Your roster row was not found','error'); return; }
+  const v = id => document.getElementById(id).value.trim() || null;
+  const btn = document.getElementById('tmbSaveBtn'); btn.disabled = true;
+  const ok = await sbUpsert('morning_briefs', {
+    brief_date: todayStr(), head: head, member: mid,
+    yesterday_done: v('tmbYesterday'), questions: v('tmbQuestions'),
+    blocker: v('tmbBlocker'), alternative: v('tmbAlternative'),
+    today_plan: v('tmbToday'), on_track: document.getElementById('tmbOnTrack').checked,
+    updated_at: new Date().toISOString()
+  }, 'brief_date,head,member');
+  btn.disabled = false;
+  if(!ok){ toast('Save failed. Check your connection and try again','error'); return; }
+  closeModal('modalTmb'); toast('Check-in saved');
+  renderTeamBrief();
+}
+// @@BBGFX_TEAMBRIEF_END@@ ═════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════
 // ARCHIVED

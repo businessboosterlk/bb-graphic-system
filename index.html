@@ -3385,13 +3385,30 @@ function tmbMessageText(){
   else blocked.forEach(m => { const r = tmbRowFor(m.team_member_id); let l = m.name+': '+r.blocker.trim(); const alt = (r.alternative||'').trim(); if(alt) l += '. Alternative: '+alt; lines.push(l); });
   return lines.join('\n');
 }
-async function tmbCopyMessage(){
-  const txt = tmbMessageText();
+async function tmbCopyText(txt, okMsg){
   let ok = false;
   try{ await navigator.clipboard.writeText(txt); ok = true; }catch(e){
     try{ const ta = document.createElement('textarea'); ta.value = txt; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); ta.remove(); }catch(e2){ ok = false; }
   }
-  toast(ok ? 'Message copied. Paste it into the staff chat.' : 'Copy failed. Long-press the preview and copy it by hand.', ok ? 'success' : 'error');
+  toast(ok ? okMsg : 'Copy failed. Try again.', ok ? 'success' : 'error');
+}
+async function tmbCopyMessage(){ await tmbCopyText(tmbMessageText(), 'Team summary copied, for your records.'); }
+/* Thulaib's ruling, 12 Oct 2026 kickoff: the morning message is INDIVIDUAL,
+   one tailored message per person, never one group message. */
+function tmbPersonalText(m, r){
+  const dot = s => /[.?!]$/.test(s) ? s : s + '.';
+  const L = ['Morning ' + m.label + '.'];
+  const y = ((r && r.yesterday_done)||'').trim(); if(y) L.push(dot('Yesterday you finished: ' + y));
+  const t = ((r && r.today_plan)||'').trim(); if(t) L.push(dot('Today: ' + t));
+  const b = ((r && r.blocker)||'').trim();
+  if(b){ let s = dot('You flagged: ' + b); const a = ((r && r.alternative)||'').trim(); if(a) s += ' ' + dot('The fallback: ' + a); L.push(s); }
+  L.push('All good?');
+  return L.join('\n');
+}
+async function tmbCopyPersonal(mid){
+  const m = tmbMembers().find(x => x.team_member_id === mid); const r = tmbRowFor(mid);
+  if(!m || !r) return;
+  await tmbCopyText(tmbPersonalText(m, r), 'Message for ' + m.label + ' copied. Paste it into their chat.');
 }
 function tmbChip(r){
   if(!r) return '<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:var(--bg-2,#f3f3f5);border:1px solid var(--border,#e2e2e6);color:var(--text-muted,#8a8d96);flex-shrink:0">To brief</span>';
@@ -3415,6 +3432,7 @@ function tmbPaintList(){
       +'<div style="font-size:11px;color:var(--text-muted,#8a8d96);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(plan?esc(plan):'Graphic designer')+'</div></div>'
       +(r && r.on_track===false ? '<span style="width:8px;height:8px;border-radius:50%;background:#d64545;flex-shrink:0"></span>' : '')
       +tmbChip(r)
+      +(r ? '<button class="btn btn-ghost" onclick="event.stopPropagation();tmbCopyPersonal('+m.team_member_id+')" style="min-height:40px;flex-shrink:0;padding:6px 12px">Copy</button>' : '')
       +(r ? '<span style="font-size:11px;color:var(--text-muted,#8a8d96);flex-shrink:0">Edit</span>' : '')
       +'</div>';
   }).join('');
@@ -3439,8 +3457,8 @@ async function renderTeamBrief(){
     +'</select></div>'
     +'<div id="tmbList"></div>'
     +'<div style="padding:14px">'
-    +'<button class="btn btn-accent" style="width:100%;min-height:44px" '+(allDone?'onclick="tmbCopyMessage()"':'disabled')+'>'+(allDone?'Copy the staff chat message':'Copy unlocks when every person is briefed')+'</button>'
-    +(allDone?'<pre style="margin-top:12px;padding:12px;background:var(--bg-2,#f3f3f5);border:1px solid var(--border,#e2e2e6);border-radius:9px;font-size:12px;white-space:pre-wrap;font-family:inherit">'+esc(tmbMessageText())+'</pre>':'')
+    +'<div style="font-size:11px;color:var(--text-muted,#8a8d96);margin-bottom:8px">Each Copy builds that person\'s own message. Message each one separately.</div>'
+    +'<button class="btn btn-ghost" id="tmbSummaryBtn" style="width:100%;min-height:44px;border:1px solid var(--border,#e2e2e6)" '+(allDone?'onclick="tmbCopyMessage()"':'disabled')+'>'+(allDone?'Copy team summary, for your records':'The team summary unlocks when every person is briefed')+'</button>'
     +'</div></div>';
   tmbPaintList();
 }

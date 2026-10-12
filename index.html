@@ -331,10 +331,22 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 /* One card per design, the picture doing the work. auto-fill so the row packs
    itself at any width instead of a breakpoint guessing for it. */
 .pipe-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:12px;padding-bottom:12px}
-.pg-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden;
-  cursor:pointer;display:flex;flex-direction:column;text-align:left;padding:0;font:inherit;color:inherit;width:100%}
-.pg-shot{aspect-ratio:1/1;width:100%;background:var(--surface-3);display:block;object-fit:cover}
-.pg-none{aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;background:var(--surface-3);
+.pg-card{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden}
+.pg-card.picked{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
+.pg-open{appearance:none;border:0;background:transparent;cursor:pointer;display:flex;flex-direction:column;
+  text-align:left;padding:0;font:inherit;color:inherit;width:100%}
+/* 40px target for a thumb; the box itself stays a normal size inside it */
+.pg-pick{position:absolute;top:4px;left:4px;z-index:2;width:40px;height:40px;display:flex;align-items:center;
+  justify-content:center;cursor:pointer;border-radius:8px;background:rgba(0,0,0,0.45)}
+/* Its own class: .k-pick is absolutely placed for the board card and would pull this box out of its frame. */
+.pg-pick-box{width:20px;height:20px;margin:0;cursor:pointer;accent-color:var(--accent)}
+.pipe-selectall{margin:0 0 12px 8px;vertical-align:top;min-height:36px}
+/* The WHOLE design, never cropped. The posts are 4:5 (288x360 thumbnails), and
+   a square frame with cover cut the top and bottom off every one: the header
+   of a Clove post was half gone. A design team checks the design, so the frame
+   is 4:5 and the picture is contained; a square post or a story letterboxes. */
+.pg-shot{aspect-ratio:4/5;width:100%;background:var(--surface-3);display:block;object-fit:contain}
+.pg-none{aspect-ratio:4/5;display:flex;align-items:center;justify-content:center;background:var(--surface-3);
   color:var(--text-3);font-size:0.72rem;text-align:center;padding:10px}
 .pg-body{padding:9px 10px;display:flex;flex-direction:column;gap:3px;min-width:0}
 .pg-client{font-size:0.68rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--text-3);
@@ -819,6 +831,7 @@ tr:hover td{background:var(--surface-2)}
           <button class="pipe-view" id="pipeViewGrid"  role="tab" onclick="setPipeView('grid')">Grid</button>
           <button class="pipe-view" id="pipeViewBoard" role="tab" onclick="setPipeView('board')">Board</button>
         </div>
+        <button class="btn btn-ghost btn-sm pipe-selectall" id="pipeSelectAll" onclick="bulkSelectShown()">Select all shown</button>
         <div class="kanban" id="kanbanBoard"></div>
         <div class="pipe-grid" id="pipeGrid" hidden></div>
         <div class="bulkbar" id="bulkBar">
@@ -1351,8 +1364,18 @@ const ROLE_LABELS = { head:'Head', graphic_head:'Graphic Head', designer:'Design
    DRAWN IN To do rather than silently dropped: a row filed where no column
    reads it is a row that is gone, which is exactly how the weekly plan lost ten
    schedules (L-GFX-064). */
-const STAGES = ['brief','approved'];
-const STAGES_RETIRED = ['in_progress','first_draft','revisions','head_review','sent_to_client','client_changes'];
+/* HEAD REVIEW CAME BACK, 12 Oct 2026 (L-GFX-071). The two-stage shape above
+   shipped on 7 Oct and could not approve a single post. That same day decision
+   98 had made Head Review the only way into Approved, in this file
+   (gfxApproveBlock) and in the database (trigger gfx_guard_approved), because
+   104 posts went from Brief to Approved in under a minute on 2 and 5 Oct.
+   Retiring head_review removed the one road to Approved, so every post made
+   after 7 Oct was stuck in To do: 27 of Farhath's on 12 Oct alone, each press
+   answered "This post has not been through Head Review yet". The stage list
+   was changed without searching for code that depended on the stages being
+   retired. Three stages is the smallest shape both decisions allow. */
+const STAGES = ['brief','head_review','approved'];
+const STAGES_RETIRED = ['in_progress','first_draft','revisions','sent_to_client','client_changes'];
 const STAGE_LABELS = {brief:'To do',in_progress:'In Progress',first_draft:'First Draft',revisions:'Revisions',head_review:'Head Review',sent_to_client:'Sent to Client',client_changes:'Client Changes',approved:'Approved'};
 /* Which column a post is DRAWN in. A live stage draws in itself; anything else
    draws in the first column so it is seen and can be moved on. */
@@ -1953,8 +1976,15 @@ function renderPipeGrid(filtered){
     const hasImg = (p.image_url!==undefined && p.image_url!==null) || IMG_IDS.has(p.id) || IMG_CACHE[p.id];
     const cachedSrc = (p.image_url && p.image_url!==undefined) ? p.image_url : (IMG_CACHE[p.id]||'');
     const stage = stageColumn(p.current_stage);
+    const picked = BULK_PICKED.has(p.id);
+    /* Farhath, 12 Oct 2026: the grid had no way to select a post, so the bulk
+       bar the board offers was unreachable here. The box sits BESIDE the open
+       button, never inside it: a checkbox inside a <button> is invalid and a
+       tap on it opens the post instead of ticking it. */
     return `
-      <button type="button" class="pg-card" onclick="openProjectDetail(${p.id})">
+      <div class="pg-card${picked?' picked':''}" data-id="${p.id}">
+      <label class="pg-pick" title="Select"><input type="checkbox" class="pg-pick-box"${picked?' checked':''} aria-label="Select ${esc(p.title)}" onchange="bulkPick(${p.id},this.checked)"></label>
+      <button type="button" class="pg-open" onclick="openProjectDetail(${p.id})">
         ${hasImg
           ? `<img class="pg-shot lazy-thumb" data-pid="${p.id}"${cachedSrc?` src="${esc(cachedSrc)}"`:''} alt="" loading="lazy">`
           : `<span class="pg-none">No image yet</span>`}
@@ -1966,7 +1996,8 @@ function renderPipeGrid(filtered){
             ${p.assigned_designer?`<span class="pg-who">${esc(p.assigned_designer)}</span>`:''}
           </span>
         </span>
-      </button>`;
+      </button>
+      </div>`;
   }).join('');
 }
 function renderPipeline(){
@@ -2031,8 +2062,16 @@ const BULK_PICKED = new Set();
 function bulkPick(id, on){
   if(on) BULK_PICKED.add(id); else BULK_PICKED.delete(id);
   bulkBarSync();
-  const card=document.querySelector('.k-card[data-id="'+id+'"]');
-  if(card) card.classList.toggle('picked', on);
+  document.querySelectorAll('.k-card[data-id="'+id+'"], .pg-card[data-id="'+id+'"]')
+    .forEach(card=>card.classList.toggle('picked', on));
+}
+/* Select every post the filters are showing. 27 posts is two bulk moves, not
+   27 taps. Only what is on screen: a hidden post is never moved by surprise. */
+function bulkSelectShown(){
+  const shown = getFilteredProjects();
+  const all = shown.length>0 && shown.every(p=>BULK_PICKED.has(p.id));
+  shown.forEach(p=>{ if(all) BULK_PICKED.delete(p.id); else BULK_PICKED.add(p.id); });
+  renderPipeline(); bulkBarSync();
 }
 function bulkClearSelection(){ BULK_PICKED.clear(); renderPipeline(); bulkBarSync(); }
 function bulkBarSync(){
@@ -2041,6 +2080,11 @@ function bulkBarSync(){
   bar.classList.toggle('on', BULK_PICKED.size>0);
   const del=document.getElementById('bulkDeleteBtn');
   if(del) del.hidden = !canDeleteForever();
+  const sa=document.getElementById('pipeSelectAll');
+  if(sa && typeof getFilteredProjects==='function'){
+    const shown=getFilteredProjects();
+    sa.textContent = (shown.length && shown.every(p=>BULK_PICKED.has(p.id))) ? 'Clear selection' : 'Select all shown';
+  }
   const sel=document.getElementById('bulkMoveTo');
   if(sel && sel.options.length<2)
     sel.innerHTML='<option value="">Move to…</option>'+STAGES.map(st=>'<option value="'+st+'">'+STAGE_LABELS[st]+'</option>').join('');
@@ -5049,12 +5093,36 @@ async function runSelfTest(opts){
 
     await section('Pipeline: two stages, grid and board', async () => {
     /* Thulaib + Farhath, 7 Oct 2026. */
-    ok('Pipeline: the board draws two stages, To do and Approved',
-       STAGES.length===2 && STAGES[0]==='brief' && STAGES[1]==='approved' && STAGE_LABELS.brief==='To do',
+    /* Measure the page this section is about. Without this the bar and the
+       search box were measured while another page was showing and read 0px
+       (12 Oct 2026). restoreAll puts the person's own page back afterwards. */
+    try{ navigateTo('pipeline'); }catch(e){}
+    ok('Pipeline: the checks below are looking at the Pipeline',
+       !!document.querySelector('#section-pipeline.active'),
+       'the active page is '+((document.querySelector('.content section.active')||{}).id||'none'));
+    ok('Pipeline: the board draws To do, Head Review, Approved',
+       STAGES.join(',')==='brief,head_review,approved' && STAGE_LABELS.brief==='To do',
        STAGES.map(x=>STAGE_LABELS[x]).join(' then '));
     ok('Pipeline: a retired stage still has a name, for the history and the archive',
-       STAGES_RETIRED.every(x=>!!STAGE_LABELS[x]) && STAGES_RETIRED.length===6,
-       STAGES_RETIRED.filter(x=>!STAGE_LABELS[x]).join(', ') || 'all six named');
+       STAGES_RETIRED.every(x=>!!STAGE_LABELS[x]) && STAGES_RETIRED.length===5,
+       STAGES_RETIRED.filter(x=>!STAGE_LABELS[x]).join(', ') || 'all five named');
+
+    /* L-GFX-071, 12 Oct 2026. THE CHECK THAT WAS MISSING. Head Review was
+       retired on 7 Oct while the approval gate, here and in the database,
+       accepted no other road into Approved, and 27 posts sat unapprovable.
+       So: every stage the gate names must be a stage a person can reach, and
+       the stage just before Approved must be one the gate accepts. Read from
+       the gate's own source, so a gate that changes moves this check with it. */
+    const _gateSrc=String(gfxApproveBlock);
+    const _gateStages=['in_progress','first_draft','revisions','head_review','sent_to_client','client_changes','brief']
+      .filter(st=>_gateSrc.indexOf("'"+st+"'")>-1);
+    ok('Pipeline: every stage the approval gate requires is on the board',
+       _gateStages.length>0 && _gateStages.every(st=>STAGES.indexOf(st)>-1),
+       'gate names '+_gateStages.join(', ')+'; on the board '+STAGES.join(', '));
+    const _pre=STAGES[STAGES.indexOf('approved')-1];
+    ok('Pipeline: the stage before Approved is one the gate lets through',
+       !!_pre && _gateSrc.indexOf("current_stage==='"+_pre+"'")>-1,
+       'the step before Approved is '+_pre+'; if the gate refuses it, nothing can ever be approved');
     ok('Pipeline: a post in a retired stage is DRAWN in To do, never dropped',
        STAGES_RETIRED.every(x=>stageColumn(x)==='brief') && stageColumn('approved')==='approved'
          && stageColumn('something_nobody_wrote')==='brief',
@@ -5073,7 +5141,7 @@ async function runSelfTest(opts){
       ok('Pipeline: every post reaches the board, including the retired stages',
          drawn===all.length, drawn+' of '+all.length+' drawn');
       const cols=document.querySelectorAll('#kanbanBoard .kanban-col').length;
-      ok('Pipeline: the board shows exactly two columns', cols===2, cols+' columns');
+      ok('Pipeline: the board shows exactly three columns', cols===3, cols+' columns');
 
       PIPE_VIEW='grid'; renderPipeline();
       const cards=document.querySelectorAll('#pipeGrid .pg-card').length;
@@ -5087,6 +5155,31 @@ async function runSelfTest(opts){
       ok('Pipeline: the switch says which view is on',
          gTab.getAttribute('aria-selected')==='true' && bTab.getAttribute('aria-selected')==='false',
          'grid '+gTab.getAttribute('aria-selected')+', board '+bTab.getAttribute('aria-selected'));
+      /* Farhath, 12 Oct 2026: the grid had no select box. */
+      const _boxes=document.querySelectorAll('#pipeGrid .pg-card .pg-pick-box');
+      ok('Pipeline: every grid card can be selected', _boxes.length===all.length, _boxes.length+' boxes for '+all.length+' cards');
+      ok('Pipeline: the select box is not inside the open button',
+         !document.querySelector('#pipeGrid .pg-open input'),
+         'a checkbox inside a button opens the post instead of ticking it');
+      const _keepPick=new Set(BULK_PICKED); BULK_PICKED.clear();
+      _boxes[0].checked=true; _boxes[0].dispatchEvent(new Event('change',{bubbles:true}));
+      const _card0=_boxes[0].closest('.pg-card');
+      ok('Pipeline: ticking a grid card selects it and opens the bulk bar',
+         BULK_PICKED.size===1 && _card0.classList.contains('picked') && document.getElementById('bulkBar').classList.contains('on'),
+         BULK_PICKED.size+' picked, card marked '+_card0.classList.contains('picked'));
+      BULK_PICKED.clear(); bulkSelectShown();
+      ok('Pipeline: Select all shown selects every post on screen',
+         BULK_PICKED.size===getFilteredProjects().length && BULK_PICKED.size>0,
+         BULK_PICKED.size+' of '+getFilteredProjects().length);
+      bulkSelectShown();
+      ok('Pipeline: pressing it again clears the selection', BULK_PICKED.size===0, BULK_PICKED.size+' still picked');
+      /* L-GFX-072: the bar must be a bar. Measured while it is showing. */
+      BULK_PICKED.add(-9000); bulkBarSync();
+      const _bb=document.getElementById('bulkBar').getBoundingClientRect();
+      ok('Pipeline: the bulk bar is a bar, not a disc',
+         _bb.width>0 && _bb.width >= Math.min(window.innerWidth-24, 340) - 2,
+         Math.round(_bb.width)+'px wide of '+window.innerWidth+'; half the screen wrapped it into a circle');
+      BULK_PICKED.clear(); _keepPick.forEach(x=>BULK_PICKED.add(x)); bulkBarSync();
       ok('Pipeline: a grid card carries the picture, the client and the title',
          !!document.querySelector('#pipeGrid .pg-client') && !!document.querySelector('#pipeGrid .pg-title')
            && !!document.querySelector('#pipeGrid .pg-shot, #pipeGrid .pg-none'));
@@ -6334,6 +6427,29 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)!
 .bulkbar select,.bulkbar button{font-size:0.76rem;padding:8px 12px;min-height:38px;border-radius:99px}
 .bulkbar .danger{border:1px solid var(--red);color:var(--red);background:none;cursor:pointer;font-weight:700}
 .bulkbar .ghost{border:1px solid var(--border-strong);color:var(--text-2);background:none;cursor:pointer;font-weight:700}
+/* L-GFX-072, 12 Oct 2026. On a phone the bar was a CIRCLE over the cards.
+   left:50% leaves a fixed box only half the screen to lay out in, so the five
+   controls wrapped into three rows about 190px wide, and the 99px pill radius
+   turned that square into a disc. It also hid the cards it was acting on.
+   Desk: one line, sized to its content. Phone: the BB action bar, full width,
+   count on top, the menu, Move as the primary, the rest in equal pairs, Clear
+   last, and the page gets room underneath so no card is trapped behind it. */
+.bulkbar{width:max-content}
+/* .ghost is two classes deep, so the primary needs the same weight plus one to win */
+.bulkbar select + button.ghost{background:var(--accent);border-color:var(--accent);color:#fff}
+#section-pipeline:has(.bulkbar.on){padding-bottom:90px}
+@media(max-width:600px){
+  .bulkbar{left:12px;right:12px;width:auto;transform:none;max-width:none;border-radius:16px;
+    padding:12px;gap:8px;grid-template-columns:1fr 1fr}
+  .bulkbar.on{display:grid}
+  .bulkbar>span{grid-column:1/-1;text-align:center;font-size:0.84rem}
+  .bulkbar select{grid-column:1/-1;width:100%;border-radius:10px;min-height:44px;font-size:16px}
+  .bulkbar button{width:100%;border-radius:10px;min-height:44px;font-size:0.84rem}
+  .bulkbar select + button{grid-column:1/-1}
+  .bulkbar button:last-child{grid-column:1/-1}
+  .bulkbar:has(#bulkDeleteBtn[hidden]) button:nth-of-type(2){grid-column:1/-1}
+  #section-pipeline:has(.bulkbar.on){padding-bottom:300px}
+}
 
 /* ══ MONTHLY RECAP ══════════════════════════════════════════════════ */
 .rc-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px;margin-bottom:18px}

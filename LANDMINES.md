@@ -1841,3 +1841,71 @@ file and the stage set is now two.
 And the board opens on the CURRENT MONTH. 104 of the 110 posts are October, so a
 board showing everything ever was more of the "unmanageable" feeling than the
 column count was.
+
+## L-GFX-071 · retiring Head Review left no road into Approved, so nothing could be approved for five days · FIXED 2026-10-12
+Farhath, 12 Oct: moving a post to Approved said "This post has not been through
+Head Review yet, so it cannot be Approved".
+
+On 7 Oct L-GFX-070 cut the board to two stages, To do and Approved. The SAME DAY
+decision 98 had made Head Review the only way into Approved, in this file
+(`gfxApproveBlock`) and in the database (trigger `gfx_guard_approved`, migrations
+003 and 004 in ~/bb-systems/graphic-images), because 104 posts went from Brief to
+Approved in under a minute on 2 and 5 Oct. Retiring `head_review` removed the one
+road the gate accepts. Every post created after that sat in To do for good: 27
+of Farhath's on 12 Oct alone.
+
+The two decisions contradicted each other and nobody was told. The question put
+to Thulaib on 7 Oct offered "Two stages: To do and Approved" without saying that
+a gate he had approved that morning required a third. That was the sitting's
+failure, not his.
+
+Fixed: `STAGES` is To do, Head Review, Approved. Every reader of `STAGES` (board,
+grid, detail Next Stage, bulk Move menu, dashboard, My Work) follows it. Alert
+rule 16 is back on. The five other retired stages stay retired.
+
+THE CHECK THAT WAS MISSING, now in the harness: every stage the approval gate
+names must be on the board, and the stage just before Approved must be one the
+gate lets through. Both read the gate's own source. Proven both ways: the 7 Oct
+shape fails both, the current one passes both.
+
+LESSON: **before retiring anything, search for everything that depends on it,**
+in the code AND in the database (triggers, rules, functions). And when two of the
+owner's decisions conflict, say so in the question. An option that cannot work
+should never be offered as if it can.
+
+## L-GFX-072 · on a phone the bulk bar was a circle over the cards · FIXED 2026-10-12
+Found by selecting two posts on a 375px screen. The bar is fixed and centred with
+`left:50%` plus `translateX(-50%)`, which gives a fixed box only HALF the screen to
+lay out in. Its five controls wrapped into three rows about 190px wide, and the
+`99px` pill radius turned that square into a disc sitting on top of the cards it
+was acting on.
+
+Desk: one line, `width:max-content`. Phone: the BB action bar, full width, count,
+menu, Move as the pink primary, Archive and Delete as an equal pair, Clear last,
+and the Pipeline gets room underneath (`:has(.bulkbar.on)`) so no card is trapped
+behind it. Checked: 351px wide of 375, last card clear of the bar.
+
+Also found on the same screen:
+- Move was meant to be the primary but `.bulkbar .ghost` (two classes) beat
+  `.bulkbar select + button` (one class). Fixed by matching the weight plus one.
+- The grid cropped every 4:5 design to a square with `object-fit:cover`, cutting
+  the header off a Clove post. A design team checks the design, so the frame is
+  4:5 and the picture is contained.
+- Two new checks first read 0px because they measured the Pipeline while another
+  page was showing. They now open the Pipeline and assert it is the active page.
+  The `> 0` in each made them fail loudly instead of passing on nothing.
+
+## L-GFX-073 · the grid shipped without the select box the board has · FIXED 2026-10-12
+Farhath: "on the grid view there is no checkbox to select the post". The 7 Oct grid
+copied the board's picture and title and left out its select box, so the bulk
+bar was unreachable in the view that opens by default.
+
+Each grid card now has a 40px select target BESIDE the open button, never inside
+it (a checkbox inside a `<button>` is invalid and a tap opens the post). It has its
+own class, because `.k-pick` is absolutely placed for the board card and would have
+pulled the box out of its frame. Plus "Select all shown", which selects only what
+the filters are showing and clears on a second press, so 27 posts are two bulk
+moves rather than 27 taps.
+
+LESSON: **a second view of the same list must carry every action of the first.**
+Port the actions, not just the look.

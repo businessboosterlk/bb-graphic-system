@@ -1320,6 +1320,8 @@ const USERS = {
      checklist, because that is Farhath's job list and not theirs. */
   '2222': { name:'NIRVANA', role:'smm', team_member_id:12, label:'Nirvana (SMM)' },
   '8888': { name:'TIANA', role:'smm', team_member_id:22, label:'Tiana (SMM)' },
+  /* Added 15 Oct 2026 on Thulaib's ask: the third SMM, the same oversight as the other two seats. */
+  '3344': { name:'HITHESH', role:'smm', team_member_id:29, label:'Hithesh (SMM)' },
 };
 
 /* ─── THE ONE DESIGNER LIST ───────────────────────────────────────────
@@ -4134,7 +4136,35 @@ function wpOpenEdit(id){
   openModal('modalWpTask');
 }
 
+/* TWO OF THE SAME TASK ON ONE DAY IS ALLOWED. L-GFX-074, 15 Oct 2026.
+   Farhath, 14 Oct: "I'm unable to create 2 of the same tasks. 2 Carousels were
+   scheduled for today." The save refused any second task with the same day,
+   client, type and designer, saying "This task already exists for this day".
+   That rule was there to stop an accidental double save, but it also stopped
+   real work: two separate carousels for one client on one day. The database
+   never had such a rule; only this screen did.
+   Now a match ASKS instead of refusing, naming what is already there, so an
+   accident is still caught and a real second task goes in. The accidental
+   double tap is stopped by _wpSaving instead, which is the right tool for it.
+   The save also checks its own result: it used to say "Task added" whether or
+   not the row reached the database. */
+let _wpSaving = false;
+function wpSameTasks(d){
+  return (wpTasks||[]).filter(t=>t.week_start===d.week_start && t.day_of_week===d.day_of_week
+    && t.client_name===d.client_name && t.task_type===d.task_type
+    && (t.assigned_to||null)===(d.assigned_to||null));
+}
+function wpSameMessage(d, same){
+  const who = d.assigned_to || 'Nobody';
+  const type = WP_TYPES[d.task_type] || d.task_type;
+  const day = WP_DAYS[(d.day_of_week||1)-1] || '';
+  const designs = same.reduce((n,t)=>n+(t.design_count||1),0);
+  return who+' already has '+(same.length===1?'a ':same.length+' ')+type+(same.length===1?'':' tasks')
+    +' for '+d.client_name+' on '+day+' ('+designs+' design'+(designs!==1?'s':'')+').'
+    +'\n\nAdd this as another one?';
+}
 async function wpSaveTask(){
+  if(_wpSaving) return;
   const clientName = document.getElementById('wpClient').value;
   if(!clientName){ toast('Select a client','error'); return; }
   const data = {
@@ -4148,19 +4178,23 @@ async function wpSaveTask(){
     notes: document.getElementById('wpNotes').value||null,
     updated_at: new Date().toISOString()
   };
-  if(wpEditId){
-    await sbPatch('graphic_weekly_plan','id=eq.'+wpEditId, data);
-    toast('Task updated');
-  } else {
-    // Dedup check
-    const dup = wpTasks.some(t=>t.week_start===data.week_start && t.day_of_week===data.day_of_week && t.client_name===data.client_name && t.task_type===data.task_type && (t.assigned_to||null)===(data.assigned_to||null));
-    if(dup){ toast('This task already exists for this day','error'); return; }
-    data.created_by = currentUser.name;
-    await sbPost('graphic_weekly_plan', data);
-    toast('Task added');
-  }
-  closeModal('modalWpTask');
-  wpLoadWeek();
+  _wpSaving = true;
+  try{
+    if(wpEditId){
+      const ok = await sbPatch('graphic_weekly_plan','id=eq.'+wpEditId, data);
+      if(!ok){ toast('Could not save that task. Try again','error'); return; }
+      toast('Task updated');
+    } else {
+      const same = wpSameTasks(data);
+      if(same.length && !confirm(wpSameMessage(data, same))) return;
+      data.created_by = currentUser.name;
+      const res = await sbPost('graphic_weekly_plan', data);
+      if(!Array.isArray(res)){ toast('Could not add that task. Try again','error'); return; }
+      toast(same.length ? 'Added as another '+(WP_TYPES[data.task_type]||data.task_type) : 'Task added');
+    }
+    closeModal('modalWpTask');
+    wpLoadWeek();
+  } finally { _wpSaving = false; }
 }
 
 async function wpDeleteTask(){
@@ -4531,7 +4565,7 @@ function wpBulkAddRow(){
   const tr = document.createElement('tr');
   tr.innerHTML=`
     <td><select class="wbk-day"><option value="1">Mon</option><option value="2">Tue</option><option value="3">Wed</option><option value="4">Thu</option><option value="5">Fri</option></select></td>
-    <td><select class="wbk-client"><option value="">—</option>${clientOpts}</select></td>
+    <td><select class="wbk-client"><option value="">Client</option>${clientOpts}</select></td>
     <td><select class="wbk-type"><option value="post">Post</option><option value="story">Story</option><option value="reel_cover">Reel Cover</option><option value="carousel">Carousel</option><option value="logo">Logo</option><option value="banner">Banner</option><option value="other">Other</option></select></td>
     <td><input type="number" class="wbk-count" min="1" value="1" style="width:60px"></td>
     <td><select class="wbk-designer" data-designers="—"></select></td>
@@ -4544,50 +4578,57 @@ function wpBulkAddRow(){
    the pipeline: a dedup against `wpTasks`, which is stale until wpLoadWeek
    runs, a live button, and nothing said it was working. Same three blocks. */
 let _wpBulkRunning=false;
-const _wpBulkInserted=new Set();
+/* L-GFX-074, 15 Oct 2026. The bulk save had the same refusal as Add Task, and a
+   worse one: `_wpBulkInserted` remembered every task it had added until the page
+   was reloaded, so a second identical task could never be bulk-added on purpose,
+   and two identical rows in one sheet only ever saved the first.
+   The jobs that memory did are now done directly. A double tap is stopped by
+   _wpBulkRunning. A retry after a partial failure is made safe by REMOVING each
+   row the moment it saves, so pressing Save All again only sends what failed.
+   Rows that match a task already on the plan are counted and the person is
+   asked once; identical rows inside one sheet are all meant, so all go in. */
 async function wpBulkSaveAll(){
   if(_wpBulkRunning){ toast('Already saving, please wait','error'); return; }
-  _wpBulkRunning=true;
   const btn=document.getElementById('wpBulkSaveBtn');
   const btnText=btn?btn.textContent:'';
-  if(btn){ btn.disabled=true; btn.style.opacity='0.6'; btn.style.pointerEvents='none'; }
-  try{
-  const rows = document.querySelectorAll('#wpBulkRows tr');
-  let count=0, skipped=0, failed=0;
   const ws = wpKey(wpWeekStart);
-  for(const row of rows){
-    const clientName = row.querySelector('.wbk-client').value;
-    if(!clientName) continue;
-    const dayVal = parseInt(row.querySelector('.wbk-day').value);
-    const typeVal = row.querySelector('.wbk-type').value;
-    const assignedVal = row.querySelector('.wbk-designer').value||null;
-    // Dedup: skip if same week+day+client+type+designer already exists
-    const wk=[ws,dayVal,String(clientName).toLowerCase(),typeVal,(assignedVal||'')].join('|');
-    const exists = _wpBulkInserted.has(wk) || wpTasks.some(t=>t.week_start===ws && t.day_of_week===dayVal && t.client_name===clientName && t.task_type===typeVal && (t.assigned_to||null)===(assignedVal||null));
-    if(exists){ skipped++; continue; }
-    const data = {
-      week_start: ws,
-      day_of_week: dayVal,
-      client_name: clientName,
-      task_type: typeVal,
-      design_count: parseInt(row.querySelector('.wbk-count').value)||1,
-      assigned_to: assignedVal,
-      status: 'planned',
-      created_by: currentUser.name,
-      updated_at: new Date().toISOString()
-    };
-    if(btn) btn.textContent='Saving '+(count+1)+'…';
-    let res=null;
-    try{ res = await sbPost('graphic_weekly_plan', data); }catch(e){ res=null; }
-    if(Array.isArray(res)){ _wpBulkInserted.add(wk); count++; } else { failed++; }
+  const rows = Array.from(document.querySelectorAll('#wpBulkRows tr'))
+    .filter(r=>r.querySelector('.wbk-client') && r.querySelector('.wbk-client').value);
+  if(!rows.length){ toast('No tasks to add. Select a client for at least one row','error'); return; }
+  const read = row => ({
+    week_start: ws,
+    day_of_week: parseInt(row.querySelector('.wbk-day').value),
+    client_name: row.querySelector('.wbk-client').value,
+    task_type: row.querySelector('.wbk-type').value,
+    design_count: parseInt(row.querySelector('.wbk-count').value)||1,
+    assigned_to: row.querySelector('.wbk-designer').value||null
+  });
+  const matching = rows.filter(r=>wpSameTasks(read(r)).length>0);
+  let addMatching = true;
+  if(matching.length){
+    addMatching = confirm(matching.length+' of these '+rows.length+' row'+(rows.length!==1?'s':'')
+      +' match a task already on this week\'s plan (same day, client, type and designer).'
+      +'\n\nOK adds them as extra tasks. Cancel adds only the new ones.');
   }
-  if(count===0 && skipped===0 && failed===0){ toast('No tasks to add. Select a client for at least one row','error'); return; }
-  let msg = count+' task'+(count!==1?'s':'')+' added';
-  if(skipped) msg += ', '+skipped+' duplicate'+(skipped!==1?'s':'')+' skipped';
-  if(failed) msg += ', '+failed+' FAILED to save';
-  toast(msg, failed?'error':'success');
-  if(!failed) closeModal('modalWpBulk');
-  wpLoadWeek();
+  _wpBulkRunning=true;
+  if(btn){ btn.disabled=true; btn.style.opacity='0.6'; btn.style.pointerEvents='none'; }
+  let count=0, left=0, failed=0;
+  try{
+    for(const row of rows){
+      const d = read(row);
+      if(!addMatching && matching.indexOf(row)>-1){ left++; continue; }
+      const data = Object.assign(d, { status:'planned', created_by: currentUser.name, updated_at: new Date().toISOString() });
+      if(btn) btn.textContent='Saving '+(count+1)+'\u2026';
+      let res=null;
+      try{ res = await sbPost('graphic_weekly_plan', data); }catch(e){ res=null; }
+      if(Array.isArray(res)){ row.remove(); count++; } else { failed++; }
+    }
+    let msg = count+' task'+(count!==1?'s':'')+' added';
+    if(left) msg += ', '+left+' already on the plan left out';
+    if(failed) msg += ', '+failed+' FAILED to save. Press Save All again to retry only those';
+    toast(msg, failed?'error':'success');
+    if(!failed) closeModal('modalWpBulk');
+    wpLoadWeek();
   } finally {
     _wpBulkRunning=false;
     if(btn){ btn.disabled=false; btn.style.opacity=''; btn.style.pointerEvents=''; btn.textContent=btnText; }
@@ -5259,6 +5300,74 @@ async function runSelfTest(opts){
       ok('Weekly plan: ticking flips planned to done', wpTasks[0].status==='done', before+' -> '+wpTasks[0].status);
       await wpToggleTask(1);
       ok('Weekly plan: ticking again flips it back', wpTasks[0].status==='planned');
+    }
+
+    /* L-GFX-074, 15 Oct 2026. Farhath could not add a second carousel for the
+       same client on the same day. A match must ASK, not refuse. Every write
+       and every dialog is stubbed here, so nothing reaches the database. */
+    {
+      const keep={post:sbPost, conf:window.confirm, tasks:wpTasks, edit:wpEditId, ws:wpWeekStart};
+      const posted=[]; let asked=0, answer=true;
+      try{
+        sbPost = async (t,d)=>{ posted.push(d); return [{id:-77}]; };
+        window.confirm = ()=>{ asked++; return answer; };
+        wpWeekStart = wpGetMonday(new Date()); wpEditId=null;
+        const ws=wpKey(wpWeekStart), CL='SELFTEST CARRIER';
+        const sel=document.getElementById('wpClient');
+        if(![...sel.options].some(o=>o.value===CL)){ const o=document.createElement('option'); o.value=CL; o.textContent=CL; sel.appendChild(o); }
+        sel.value=CL;
+        document.getElementById('wpDay').value='3';
+        document.getElementById('wpTaskType').value='carousel';
+        const as=document.getElementById('wpAssigned');
+        if(![...as.options].some(o=>o.value==='Farhath')){ const o=document.createElement('option'); o.value='Farhath'; o.textContent='Farhath'; as.appendChild(o); }
+        as.value='Farhath';
+        document.getElementById('wpCount').value='5';
+        wpTasks=[{id:-1, week_start:ws, day_of_week:3, client_name:CL, task_type:'carousel', design_count:5, assigned_to:'Farhath', status:'done'}];
+
+        await wpSaveTask();
+        ok('Weekly plan: a second carousel for the same client and day can be added',
+           posted.length===1 && asked===1,
+           posted.length+' saved, asked '+asked+' time(s); it used to refuse with "already exists for this day"');
+
+        posted.length=0; asked=0; answer=false;
+        await wpSaveTask();
+        ok('Weekly plan: saying no to the question adds nothing', posted.length===0 && asked===1,
+           posted.length+' saved after Cancel');
+
+        posted.length=0; asked=0; answer=true;
+        sbPost = async ()=>({message:'selftest refusal'});
+        const toasts=[]; const keepToast=toast; toast=(m,t)=>toasts.push((t||'')+':'+m);
+        try{ await wpSaveTask(); } finally { toast=keepToast; }
+        ok('Weekly plan: a save that fails says so, never "Task added"',
+           toasts.some(x=>/^error:Could not add/.test(x)) && !toasts.some(x=>/Task added|Added as/.test(x)),
+           toasts.join(' | '));
+
+        /* Bulk: two identical rows in one sheet are both meant, and each row
+           leaves the sheet as it saves so a retry only resends what failed. */
+        sbPost = async (t,d)=>{ posted.push(d); return [{id:-78}]; };
+        posted.length=0; asked=0; answer=true;
+        const holder=document.getElementById('wpBulkRows'); const had=holder?holder.innerHTML:'';
+        if(holder && typeof wpBulkAddRow==='function'){
+          holder.innerHTML='';
+          for(let i=0;i<2;i++){
+            wpBulkAddRow(); const tr=holder.querySelector('tr:last-child');
+            const c=tr.querySelector('.wbk-client');
+            if(![...c.options].some(o=>o.value==='SELFTEST NEW')){ const o=document.createElement('option'); o.value='SELFTEST NEW'; o.textContent='x'; c.appendChild(o); }
+            c.value='SELFTEST NEW'; tr.querySelector('.wbk-type').value='carousel';
+          }
+          await wpBulkSaveAll();
+          ok('Weekly plan bulk: two identical rows in one sheet both go in',
+             posted.length===2 && asked===0, posted.length+' saved, asked '+asked);
+          ok('Weekly plan bulk: a saved row leaves the sheet, so a retry cannot double it',
+             holder.querySelectorAll('tr').length===0, holder.querySelectorAll('tr').length+' rows left');
+          holder.innerHTML=had;
+        } else {
+          ok('Weekly plan bulk: the sheet exists to test', false, 'no #wpBulkRows or wpBulkAddRow');
+        }
+      } finally {
+        sbPost=keep.post; window.confirm=keep.conf; wpTasks=keep.tasks; wpEditId=keep.edit; wpWeekStart=keep.ws;
+        try{ closeModal('modalWpTask'); closeModal('modalWpBulk'); }catch(e){}
+      }
     }
 
     /* ── THE WEEK KEY ──

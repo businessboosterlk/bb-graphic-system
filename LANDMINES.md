@@ -1909,3 +1909,43 @@ moves rather than 27 taps.
 
 LESSON: **a second view of the same list must carry every action of the first.**
 Port the actions, not just the look.
+
+## L-GFX-074 · the Weekly Plan refused a second carousel for the same client on the same day · FIXED 2026-10-15
+Farhath, 14 Oct: "I'm unable to create 2 of the same tasks. 2 Carousels were
+scheduled for today, when i try to add 2 carousels, i'm getting an error."
+
+Add Task refused any second task with the same week, day, client, type and
+designer: "This task already exists for this day". The database never had that
+rule (graphic_weekly_plan has only its primary key); only the screen did. It was
+written to stop an accidental double save, and it stopped real work with it.
+His second Ceylon Carrier Travels carousel for 14 Oct never got onto the plan.
+
+The bulk sheet had the same refusal and a worse one: `_wpBulkInserted` remembered
+every task it had added until the page was reloaded, so a second identical task
+could never be bulk-added on purpose, and two identical rows in one sheet only
+ever saved the first.
+
+Also found: Add Task said "Task added" whether or not the row reached the
+database, because it never looked at what sbPost returned. Edit did the same with
+sbPatch.
+
+FIXED.
+- A match now ASKS, naming what is already there ("Farhath already has a Carousel
+  for CEYLON CARRIER TRAVELS on Wednesday (5 designs). Add this as another one?").
+  OK adds it, Cancel adds nothing and leaves the form open.
+- The accidental double tap is stopped by an in-flight flag, `_wpSaving`, which is
+  the right tool for that job.
+- Bulk: rows that match a task already on the plan are counted and the person is
+  asked once (OK adds them, Cancel adds only the new ones). Identical rows inside
+  one sheet all go in. Each row LEAVES the sheet the moment it saves, so pressing
+  Save All again after a failure resends only what failed. `_wpBulkInserted` is gone.
+- Both saves check the result and say "Could not add that task" on a failure.
+
+Six checks, all with writes and dialogs stubbed. 185 of 185 at 1280px, 186 of 186
+at 375px. Exact case run on live data as Farhath with Cancel: the right question,
+0 rows written.
+
+LESSON: **a duplicate guard must ask, not refuse, when a real person can mean it.**
+A rule that blocks what someone is trying to do is a rule they will work around or
+report as a bug. Stop the accident with the tool that matches the accident: an
+in-flight flag for a double tap, removing saved rows for a retry.

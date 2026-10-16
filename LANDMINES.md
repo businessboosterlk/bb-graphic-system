@@ -1949,3 +1949,31 @@ LESSON: **a duplicate guard must ask, not refuse, when a real person can mean it
 A rule that blocks what someone is trying to do is a rule they will work around or
 report as a bug. Stop the accident with the tool that matches the accident: an
 in-flight flag for a double tap, removing saved rows for a retry.
+
+## L-GFX-075 · "Select all" selected every stage at once, when Farhath asked for one per section · FIXED 2026-10-16
+Farhath, by voice note: "it'll be better if there's a select all button for
+individual section instead of selecting all". Thulaib told him it was done; he
+answered "For me, it's still the same bro" with a screenshot of the Board.
+
+He was right. On 12 Oct (L-GFX-073) the request was read as "a select all" and
+built as ONE "Select all shown" for the whole screen. That ticks To do, Head
+Review and Approved together, so moving only the To do posts on still meant
+unticking everything else by hand. The word that mattered was "individual
+section", and it was not in the brief the build answered to.
+
+FIXED. Every board column with posts has its own Select all in its header, and
+the grid is now grouped into To do, Head Review and Approved sections in board
+order, each with its own Select all. The button ticks only the posts of that
+stage that the filters are showing and reads Clear once they are all ticked; a
+single tick or untick keeps every label true (bulkBarSync recomputes them).
+Retired stages draw in To do, so they are selected with it. Select all shown
+stays for the whole screen.
+
+Seven new checks. 192 of 192 at 1280px, 193 of 193 at 375px. On the live data as
+Farhath, October board: To do 0, Head Review 0, Approved 120; Approved's Select
+all ticked exactly 120 and Clear took it back to 0, nothing moved.
+
+LESSON: **build the request, not its nearest neighbour.** Quote the exact words
+of a feature request into the commit and check the build against each word
+before calling it done. "Select all" and "select all for each section" are
+different features.

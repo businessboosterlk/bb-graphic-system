@@ -330,7 +330,16 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .pipe-view[aria-selected="true"]{background:var(--accent);color:#fff}
 /* One card per design, the picture doing the work. auto-fill so the row packs
    itself at any width instead of a breakpoint guessing for it. */
-.pipe-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:12px;padding-bottom:12px}
+.pipe-grid{display:block;padding-bottom:12px}
+.pg-section{margin:0 0 20px}
+.pg-sec-head{display:flex;align-items:center;gap:8px;margin:0 0 10px;padding:0 0 8px;border-bottom:1px solid var(--border)}
+.pg-sec-head h4{font-size:0.86rem;font-weight:700;margin:0;color:var(--text)}
+.pg-sec-head .col-pick{margin-left:auto}
+.pg-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:12px}
+.col-pick{appearance:none;border:1px solid var(--border-strong);background:transparent;color:var(--text-2);
+  font:inherit;font-size:0.72rem;font-weight:600;padding:4px 10px;min-height:28px;border-radius:8px;cursor:pointer;margin-right:6px}
+.col-pick:hover{border-color:var(--accent);color:var(--accent)}
+@media(pointer:coarse){.col-pick{min-height:36px;padding:6px 12px}}
 .pg-card{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden}
 .pg-card.picked{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
 .pg-open{appearance:none;border:0;background:transparent;cursor:pointer;display:flex;flex-direction:column;
@@ -358,7 +367,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .pg-stage.approved{background:var(--accent-soft);color:var(--accent)}
 .pg-who{font-size:0.68rem;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pipe-empty{padding:28px 16px;text-align:center;color:var(--text-3);font-size:0.84rem}
-@media(max-width:420px){.pipe-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}}
+@media(max-width:420px){.pg-cards{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}}
 .kanban{display:flex;gap:12px;overflow-x:auto;padding-bottom:12px;min-height:400px}
 .kanban-col{min-width:250px;width:250px;flex-shrink:0;display:flex;flex-direction:column}
 .kanban-col-header{padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm) var(--r-sm) 0 0;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0}
@@ -2027,7 +2036,24 @@ function renderPipeGrid(filtered){
     el.innerHTML = '<div class="pipe-empty">Nothing here. Change the month or the filters above, or add a post.</div>';
     return;
   }
-  el.innerHTML = filtered.map(p=>{
+  /* SECTIONS, Farhath 16 Oct 2026: "a select all button for individual
+     section instead of selecting all". One Select all for the whole screen
+     ticked To do, Head Review and Approved together, so sending only the To do
+     posts on meant unticking the rest by hand. The grid is grouped in board
+     order and every section carries its own Select all, exactly like a column
+     on the board. Empty sections are left out. */
+  el.innerHTML = STAGES.map(stage=>{
+    const cards = filtered.filter(p=>stageColumn(p.current_stage)===stage);
+    if(!cards.length) return '';
+    return '<section class="pg-section" data-stage="'+stage+'">'
+      + '<div class="pg-sec-head"><h4>'+esc(STAGE_LABELS[stage])+'</h4>'
+      +   '<span class="col-count">'+cards.length+'</span>'
+      +   stagePickButton(stage, cards)
+      + '</div><div class="pg-cards">'+cards.map(pgCardHTML).join('')+'</div></section>';
+  }).join('');
+}
+function pgCardHTML(p){
+  {
     const hasImg = (p.image_url!==undefined && p.image_url!==null) || IMG_IDS.has(p.id) || IMG_CACHE[p.id];
     const cachedSrc = (p.image_url && p.image_url!==undefined) ? p.image_url : (IMG_CACHE[p.id]||'');
     const stage = stageColumn(p.current_stage);
@@ -2053,7 +2079,7 @@ function renderPipeGrid(filtered){
         </span>
       </button>
       </div>`;
-  }).join('');
+  }
 }
 function renderPipeline(){
   pipeDefaultMonth();
@@ -2073,7 +2099,7 @@ function renderPipeline(){
       <div class="kanban-col" data-stage="${stage}">
         <div class="kanban-col-header">
           <h4>${STAGE_LABELS[stage]}</h4>
-          <span class="bb-age-head">${window.BBAGE?BBAGE.late(cards):''}<span class="col-count">${cards.length}</span></span>
+          <span class="bb-age-head">${window.BBAGE?BBAGE.late(cards):''}${stagePickButton(stage, cards)}<span class="col-count">${cards.length}</span></span>
         </div>
         <div class="kanban-cards" data-stage="${stage}" ondragover="onDragOver(event)" ondrop="onDrop(event,this)" ondragleave="onDragLeave(event,this)">
           ${cards.map(p=>renderKCard(p)).join('')}
@@ -2120,6 +2146,22 @@ function bulkPick(id, on){
   document.querySelectorAll('.k-card[data-id="'+id+'"], .pg-card[data-id="'+id+'"]')
     .forEach(card=>card.classList.toggle('picked', on));
 }
+/* SELECT ALL IN ONE STAGE. Farhath, 16 Oct 2026. One button per board column
+   and per grid section. It ticks only the posts of that stage that the filters
+   are showing, and turns into Clear once they are all ticked. */
+function stagePickButton(stage, cards){
+  if(!cards || !cards.length) return '';
+  const all = cards.every(p=>BULK_PICKED.has(p.id));
+  return '<button type="button" class="col-pick" data-stage="'+stage+'" onclick="event.stopPropagation();bulkSelectStage(\''+stage+'\')">'
+    + (all ? 'Clear' : 'Select all') + '</button>';
+}
+function bulkSelectStage(stage){
+  const inStage = getFilteredProjects().filter(p=>stageColumn(p.current_stage)===stage);
+  if(!inStage.length) return;
+  const all = inStage.every(p=>BULK_PICKED.has(p.id));
+  inStage.forEach(p=>{ if(all) BULK_PICKED.delete(p.id); else BULK_PICKED.add(p.id); });
+  renderPipeline(); bulkBarSync();
+}
 /* Select every post the filters are showing. 27 posts is two bulk moves, not
    27 taps. Only what is on screen: a hidden post is never moved by surprise. */
 function bulkSelectShown(){
@@ -2139,6 +2181,13 @@ function bulkBarSync(){
   if(sa && typeof getFilteredProjects==='function'){
     const shown=getFilteredProjects();
     sa.textContent = (shown.length && shown.every(p=>BULK_PICKED.has(p.id))) ? 'Clear selection' : 'Select all shown';
+  }
+  if(typeof getFilteredProjects==='function'){
+    const shownAll=getFilteredProjects();
+    document.querySelectorAll('.col-pick[data-stage]').forEach(b=>{
+      const inStage=shownAll.filter(p=>stageColumn(p.current_stage)===b.dataset.stage);
+      b.textContent = (inStage.length && inStage.every(p=>BULK_PICKED.has(p.id))) ? 'Clear' : 'Select all';
+    });
   }
   const sel=document.getElementById('bulkMoveTo');
   if(sel && sel.options.length<2)
@@ -5483,6 +5532,37 @@ async function runSelfTest(opts){
       ok('Pipeline: ticking a grid card selects it and opens the bulk bar',
          BULK_PICKED.size===1 && _card0.classList.contains('picked') && document.getElementById('bulkBar').classList.contains('on'),
          BULK_PICKED.size+' picked, card marked '+_card0.classList.contains('picked'));
+      /* Farhath, 16 Oct 2026: Select all PER SECTION. The fixture has one post
+         in every stage, so a section select must tick exactly the posts of its
+         own stage and nothing from the others. */
+      const _secs=[...document.querySelectorAll('#pipeGrid .pg-section')].map(x=>x.dataset.stage);
+      ok('Pipeline: the grid is grouped into To do, Head Review, Approved in board order',
+         _secs.join(',')===STAGES.join(','), _secs.join(' then '));
+      ok('Pipeline: every grid section has its own Select all',
+         document.querySelectorAll('#pipeGrid .pg-section .col-pick').length===_secs.length,
+         document.querySelectorAll('#pipeGrid .pg-section .col-pick').length+' buttons for '+_secs.length+' sections');
+      BULK_PICKED.clear();
+      const _want=getFilteredProjects().filter(p=>stageColumn(p.current_stage)==='brief').map(p=>p.id);
+      document.querySelector('#pipeGrid .pg-section[data-stage="brief"] .col-pick').click();
+      ok('Pipeline: a section Select all ticks only that section',
+         BULK_PICKED.size===_want.length && _want.every(id=>BULK_PICKED.has(id)),
+         BULK_PICKED.size+' picked, '+_want.length+' in To do (the retired stages draw there too)');
+      ok('Pipeline: the section button then reads Clear',
+         (document.querySelector('#pipeGrid .pg-section[data-stage="brief"] .col-pick')||{}).textContent==='Clear');
+      document.querySelector('#pipeGrid .pg-section[data-stage="brief"] .col-pick').click();
+      ok('Pipeline: pressing Clear unticks that section', BULK_PICKED.size===0, BULK_PICKED.size+' still picked');
+      PIPE_VIEW='board'; renderPipeline();
+      const _colBtns=document.querySelectorAll('#kanbanBoard .kanban-col .col-pick');
+      ok('Pipeline: every board column with posts has its own Select all',
+         _colBtns.length===STAGES.length, _colBtns.length+' buttons on '+STAGES.length+' columns');
+      document.querySelector('#kanbanBoard .kanban-col[data-stage="head_review"] .col-pick').click();
+      const _hr=getFilteredProjects().filter(p=>stageColumn(p.current_stage)==='head_review').map(p=>p.id);
+      ok('Pipeline: a column Select all on the board ticks only that column',
+         BULK_PICKED.size===_hr.length && _hr.every(id=>BULK_PICKED.has(id))
+           && document.querySelectorAll('#kanbanBoard .kanban-col[data-stage="head_review"] .k-card.picked').length===_hr.length,
+         BULK_PICKED.size+' picked, '+_hr.length+' in Head Review');
+      BULK_PICKED.clear(); PIPE_VIEW='grid'; renderPipeline();
+
       BULK_PICKED.clear(); bulkSelectShown();
       ok('Pipeline: Select all shown selects every post on screen',
          BULK_PICKED.size===getFilteredProjects().length && BULK_PICKED.size>0,
@@ -5538,7 +5618,7 @@ async function runSelfTest(opts){
        place of the picture: the title is already the line underneath, so the
        card read it twice and looked broken while loading. */
     ok('Pipeline: a grid card does not print its title where the picture goes',
-       /class="pg-shot[^"]*"[^>]*alt=""/.test(String(renderPipeGrid)),
+       /class="pg-shot[^"]*"[^>]*alt=""/.test(String(typeof pgCardHTML==='function'?pgCardHTML:renderPipeGrid)),
        'alt on the shot must be empty; the title sits beside it in .pg-title');
 
     /* L-GFX-069: flex-basis is the MAIN axis, and the phone bar is a column. */

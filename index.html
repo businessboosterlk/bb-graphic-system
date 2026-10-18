@@ -689,6 +689,11 @@ tr:hover td{background:var(--surface-2)}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
         Dashboard
       </div>
+      <!-- BOOSTER, the Graphic door (18 Oct 2026). No data-page, so the page router never sees it. -->
+      <div class="nav-item" id="nav-booster" role="button" tabindex="0" onclick="openBooster()" onkeydown="if(event.key==='Enter')openBooster()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2z"/><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/></svg>
+        Booster
+      </div>
       <div class="nav-section">Pipeline</div>
       <div class="nav-item" data-page="pipeline" onclick="navigateTo('pipeline')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
@@ -6990,6 +6995,20 @@ body.sheet-open{position:fixed;left:0;right:0;width:100%}
    width:44px;height:44px;transform:translate(-50%,-50%);inset:auto}
 }
 </style>
+
+<script>
+/* BOOSTER LAUNCHER (18 Oct 2026, decision 452), cast from the SMM Workspace's: loads Booster's drawer once, full screen, on the graphic door.
+   Each person signs in to Booster as themselves; nothing in this system changes. */
+var BOOSTER_HOST = 'https://booster-production-3b2e.up.railway.app/ask-bb/';
+function openBooster(){
+  try { if (typeof closeSidebar === 'function') closeSidebar(); } catch(e) {}
+  if (window.AskBBDrawer) { window.AskBBDrawer.open({}); return; }
+  var s = document.createElement('script'); s.src = BOOSTER_HOST + 'embed/drawer.js'; s.dataset.app = 'graphic'; s.dataset.button = 'none'; s.dataset.size = 'full';
+  s.onload = function(){ if (window.AskBBDrawer) window.AskBBDrawer.open({}); };
+  s.onerror = function(){ window.open(BOOSTER_HOST + '?app=graphic', '_blank'); };
+  document.body.appendChild(s);
+}
+</script>
 </body>
 </html>
 <!-- @@BB_WORKTIME_BEGIN@@ -->

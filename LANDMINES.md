@@ -2011,3 +2011,12 @@ limit on every build including the one that passed 193 of 193 on 16 Oct. The
 section is not slow, the tab was asleep. When `document.visibilityState` is
 `hidden`, run the harness in a visible browser (`/tmp/claude-501/gfxrun/run.mjs`
 pattern: Playwright from ~/bb-systems/batch) before believing a timeout.
+
+## The PINs left the page; the server checks them · 2026-10-19 (decision 521, from the ChatGPT and Gemini review of Booster)
+Every PIN sat in this public page, and Booster's team door had just started trusting the same PINs, so anyone who read the source
+could open both as anyone. Now: no PIN in the file (the self-test fails on one), sign-in asks `app_pin_login` (row locked while
+checking, five wrong tries lock 15 minutes), a 12 hour pass in sessionStorage, a reload restores only through `app_session_check`,
+sign out calls `app_session_end`. EVERY person got a NEW PIN (the old ones are in git history), handed out in person from a
+private sheet. Forgotten PIN: `select public.app_pin_set('graphic','NAME','new pin');` in the Supabase SQL editor. Check:
+`node ~/bb-systems/app-pin/checks/pin-door.check.mjs graphic` (database faked). Mould: ~/bb-systems/app-pin/. The data tables stay
+open to the public key; only the role floor closes them.

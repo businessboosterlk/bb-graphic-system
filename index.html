@@ -2218,7 +2218,9 @@ async function bulkMoveSelected(){
   const _b=BBU.batch; BBU.batch=null;
   if(_b && _b.length) bbuRecord(_b);
   toast(moved+' of '+ids.length+' moved to '+STAGE_LABELS[to]
-        +(blocked?'. '+blocked+' not moved: '+(blocked===1?'it has':'they have')+' not been through Head Review':'')
+        +(blocked?'. '+blocked+' not moved: '+(canApprove()
+              ? 'the review could not be recorded, try again'
+              : (blocked===1?'it has':'they have')+' not been through Head Review'):'')
         +(unread?'. '+unread+' not moved: '+(unread===1?'its':'their')+' history could not be read, try again':''),
         moved===ids.length?'success':'error');
   BULK_PICKED.clear(); await loadAll(); bulkBarSync();
@@ -2320,7 +2322,27 @@ async function gfxSetStage(id, newStage, note, quiet, undo){
      with a new finish time and a new history row. Nothing to move, so no write. */
   if(oldStage && oldStage===newStage) return true;
   if(newStage==='approved'){
-    const why = await gfxApproveBlock(id, !!undo);
+    let why = await gfxApproveBlock(id, !!undo);
+    /* A HEAD'S APPROVAL IS THE REVIEW. Thulaib, 19 Oct 2026 (L-GFX-076), on
+       Farhath's report: "If there are previous posters which have already been
+       approved and have to be uploaded, everything has to be moved to Head
+       Review and then approved, which is a hassle."
+       Decision 98 stays for designers: a designer still sends work to Head
+       Review and cannot approve. But when the person approving IS a head or an
+       SMM, sending the post to Head Review first only asks them to review their
+       own review. So for them, a post with no Head Review yet gets one written
+       in their name at this moment ("reviewed and approved in one step"), and
+       then the approval goes through. The database trigger is untouched: it
+       still refuses Approved without a head_review row, and the row it finds
+       says who reviewed it. If that row cannot be written, nothing is
+       approved. A failed history READ is still reported as such and never
+       treated as permission. */
+    if(why===GFX_MSG.review && canApprove()){
+      let hr=null;
+      try{ hr = await sbPost('graphic_stage_history', { graphic_project_id:id, stage:'head_review',
+             entered_by: currentUser.name, notes:'Reviewed and approved in one step by '+currentUser.name }, 'id'); }catch(e){ hr=null; }
+      why = Array.isArray(hr) ? null : GFX_MSG.review;
+    }
     if(why){ GFX_STAGE_BLOCK = why; if(!quiet) toast(why,'error'); return false; }
   }
   const okWrite = await sbPatch('graphic_projects','id=eq.'+id, {
@@ -5236,14 +5258,33 @@ async function runSelfTest(opts){
         const r1=await gfxSetStage(fake.id,'approved',null,true);
         const n1=patched.length;
         currentUser=Object.assign({}, keepUser, {role:'head'});
-        hist=[];
+        /* L-GFX-076, 19 Oct 2026: a head approves straight from To do. The
+           Head Review row is written in their name FIRST, because the database
+           trigger refuses Approved without one. Order is recorded to prove it. */
+        hist=[]; const order=[];
+        sbPost = async (t,d)=>{ order.push('post:'+t+':'+(d&&d.stage)); return [{id:-1}]; };
+        sbPatch = async (t,q,d)=>{ order.push('patch:'+(d&&d.current_stage)); patched.push(d); return true; };
+        fake.current_stage='brief';
         const r2=await gfxSetStage(fake.id,'approved',null,true);
-        const n2=patched.length, why2=GFX_STAGE_BLOCK||'';
+        const n2=patched.length;
+        ok('Decision 98: a designer cannot approve', r1===false && n1===0, 'returned '+r1+', '+n1+' writes');
+        ok('L-GFX-076: a head approves straight from To do', r2===true && n2===1 && patched[0].current_stage==='approved',
+           'returned '+r2+', '+n2+' writes');
+        ok('L-GFX-076: the Head Review row is written in their name BEFORE the approval',
+           order.indexOf('post:graphic_stage_history:head_review') > -1
+             && order.indexOf('post:graphic_stage_history:head_review') < order.indexOf('patch:approved'),
+           order.join(' then '));
+        /* and if that row cannot be written, nothing is approved */
+        fake.current_stage='brief'; hist=[]; order.length=0;
+        sbPost = async (t,d)=>{ order.push('post:'+t+':'+(d&&d.stage)); return {message:'selftest refusal'}; };
+        const nF=patched.length, rF=await gfxSetStage(fake.id,'approved',null,true), whyF=GFX_STAGE_BLOCK||'';
+        ok('L-GFX-076: if the review row cannot be written, the post is not approved',
+           rF===false && patched.length===nF && whyF===GFX_MSG.review, 'returned '+rF+', '+(patched.length-nF)+' writes, said: '+whyF);
+        sbPost = async ()=>[{id:-1}];
+        sbPatch = async (t,q,d)=>{ patched.push(d); return true; };
+        patched.length=0; fake.current_stage='client_changes';
         hist=[{id:1, stage:'head_review', entered_at:'2026-10-07T06:00:00Z'}];
         const r3=await gfxSetStage(fake.id,'approved',null,true);
-        ok('Decision 98: a designer cannot approve', r1===false && n1===0, 'returned '+r1+', '+n1+' writes');
-        ok('Decision 98: a post that skipped Head Review cannot be approved', r2===false && n2===0 && /Head Review/.test(why2),
-           'returned '+r2+', '+n2+' writes, said: '+why2);
         ok('Decision 98: a head approves a post that has been in Head Review', r3===true && patched.length===1 && patched[0].current_stage==='approved',
            'returned '+r3+', '+patched.length+' writes');
         /* Review fix, 7 Oct 2026 (L-GFX-061): undo, the history write that failed, the read that failed. */

@@ -1977,3 +1977,37 @@ LESSON: **build the request, not its nearest neighbour.** Quote the exact words
 of a feature request into the commit and check the build against each word
 before calling it done. "Select all" and "select all for each section" are
 different features.
+
+## L-GFX-076 · a head had to send already-approved posts through Head Review to approve them · CHANGED 2026-10-19
+Farhath: "If there are previous posters which have already been approved and has
+to be uploaded, everything has to be moved to Head review and then approved which
+is a hassle." Thulaib asked for the change.
+
+Decision 98 (7 Oct) made Head Review the only road into Approved, in the app and
+in the database trigger `gfx_guard_approved`, because 104 posts went from Brief to
+Approved in under a minute. That reason is about review being SKIPPED. When the
+person approving is a head or an SMM, sending the post to Head Review first only
+asks them to review their own review.
+
+CHANGED, in the app only. In `gfxSetStage`, when a head or SMM approves a post
+with no Head Review yet, a `head_review` history row is written in their name
+first ("Reviewed and approved in one step by FARHATH"), then the approval. If that
+row cannot be written, nothing is approved. Designers are unchanged: they still
+cannot approve and still send work to Head Review. A failed history READ is still
+reported as such and never treated as permission.
+
+The database trigger is NOT changed. It still refuses Approved without a
+head_review row, and the row it now finds says who reviewed it. Proven as the
+`anon` role inside a rolled-back transaction: To do straight to Approved with no
+review row REFUSED, with the review row written first ALLOWED, 0 rows left.
+
+Three new checks (straight from To do as a head; the review row is written BEFORE
+the approval; a failed review write approves nothing). 194 of 194 at 1280px and
+195 of 195 at 375px in headless Chrome.
+
+ALSO LEARNED: the in-app browser pane was hidden for this run, and a hidden tab
+throttles animation frames, so "App shell and phone foundations" overran its 15s
+limit on every build including the one that passed 193 of 193 on 16 Oct. The
+section is not slow, the tab was asleep. When `document.visibilityState` is
+`hidden`, run the harness in a visible browser (`/tmp/claude-501/gfxrun/run.mjs`
+pattern: Playwright from ~/bb-systems/batch) before believing a timeout.

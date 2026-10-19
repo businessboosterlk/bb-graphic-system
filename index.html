@@ -1318,24 +1318,28 @@ async function gEnsure(){ return null; }
 function gBearer(){ return 'Bearer '+SB_KEY; }
 function gHdr(extra){ return Object.assign({'apikey':SB_KEY,'Authorization':gBearer(),'Content-Type':'application/json'}, extra||{}); }
 
+/* PINS ARE NOT IN THIS FILE (19 Oct 2026, decision 521, cast from the Dev System's L-DEV-033). They live bcrypt-scrambled in the
+   database table app_pin, which no public key can read; sign-in asks app_pin_login (five wrong tries lock a name 15 minutes) and keeps
+   a 12 hour pass, a reload restores only through app_session_check. USERS is keyed by NAME. To add a person: one line here, then
+   Thulaib runs in the Supabase SQL editor: select public.app_pin_set('graphic','NAME','their pin');  Mould: ~/bb-systems/app-pin/ */
 const USERS = {
   /* GFX-8, 6 Oct 2026: these said 1 and 2. There is no team_members row 1 and
      row 2 is KANEESHA, a leaver. The active rows are THULAIB 23 and SHIARA 24
      (checked with SQL on team_members where active). */
-  '1031': { name:'THULAIB', role:'head', team_member_id:23, label:'Thulaib (CEO)' },
-  '1006': { name:'SHIARA', role:'head', team_member_id:24, label:'Shiara (COO)' },
-  '3333': { name:'SUHANA', role:'designer', team_member_id:3, label:'Suhana' },
-  '4444': { name:'FARHATH', role:'graphic_head', team_member_id:17, label:'Farhath' },
-  '6666': { name:'AMJATH', role:'designer', team_member_id:18, label:'Amjath' },
+  THULAIB: { name:'THULAIB', role:'head', team_member_id:23, label:'Thulaib (CEO)' },
+  SHIARA: { name:'SHIARA', role:'head', team_member_id:24, label:'Shiara (COO)' },
+  SUHANA: { name:'SUHANA', role:'designer', team_member_id:3, label:'Suhana' },
+  FARHATH: { name:'FARHATH', role:'graphic_head', team_member_id:17, label:'Farhath' },
+  AMJATH: { name:'AMJATH', role:'designer', team_member_id:18, label:'Amjath' },
   /* The two SMM seats. Role `smm` is NOT `designer`, so they are never
      auto-assigned design work and are never scoped to their own: they see every
      client, every post and every designer's day, which is the oversight the
      graphic head has. They deliberately do NOT get the head's own daily
      checklist, because that is Farhath's job list and not theirs. */
-  '2222': { name:'NIRVANA', role:'smm', team_member_id:12, label:'Nirvana (SMM)' },
-  '8888': { name:'TIANA', role:'smm', team_member_id:22, label:'Tiana (SMM)' },
+  NIRVANA: { name:'NIRVANA', role:'smm', team_member_id:12, label:'Nirvana (SMM)' },
+  TIANA: { name:'TIANA', role:'smm', team_member_id:22, label:'Tiana (SMM)' },
   /* Added 15 Oct 2026 on Thulaib's ask: the third SMM, the same oversight as the other two seats. */
-  '3344': { name:'HITHESH', role:'smm', team_member_id:29, label:'Hithesh (SMM)' },
+  HITHESH: { name:'HITHESH', role:'smm', team_member_id:29, label:'Hithesh (SMM)' },
 };
 
 /* ─── THE ONE DESIGNER LIST ───────────────────────────────────────────
@@ -1639,29 +1643,52 @@ async function attemptLogin(){
   const name = (document.getElementById('loginName').value||'').trim();
   const pin = (document.getElementById('loginPin').value||'').trim();
   if(!name||!pin){ document.getElementById('loginError').textContent='Enter name and PIN'; return; }
-  let foundUser = null;
-  for(const [k,v] of Object.entries(USERS)){
-    if(k===pin && v.name===name.toUpperCase()){
-      foundUser = {...v, pin:k};
-      break;
-    }
+  const KEY = name.toUpperCase();
+  const u = Object.prototype.hasOwnProperty.call(USERS, KEY) ? USERS[KEY] : null;
+  if(!u){ document.getElementById('loginError').textContent='Name ' + KEY + ' not found'; return; }
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true;
+  btn.textContent = 'CHECKING';
+  let res = null;
+  try{
+    const r = await fetch(SB_URL + '/rest/v1/rpc/app_pin_login', { method:'POST', headers:{ apikey:SB_KEY, Authorization:'Bearer ' + SB_KEY, 'Content-Type':'application/json' }, body: JSON.stringify({p_app:'graphic', p_name:KEY, p_pin:pin}) });
+    const data = await r.json();
+    if(data && typeof data === 'object' && 'ok' in data) res = data;
+  }catch(e){
+    console.warn('pin check', e && e.message);
   }
-  if(!foundUser){ document.getElementById('loginError').textContent='Invalid name or PIN'; return; }
-  currentUser = foundUser;
+  btn.disabled = false;
+  btn.textContent = 'ENTER';
+  if(!res){
+    document.getElementById('loginError').textContent='Could not reach the database to check your PIN. Try again.';
+    return;
+  }
+  if(!res.ok){
+    document.getElementById('loginPin').value='';
+    document.getElementById('loginError').textContent = res.why === 'locked' ? 'Too many wrong tries. This name is locked for 15 minutes.' : res.why === 'unknown' ? 'No PIN is set for ' + KEY + ' yet. Ask Thulaib.' : 'Wrong PIN';
+    return;
+  }
+  try{ sessionStorage.setItem('bbgfx_pass', res.token); }catch(e){}
+  currentUser = { ...u };
   sessionStorage.setItem('bbgfx_user', JSON.stringify(currentUser));
 
   // log login
-  const logData = { member_name: foundUser.name, logged_in_at: new Date().toISOString(), app:'graphic-system' };
+  const logData = { member_name: currentUser.name, logged_in_at: new Date().toISOString(), app:'graphic-system' };
   /* GFX-8, 6 Oct 2026: the id was written only for 3, 4 and 12, so Farhath,
      Tiana, Amjath, Shiara and Thulaib logged in with no id. Write the id from
      USERS for everyone who has one. */
-  if(foundUser.team_member_id!=null) logData.team_member_id = foundUser.team_member_id;
+  if(currentUser.team_member_id!=null) logData.team_member_id = currentUser.team_member_id;
   sbPost('team_login_logs', logData).catch(()=>{});
-
   showApp();
 }
 
 function logout(){
+  let pass = null;
+  try{ pass = sessionStorage.getItem('bbgfx_pass'); }catch(e){}
+  if(pass){
+    fetch(SB_URL + '/rest/v1/rpc/app_session_end', { method:'POST', headers:{ apikey:SB_KEY, Authorization:'Bearer ' + SB_KEY, 'Content-Type':'application/json' }, body: JSON.stringify({p_app:'graphic', p_token:pass}), keepalive:true }).catch(function(){});
+  }
+  try{ sessionStorage.removeItem('bbgfx_pass'); }catch(e){}
   sessionStorage.removeItem('bbgfx_user');
   currentUser = null;
   if(refreshTimer) clearInterval(refreshTimer);
@@ -4973,7 +5000,9 @@ async function runSelfTest(opts){
     const mt = mainBlock ? mainBlock.textContent : '';
     const restorePos = mt.lastIndexOf("sessionStorage.getItem('bbgfx_user')");
     ok('REGRESSION L-GFX-013: session restore is the LAST thing in its script block',
-       restorePos>-1 && (mt.length-restorePos) < 900,
+       /* 19 Oct 2026 (decision 521): the restore now asks the server for the pass, so the block itself is about 1,350 chars; the limit
+          moved with it, still tight enough to catch anything added below */
+       restorePos>-1 && (mt.length-restorePos) < 1600,
        (mt.length-restorePos)+' chars follow it; if this grows, something was added below it');
     const restoreAt = src.indexOf("sessionStorage.getItem('bbgfx_user')");
     const constAt   = src.indexOf('const PROJ_LIST_COLS');
@@ -4987,7 +5016,7 @@ async function runSelfTest(opts){
     ok('Roster: every designer has a login',
        DESIGNERS.every(d=>Object.values(USERS).some(u=>u.name===d.name)),
        DESIGNERS.map(d=>d.label).join(', '));
-    ok('Roster: no duplicate PINs', Object.keys(USERS).length===new Set(Object.keys(USERS)).size);
+    ok('Roster: no PIN in the page (USERS keyed by name)', !Object.keys(USERS).some(k=>/^\d+$/.test(k)) && Object.keys(USERS).every(k=>USERS[k].name===k));
     ok('Roster: no duplicate designer names',
        DESIGNERS.length===new Set(DESIGNERS.map(d=>d.name)).size);
     /* Four selects exist at rest; the two bulk-add row selects are created on
@@ -6718,17 +6747,39 @@ async function renderRecap(){
 (function(){
   fillDesignerSelects();
   let saved = null;
+  let pass = null;
   try{ saved = sessionStorage.getItem('bbgfx_user'); }catch(e){}
-  if(saved){
-    try{ currentUser = JSON.parse(saved); showApp(); }
-    catch(e){
-      /* A restore that fails must not leave a half-open app. Send them to the
-         login door instead, and say why. */
-      console.error('session restore failed', e);
-      try{ sessionStorage.removeItem('bbgfx_user'); }catch(_){}
+  try{ pass = sessionStorage.getItem('bbgfx_pass'); }catch(e){}
+  if(saved && pass){
+    (async () => {
+      let parsed = null;
+      try{ parsed = JSON.parse(saved); }catch(e){
+        console.error('session restore failed', e);
+        try{ sessionStorage.removeItem('bbgfx_user'); }catch(_){}
+        try{ sessionStorage.removeItem('bbgfx_pass'); }catch(_){}
+        currentUser = null;
+        toast('Could not restore your session. Please sign in again.','error');
+        return;
+      }
+      const KEY = parsed && parsed.name;
+      if(KEY && Object.prototype.hasOwnProperty.call(USERS, KEY)){
+        let answer = null;
+        try{
+          const r = await fetch(SB_URL + '/rest/v1/rpc/app_session_check', { method:'POST', headers:{ apikey:SB_KEY, Authorization:'Bearer ' + SB_KEY, 'Content-Type':'application/json' }, body: JSON.stringify({p_app:'graphic', p_token:pass}) });
+          answer = await r.json();
+        }catch(e){
+          answer = null;
+        }
+        if(answer === KEY){
+          currentUser = { ...USERS[KEY] };
+          showApp();
+          return;
+        }
+      }
+      try{ sessionStorage.removeItem('bbgfx_user'); }catch(e){}
+      try{ sessionStorage.removeItem('bbgfx_pass'); }catch(e){}
       currentUser = null;
-      toast('Could not restore your session. Please sign in again.','error');
-    }
+    })();
   }
 })();
 </script>

@@ -401,6 +401,27 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .qa-bar select{width:150px;height:34px;font-size:0.82rem}
 .k-advance{margin-top:8px;width:100%;background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent);border-radius:var(--r-sm);padding:7px;font-size:0.76rem;font-weight:700;cursor:pointer;transition:all .15s}
 .k-advance:hover{background:var(--accent);color:#fff}
+/* Team Score, 6 Nov 2026 (bb_pending 1440): Send back sits under Move to Approved, quieter, never the same weight */
+.k-sendback{margin-top:6px;width:100%;min-height:36px;background:transparent;color:var(--text-2);border:1px solid var(--border);border-radius:var(--r-sm);padding:7px;font-size:0.76rem;font-weight:700;cursor:pointer}
+.k-sendback:hover{border-color:var(--text-3);color:var(--text)}
+/* above the undo bar (9998) and toasts (9999): on a phone the bar sat over Cancel */
+.modal-overlay.gfx-rev{z-index:10000}
+.gfx-rev .modal{max-width:440px}
+.gfx-rev-body{padding:20px 20px 4px}
+.gfx-rev-title{font-size:1.02rem;font-weight:700;margin:0 0 4px}
+.gfx-rev-sub{font-size:0.82rem;color:var(--text-3);margin:0 0 14px;overflow-wrap:anywhere}
+.gfx-rev-label{display:block;font-size:0.82rem;font-weight:600;color:var(--text-2);margin-bottom:6px}
+.gfx-rev-reason{width:100%;min-height:104px;resize:vertical;font:inherit;font-size:16px;line-height:1.4;padding:10px 12px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--surface-2);color:var(--text);box-sizing:border-box}
+.gfx-rev-hint{font-size:0.76rem;color:var(--text-3);margin:6px 0 0;min-height:1.2em}
+.gfx-stars{display:flex;justify-content:center;gap:4px}
+.gfx-star{min-width:52px;min-height:52px;display:inline-flex;align-items:center;justify-content:center;background:none;border:none;border-radius:var(--r-sm);font-size:30px;line-height:1;color:var(--text-3);cursor:pointer;-webkit-tap-highlight-color:transparent}
+.gfx-star.on{color:#f5a524}
+.gfx-star:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.gfx-rev-bar{display:flex;flex-direction:column;gap:8px;padding:16px 20px calc(16px + var(--sab,0px))}
+.gfx-rev-bar .btn{width:100%;justify-content:center;min-height:48px;font-size:0.92rem}
+.gfx-rev-bar .btn[disabled]{opacity:.45;cursor:not-allowed}
+.gfx-rev-cancel{background:none;border:none;color:var(--text-2);font-weight:600}
+@media (max-width:640px){.modal-overlay.gfx-rev{align-items:flex-end;padding:calc(20px + var(--sat,0px)) 0 0}.gfx-rev .modal{margin:0;border-radius:16px 16px 0 0}}
 .k-doneflag{margin-top:8px;text-align:center;font-size:0.72rem;font-weight:700;color:var(--green);background:var(--green-soft);border-radius:var(--r-sm);padding:6px}
 /* F3 review fix, 7 Oct 2026 (L-GFX-063): a quiet label, not a button, where a designer would see Move to Approved */
 .gfx-wait{display:inline-block;font-size:0.72rem;font-weight:600;color:var(--text-3);line-height:1.35;padding:6px 2px}
@@ -439,7 +460,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .work-item-info{flex:1;min-width:0}
 .work-item-title{font-weight:600;font-size:0.9rem;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .work-item-sub{font-size:0.78rem;color:var(--text-2)}
-.work-item-actions{display:flex;gap:6px;flex-shrink:0}
+.work-item-actions{display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end}
 
 /* ═══════════════ PILLARS ═══════════════ */
 .pillar-section{max-width:600px}
@@ -2162,7 +2183,7 @@ function renderKCard(p){
       </div>
       ${window.BBAGE?BBAGE.chip(p):''}
       ${(()=>{ const i=STAGES.indexOf(p.current_stage); return (i>=0 && i<STAGES.length-1)
-        ? (gfxWaitsForApprover(STAGES[i+1]) ? gfxWaitHTML() : `<button class="k-advance" onclick="event.stopPropagation();quickMove(${p.id},'${STAGES[i+1]}')">Move to ${esc(STAGE_LABELS[STAGES[i+1]])} &#9654;&#xFE0E;</button>`)
+        ? (gfxWaitsForApprover(STAGES[i+1]) ? gfxWaitHTML() : `<button class="k-advance" onclick="event.stopPropagation();quickMove(${p.id},'${STAGES[i+1]}')">Move to ${esc(STAGE_LABELS[STAGES[i+1]])} &#9654;&#xFE0E;</button>`+gfxSendBackHTML(p,'k-sendback'))
         : `<div class="k-doneflag">&#10003; Approved</div>`; })()}
     </div>
   `;
@@ -2232,13 +2253,27 @@ async function bulkMoveSelected(){
   if(!ids.length) return;
   /* Decision 98, 7 Oct 2026: said once, before anything moves. */
   if(to==='approved' && !canApprove()){ toast('Only a head or an SMM can approve a post. Move it to Head Review instead','error'); return; }
-  if(!confirm('Move '+ids.length+' post'+(ids.length!==1?'s':'')+' to '+STAGE_LABELS[to]+'?')) return;
+  /* Team Score, 6 Nov 2026: a bulk approval asks for stars once, in place of the
+     confirm. The same stars are recorded on each post that is approved. */
+  let bulkStars = 0;
+  if(to==='approved'){
+    const a = await gfxAskReview('approve', ids.length===1 ? projects.find(x=>x.id===ids[0]) : null, ids.length);
+    if(!a) return;
+    bulkStars = a.stars;
+  } else if(!confirm('Move '+ids.length+' post'+(ids.length!==1?'s':'')+' to '+STAGE_LABELS[to]+'?')) return;
+  let unrated = 0;
   /* Review fix, 7 Oct 2026: a history read that failed was counted as "not been
      through Head Review". The two reasons are counted apart (L-GFX-061). */
   let moved=0, blocked=0, unread=0;
   BBU.batch=[];                       /* many moves, ONE undo */
   for(const id of ids){
-    if(await gfxSetStage(id, to, 'Moved in bulk', true)) moved++;
+    const pre = projects.find(x=>x.id===id), snap = pre ? Object.assign({}, pre) : null;
+    const wasThere = !!(pre && pre.current_stage===to);
+    if(await gfxSetStage(id, to, 'Moved in bulk', true)){
+      moved++;
+      if(bulkStars && snap && !wasThere
+         && !(await gfxReviewEvent(snap, 'rating', { stars:bulkStars, from_stage:snap.current_stage, to_stage:'approved' }))) unrated++;
+    }
     else if(GFX_STAGE_BLOCK===GFX_MSG.read) unread++;
     else if(GFX_STAGE_BLOCK) blocked++;
   }
@@ -2248,8 +2283,9 @@ async function bulkMoveSelected(){
         +(blocked?'. '+blocked+' not moved: '+(canApprove()
               ? 'the review could not be recorded, try again'
               : (blocked===1?'it has':'they have')+' not been through Head Review'):'')
-        +(unread?'. '+unread+' not moved: '+(unread===1?'its':'their')+' history could not be read, try again':''),
-        moved===ids.length?'success':'error');
+        +(unread?'. '+unread+' not moved: '+(unread===1?'its':'their')+' history could not be read, try again':'')
+        +(unrated?'. The stars were not recorded on '+unrated:''),
+        (moved===ids.length && !unrated)?'success':'error');
   BULK_PICKED.clear(); await loadAll(); bulkBarSync();
 }
 /* Archive in bulk: reversible, so a plain confirm is enough. Every designer
@@ -2390,6 +2426,205 @@ async function gfxSetStage(id, newStage, note, quiet, undo){
   return true;
 }
 
+/* ══ TEAM SCORE: SEND BACK AND STARS (gfx-review-events-1440) ══════════════
+   Thulaib approved the Team Score on 6 Nov 2026 (bb_pending 1440). A head who
+   reviews a post either sends it back with a reason or approves it with 1 to 5
+   stars. Both land in bb_review_events (insert only, created_at is the
+   server's). Spec: ~/bb-systems/team-score/SPEC.md.
+   WRITE ORDER, never changed: the card moves first (gfxSetStage, the ONE stage
+   writer, which writes the history row with the reason in notes), then the
+   event. If the event cannot be written the move STAYS and a toast says so.
+   The approval gate (gfxApproveBlock and trigger gfx_guard_approved) is not
+   touched: stars are written only after gfxSetStage says the approval went in.
+   BACK. The sheet is a .modal-overlay so BBF freezes the page behind it and
+   Back closes it. Opened over the post detail, BBF pushes no second history
+   entry, so this sheet pushes its own and its capture listener takes that pop
+   before BBF can close the detail underneath (Back once closes the sheet, Back
+   twice closes the detail, the page stays). */
+const GFX_REV_MARK = 'gfx-review-events-1440';
+let GFX_REV = null;          /* the open sheet: {mode, stars, resolve, pushed} */
+let GFX_REV_SWALLOW = 0;     /* pops this sheet asked for itself */
+let GFX_REV_WAITERS = [];
+function gfxRevEl(){
+  let el = document.getElementById('gfxReviewSheet');
+  if(el) return el;
+  el = document.createElement('div');
+  el.className = 'modal-overlay gfx-rev';
+  el.id = 'gfxReviewSheet';
+  el.setAttribute('data-marker', GFX_REV_MARK);
+  el.addEventListener('click', e=>{ if(e.target===el) gfxRevClose(false); });
+  document.body.appendChild(el);
+  return el;
+}
+function gfxRevAfterPop(){
+  return new Promise(res=>{
+    const t = setTimeout(()=>{ GFX_REV_WAITERS = GFX_REV_WAITERS.filter(f=>f!==done); res(); }, 400);
+    function done(){ clearTimeout(t); res(); }
+    GFX_REV_WAITERS.push(done);
+  });
+}
+window.addEventListener('popstate', function(e){
+  const w = GFX_REV_WAITERS; GFX_REV_WAITERS = [];
+  w.forEach(f=>f());
+  if(GFX_REV_SWALLOW > 0){ GFX_REV_SWALLOW--; e.stopImmediatePropagation(); return; }
+  if(GFX_REV && GFX_REV.pushed){
+    GFX_REV.pushed = false;          /* this Back used up the entry the sheet pushed */
+    e.stopImmediatePropagation();
+    gfxRevClose(false);
+  }
+}, true);
+/* Opens the sheet and resolves {stars} or {reason} on confirm, null on Cancel or
+   Back. It resolves only once the sheet is shut and its history entry is gone,
+   so the caller's own moves and reopened screens never race the Back stack. */
+function gfxAskReview(mode, p, count){
+  if(GFX_REV) gfxRevClose(false);
+  const el = gfxRevEl();
+  const nested = !!(window.BBF && BBF.anyOpen && BBF.anyOpen());
+  const many = count && count > 1;
+  const sub = many ? (count+' posts') : esc((p && p.title) || 'Untitled')+(p && p.client_name ? ' &middot; '+esc(p.client_name) : '');
+  const who = (p && p.assigned_designer) ? esc(p.assigned_designer) : 'the designer';
+  el.innerHTML = mode==='send_back'
+    ? `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="gfxRevTitle">
+        <div class="gfx-rev-body">
+          <h3 class="gfx-rev-title" id="gfxRevTitle">Send back to To do</h3>
+          <p class="gfx-rev-sub">${sub}</p>
+          <label class="gfx-rev-label" for="gfxRevReason">Why is it going back?</label>
+          <textarea id="gfxRevReason" class="gfx-rev-reason" maxlength="500" placeholder="What ${who} should change" oninput="gfxRevSync()"></textarea>
+          <p class="gfx-rev-hint" id="gfxRevHint">Write at least 3 characters</p>
+        </div>
+        <div class="gfx-rev-bar">
+          <button class="btn btn-accent" id="gfxRevGo" disabled onclick="gfxRevConfirm()">Send back</button>
+          <button class="btn gfx-rev-cancel" data-close onclick="gfxRevClose(false)">Cancel</button>
+        </div>
+      </div>`
+    : `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="gfxRevTitle">
+        <div class="gfx-rev-body">
+          <h3 class="gfx-rev-title" id="gfxRevTitle">${many ? 'Approve '+count+' posts' : 'Approve this post'}</h3>
+          <p class="gfx-rev-sub">${sub}</p>
+          <span class="gfx-rev-label" id="gfxRevStarsLbl">How good is the work?${many ? ' The stars go on each post.' : ''}</span>
+          <div class="gfx-stars" role="radiogroup" aria-labelledby="gfxRevStarsLbl">
+            ${[1,2,3,4,5].map(n=>`<button type="button" class="gfx-star" role="radio" aria-checked="false" aria-label="${n} star${n>1?'s':''}" data-star="${n}" onclick="gfxRevStar(${n})">&#9733;&#xFE0E;</button>`).join('')}
+          </div>
+          <p class="gfx-rev-hint" id="gfxRevHint" style="text-align:center">Tap a star to approve</p>
+        </div>
+        <div class="gfx-rev-bar">
+          <button class="btn btn-accent" id="gfxRevGo" disabled onclick="gfxRevConfirm()">Approve</button>
+          <button class="btn gfx-rev-cancel" data-close onclick="gfxRevClose(false)">Cancel</button>
+        </div>
+      </div>`;
+  return new Promise(resolve=>{
+    GFX_REV = { mode:mode, stars:0, resolve:resolve, pushed:false };
+    el.removeAttribute('inert'); el.removeAttribute('aria-hidden');   /* BBF shielded it if the detail opened first */
+    el.classList.add('open');
+    if(nested){ try{ history.pushState({gfxRev:1},''); GFX_REV.pushed = true; }catch(e){} }
+    const f = el.querySelector(mode==='send_back' ? '#gfxRevReason' : '.gfx-star');
+    if(f){ try{ f.focus({preventScroll:true}); }catch(e){} }
+  });
+}
+function gfxRevSync(){
+  const go = document.getElementById('gfxRevGo'); if(!go || !GFX_REV) return;
+  if(GFX_REV.mode==='send_back'){
+    const n = (document.getElementById('gfxRevReason').value||'').trim().length;
+    go.disabled = n < 3;
+    const h = document.getElementById('gfxRevHint');
+    if(h) h.textContent = n < 3 ? 'Write at least 3 characters' : ' ';
+  } else {
+    go.disabled = !(GFX_REV.stars >= 1 && GFX_REV.stars <= 5);
+  }
+}
+function gfxRevStar(n){
+  if(!GFX_REV) return;
+  GFX_REV.stars = n;
+  document.querySelectorAll('#gfxReviewSheet .gfx-star').forEach(b=>{
+    const v = Number(b.dataset.star);
+    b.classList.toggle('on', v<=n);
+    b.setAttribute('aria-checked', v===n ? 'true' : 'false');
+  });
+  const h = document.getElementById('gfxRevHint');
+  if(h) h.textContent = n+' of 5';
+  gfxRevSync();
+}
+function gfxRevConfirm(){
+  if(!GFX_REV) return;
+  if(GFX_REV.mode==='send_back'){
+    const reason = (document.getElementById('gfxRevReason').value||'').trim();
+    if(reason.length < 3) return;
+    gfxRevClose({ reason: reason });
+  } else {
+    if(!(GFX_REV.stars >= 1 && GFX_REV.stars <= 5)) return;
+    gfxRevClose({ stars: GFX_REV.stars });
+  }
+}
+async function gfxRevClose(result){
+  const st = GFX_REV; if(!st) return;
+  GFX_REV = null;
+  const el = document.getElementById('gfxReviewSheet');
+  if(el) el.classList.remove('open');
+  if(st.pushed){                      /* closed by a button: take back the entry it pushed */
+    GFX_REV_SWALLOW++;
+    const pop = gfxRevAfterPop();
+    try{ history.back(); }catch(e){ GFX_REV_SWALLOW--; }
+    await pop;
+  } else if(result){
+    await gfxRevAfterPop();           /* BBF pops its own entry when the sheet shuts */
+  }
+  st.resolve(result || null);
+}
+/* The event row. Never sends created_at. Returns true when it was written. */
+async function gfxReviewEvent(p, kind, extra){
+  const row = Object.assign({
+    system: 'graphic',
+    job_id: p.id,
+    person_id: (p.assigned_designer_id!=null && p.assigned_designer_id!=='') ? Number(p.assigned_designer_id) : null,
+    kind: kind,
+    by_name: (currentUser && currentUser.name) || null
+  }, extra || {});
+  let r = null;
+  try{ r = await sbPost('bb_review_events', row); }catch(e){ r = null; }
+  const ok = Array.isArray(r);
+  if(!ok){ try{ console.warn('[team score] review event not recorded', kind, p.id, r); }catch(e){} }
+  return ok;
+}
+const GFX_REV_MSG = {
+  reason: 'Saved. The reason was not recorded.',
+  stars:  'Saved. The stars were not recorded.'
+};
+function gfxCanSendBack(p){ return !!p && p.current_stage==='head_review' && canApprove(); }
+function gfxSendBackHTML(p, cls){
+  return gfxCanSendBack(p) ? `<button class="${cls}" onclick="event.stopPropagation();gfxSendBack(${p.id})">&#9664;&#xFE0E; Send back</button>` : '';
+}
+/* Send back: Head Review to To do, with the reason. */
+async function gfxSendBack(id){
+  const p = projects.find(x=>x.id===id);
+  if(!gfxCanSendBack(p)){ toast('Only a head or an SMM can send back a post in Head Review','error'); return false; }
+  const fromDetail = !!document.querySelector('#modalDetail.open');
+  const a = await gfxAskReview('send_back', p);
+  if(!a) return false;
+  const snap = Object.assign({}, p);
+  const okMove = await gfxSetStage(id, 'brief', a.reason);
+  if(!okMove){ if(!GFX_STAGE_BLOCK) toast('Could not send the post back. Check your connection and try again','error'); return false; }
+  const okEv = await gfxReviewEvent(snap, 'send_back', { reason:a.reason, from_stage:'head_review', to_stage:'brief' });
+  toast(okEv ? 'Sent back to To do' : GFX_REV_MSG.reason, okEv ? 'success' : 'error');
+  if(fromDetail){ closeModal('modalDetail'); await loadAll(); openProjectDetail(id); }
+  else await loadAll();
+  return true;
+}
+/* Every approval asks for stars first, then moves, then rates. Returns true when
+   the post is Approved. Designers never see this: gfxSetStage refuses them. */
+async function gfxApproveWithStars(id, note, quiet){
+  const p = projects.find(x=>x.id===id);
+  if(!p) return false;
+  if(!canApprove()) return gfxSetStage(id, 'approved', note, quiet);
+  const a = await gfxAskReview('approve', p);
+  if(!a){ GFX_STAGE_BLOCK = 'cancelled'; return false; }
+  const snap = Object.assign({}, p);
+  const okMove = await gfxSetStage(id, 'approved', note, quiet);
+  if(!okMove) return false;
+  const okEv = await gfxReviewEvent(snap, 'rating', { stars:a.stars, from_stage:snap.current_stage, to_stage:'approved' });
+  if(!okEv) toast(GFX_REV_MSG.stars, 'error');
+  return true;
+}
+
 /* ══ UNDO ═══════════════════════════════════════════════════════════════
    Read LANDMINES.md before changing. In memory, this session, stage moves
    only. Reverses THROUGH gfxSetStage so history and completed_at stay right. */
@@ -2524,7 +2759,8 @@ async function onDrop(e,el){
   if(!proj || proj.current_stage===newStage) return;
   /* Decision 98, 7 Oct 2026: a refused move said "Moved" anyway. The card now
      goes back to its column and the reason is shown by gfxSetStage. */
-  const okMove = await gfxSetStage(dragId, newStage);
+  /* Team Score, 6 Nov 2026: a drop on Approved (straight from To do too, L-GFX-076) asks for stars first. */
+  const okMove = newStage==='approved' ? await gfxApproveWithStars(dragId) : await gfxSetStage(dragId, newStage);
   if(okMove) toast('Moved to '+STAGE_LABELS[newStage]);
   else if(!GFX_STAGE_BLOCK) toast('Could not move the post. Check your connection and try again','error');
   renderPipeline();
@@ -3003,7 +3239,8 @@ async function openProjectDetail(id){
   document.getElementById('detailBody').innerHTML = `
     <div class="detail-actions">
       ${canMovePrev?`<button class="btn btn-ghost btn-sm" onclick="moveStage(${p.id},'prev')">&#9664; Previous Stage</button>`:''}
-      ${canMoveNext?(gfxWaitsForApprover(STAGES[stageIdx+1])?gfxWaitHTML():`<button class="btn btn-accent btn-sm" onclick="moveStage(${p.id},'next')">Next Stage &#9654;&#xFE0E;</button>`):''}
+      ${canMoveNext?(gfxWaitsForApprover(STAGES[stageIdx+1])?gfxWaitHTML():`<button class="btn btn-accent btn-sm" onclick="moveStage(${p.id},'next')">${STAGES[stageIdx+1]==='approved'?'Approve':'Next Stage'} &#9654;&#xFE0E;</button>`):''}
+      ${gfxSendBackHTML(p,'btn btn-ghost btn-sm')}
       <button class="btn btn-ghost btn-sm" onclick="closeModal('modalDetail');openEditProject(${p.id})">Edit</button>
       <button class="btn btn-ghost btn-sm" onclick="archiveProject(${p.id})">Archive</button>
       ${canDeleteForever()?`<button class="btn btn-danger btn-sm" onclick="deleteProject(${p.id})">Delete</button>`:''}
@@ -3072,8 +3309,9 @@ async function moveStage(id, dir){
   const newIdx = dir==='next' ? idx+1 : idx-1;
   if(newIdx<0||newIdx>=STAGES.length) return;
   const newStage = STAGES[newIdx];
-  /* Decision 98, 7 Oct 2026: stay on the post when the move is refused. */
-  const okMove = await gfxSetStage(id, newStage);
+  /* Decision 98, 7 Oct 2026: stay on the post when the move is refused.
+     Team Score, 6 Nov 2026: an approval asks for stars first (gfxApproveWithStars). */
+  const okMove = newStage==='approved' ? await gfxApproveWithStars(id) : await gfxSetStage(id, newStage);
   if(!okMove){ if(!GFX_STAGE_BLOCK) toast('Could not move the post. Check your connection and try again','error'); return; }
   toast('Moved to '+STAGE_LABELS[newStage]);
   closeModal('modalDetail');
@@ -3348,7 +3586,7 @@ function renderMyWork(){
           <div class="work-item-sub">${esc(p.client_name||'No client')} &middot; ${esc(p.type||'post')} &middot; Due ${fmtDate(p.deadline)}</div>
         </div>
         <div class="work-item-actions">
-          ${nextStage?(gfxWaitsForApprover(nextStage)?gfxWaitHTML():`<button class="btn btn-accent btn-sm" onclick="quickMove(${p.id},'${nextStage}')">${STAGE_LABELS[nextStage]} &#9654;&#xFE0E;</button>`):'<span class="badge" style="background:var(--green-soft);color:var(--green)">Done</span>'}
+          ${nextStage?(gfxWaitsForApprover(nextStage)?gfxWaitHTML():`<button class="btn btn-accent btn-sm" onclick="quickMove(${p.id},'${nextStage}')">${STAGE_LABELS[nextStage]} &#9654;&#xFE0E;</button>`+gfxSendBackHTML(p,'btn btn-ghost btn-sm')):'<span class="badge" style="background:var(--green-soft);color:var(--green)">Done</span>'}
         </div>
       </div>`;
     });
@@ -3360,9 +3598,11 @@ function renderMyWork(){
 async function quickMove(id, newStage){
   const p = projects.find(x=>x.id===id);
   if(!p) return;
-  /* Decision 98, 7 Oct 2026: a refused move no longer says "Moved". */
-  const okMove = await gfxSetStage(id, newStage);
+  /* Decision 98, 7 Oct 2026: a refused move no longer says "Moved".
+     Team Score, 6 Nov 2026: an approval asks for stars first; Cancel moves nothing. */
+  const okMove = newStage==='approved' ? await gfxApproveWithStars(id) : await gfxSetStage(id, newStage);
   if(okMove) toast('Moved to '+STAGE_LABELS[newStage]);
+  else if(GFX_STAGE_BLOCK==='cancelled') return;
   else if(!GFX_STAGE_BLOCK) toast('Could not move the post. Check your connection and try again','error');
   await loadAll();
 }

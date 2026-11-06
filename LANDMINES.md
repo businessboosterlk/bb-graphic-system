@@ -2020,3 +2020,5 @@ sign out calls `app_session_end`. EVERY person got a NEW PIN (the old ones are i
 private sheet. Forgotten PIN: `select public.app_pin_set('graphic','NAME','new pin');` in the Supabase SQL editor. Check:
 `node ~/bb-systems/app-pin/checks/pin-door.check.mjs graphic` (database faked). Mould: ~/bb-systems/app-pin/. The data tables stay
 open to the public key; only the role floor closes them.
+
+## L-GFX-077 · Team Score: Send back and Stars write bb_review_events · BUILT 2026-11-06 (bb_pending 1440): Send back (Head Review to To do, reason 3+ characters in the history notes) and 1 to 5 stars on every Approve go through gfxSetStage first, then the event; a failed event keeps the move and says "Saved. The reason was not recorded."; marker gfx-review-events-1440; check `node ~/bb-systems/team-score/checks/graphic-review.check.mjs` (writes faked).

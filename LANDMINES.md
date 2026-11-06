@@ -2022,3 +2022,15 @@ private sheet. Forgotten PIN: `select public.app_pin_set('graphic','NAME','new p
 open to the public key; only the role floor closes them.
 
 ## L-GFX-077 · Team Score: Send back and Stars write bb_review_events · BUILT 2026-11-06 (bb_pending 1440): Send back (Head Review to To do, reason 3+ characters in the history notes) and 1 to 5 stars on every Approve go through gfxSetStage first, then the event; a failed event keeps the move and says "Saved. The reason was not recorded."; marker gfx-review-events-1440; check `node ~/bb-systems/team-score/checks/graphic-review.check.mjs` (writes faked).
+
+## L-GFX-078 · My score: each person's own Team Score week · BUILT 2026-11-06 (bb_pending 1440)
+Nav item "My score" (data-page `myscore`, section `#section-myscore`) shows the signed-in person's OWN week only, heads included: the
+same drill-down as the Command Centre (sum line or "Not measurable" with the reason, C/O/Q, what hurt, coach line, jobs, send-backs,
+client changes shown not scored) and the same week picker (this week so far, last week, back 8). The block sits at the END of this
+file between `@@BB_MYSCORE_CFG@@` and `@@BB_MYSCORE_END@@` (marker MYSCORE-1) and is written ONLY by
+`python3 ~/bb-systems/team-score/my-score/install.py`; edit `~/bb-systems/team-score/my-score/block.html`, never this copy.
+`team-score/engine.js` and `team-score/ts-adapter.js` are byte copies, never edited (`install.py --check`). Reads only: anon REST,
+paged, named columns, never image_url, one person, only the weeks shown. **Lesson.** BBF's shield never inerts a box that holds
+`#sidebar`, so `#appShell` stayed clickable behind the sheet; MS_APP.behind names it and the sheet sets and clears inert itself.
+`.content section` is display:none, so the block holds no `<section>`. Checks: `node ~/bb-systems/team-score/checks/myscore-recount.mjs`
+(PASS, `--plant` FAILS) and `node ~/bb-systems/team-score/checks/myscore-click.mjs --only g`.

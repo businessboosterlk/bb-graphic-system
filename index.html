@@ -53,6 +53,9 @@
 .wp-today-col{color:var(--accent)}
 th.wp-today-col{background:var(--accent-soft)}
 .wp-cell{padding:9px 10px;min-width:132px;border-left:3px solid transparent}
+/* td padding:0 above outranks .wp-cell, so a filled cell lost its 10px sides and the tick's grown
+   tap area reached into the next cell: Move to next week ticked the neighbour's job (8 Nov 2026). */
+.wp-grid-table td.wp-cell.has{padding:9px 10px}
 .wp-cell.has.pending{border-left-color:var(--amber);background:var(--amber-soft)}
 .wp-cell.has.done{border-left-color:var(--green);background:var(--green-soft)}
 .wp-cell-empty{padding:14px 10px;color:var(--text-3);font-size:0.8rem;text-align:center}
@@ -7337,8 +7340,9 @@ body.sheet-open{position:fixed;left:0;right:0;width:100%}
  .wp-item{padding:12px 0}
  .wp-item-box,.wp-item-next{position:relative}
  .wp-item-box::after,.wp-item-next::after{
-   content:'';position:absolute;left:50%;top:50%;
-   width:44px;height:44px;transform:translate(-50%,-50%);inset:auto}
+   /* inset:auto first: written last it reset left and top, so the 44px square sat 22px up and left of the tick */
+   content:'';position:absolute;inset:auto;left:50%;top:50%;
+   width:44px;height:44px;transform:translate(-50%,-50%)}
 }
 </style>
 

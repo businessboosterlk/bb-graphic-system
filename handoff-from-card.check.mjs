@@ -165,6 +165,23 @@ for (const [size, opts] of [['phone', { viewport: { width: 390, height: 844 }, i
   pass('BBHO.selfcheck names its checks From card and all pass when signed in', sc.length === 4 && sc.every(x => x.pass && /^From card: /.test(x.name)), sc.map(x => (x.pass ? 'ok ' : 'NO ') + x.name).join('; '));
   await ctx.close();
 }
+/* BUILD 5 click path: on the weekly plan a filled cell lost its padding, so the next cell's tick box (grown 13px for a
+   thumb) sat over this row's Move to next week arrow and the click ticked the neighbour's job. Two filled cells side by
+   side, drawn by the page's own wpRenderItem and CSS: the arrow's centre must hit its own button, the tick its own box. */
+for (const [size, opts] of [['phone', { viewport: { width: 402, height: 874 }, isMobile: true, hasTouch: true }], ['desk', { viewport: { width: 1440, height: 900 } }]]) {
+  const { ctx, p } = await page(b, opts, BASE);
+  const r = await p.evaluate(() => {
+    const t = (id) => ({ id, status: 'planned', client_name: 'CLIENT ' + id, design_count: 1, task_type: 'post', notes: null, week_start: '2026-11-08' });
+    const box = document.createElement('div'); box.style.cssText = 'position:fixed;left:0;top:200px;width:900px;z-index:99999;background:#111';
+    box.innerHTML = '<table class="wp-grid-table" style="min-width:0;width:400px"><tbody><tr><td class="wp-cell has planned">' + wpRenderItem(t(1)) + '</td><td class="wp-cell has planned">' + wpRenderItem(t(2)) + '</td></tr></tbody></table>';
+    document.body.appendChild(box);
+    const hit = (sel, n) => { const e = box.querySelectorAll(sel)[n], q = e.getBoundingClientRect(); const h = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2); return (h && h.closest(sel)) === e; };
+    const out = { next1: hit('.wp-item-next', 0), next2: hit('.wp-item-next', 1), tick1: hit('.wp-item-box', 0), tick2: hit('.wp-item-box', 1) };
+    box.remove(); return out;
+  });
+  pass(`${size} weekly plan: Move to next week and the tick each hit their own row, not the next cell's`, r.next1 && r.next2 && r.tick1 && r.tick2, JSON.stringify(r));
+  await ctx.close();
+}
 await b.close();
 console.log(rows.join('\n'));
 console.log(`\nRESULT: ${total - bad} of ${total} PASS${bad ? ', ' + bad + ' FAIL' : ''}`);

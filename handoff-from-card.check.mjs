@@ -57,6 +57,15 @@ async function selftestFails(b, url) {
   await ctx.close(); return r;
 }
 
+/* BUILD 5 speed (bb-speed rule 4): no picture pasted into the page over the 20 KB budget. The BB logo sat in the page
+   twice as a 37 KB base64 PNG (100 KB of the page); it now loads from bb-logo.png beside the page. */
+{
+  const { readFileSync } = await import('node:fs');
+  const html = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
+  const big = (html.match(/data:image\/[a-z+]+;base64,[A-Za-z0-9+\/=]+/g) || []).map(x => Math.round(x.length * 0.75 / 1024)).filter(k => k > 20);
+  pass('no image pasted into the page over 20 KB', big.length === 0, big.map(k => k + ' KB').join(', '));
+  pass('both BB logos load bb-logo.png with a set size', (html.match(/<img class="(bb-logo-img|sidebar-bb-logo-img)" src="bb-logo\.png" width="834" height="338"/g) || []).length === 2);
+}
 const b = await chromium.launch();
 for (const [size, opts] of [['phone', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true }], ['desk', { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 }]]) {
   const L = size;

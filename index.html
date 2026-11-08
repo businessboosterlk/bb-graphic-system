@@ -786,8 +786,8 @@ tr:hover td{background:var(--surface-2)}
       <div class="sidebar-user">
         <div class="user-avatar" id="userAvatar">?</div>
         <div class="user-info">
-          <div class="user-name" id="userName">—</div>
-          <div class="user-role" id="userRole">—</div>
+          <div class="user-name" id="userName"></div>
+          <div class="user-role" id="userRole"></div>
         </div>
       </div>
       <div id="gfxGuideRow"></div>
@@ -843,7 +843,7 @@ tr:hover td{background:var(--surface-2)}
       <section id="section-pipeline">
         <div class="sec-header qa-header">
           <div class="qa-bar">
-            <input type="text" id="qaTitle" placeholder="+ Quick add — type a title, press Enter" autocomplete="off" onkeydown="if(event.key==='Enter')quickAddProject()">
+            <input type="text" id="qaTitle" placeholder="+ Quick add: type a title, press Enter" autocomplete="off" onkeydown="if(event.key==='Enter')quickAddProject()">
             <select id="qaType"><option value="post">Post</option><option value="story">Story</option></select>
             <select id="qaClient"><option value="">Client *</option></select>
             <select id="qaMonth" title="Which month's content is this?"><option value="1">January</option><option value="2">February</option><option value="3">March</option><option value="4">April</option><option value="5">May</option><option value="6">June</option><option value="7">July</option><option value="8">August</option><option value="9">September</option><option value="10">October</option><option value="11">November</option><option value="12">December</option></select>
@@ -911,10 +911,10 @@ tr:hover td{background:var(--surface-2)}
           <div class="flex gap-2">
             <select id="clientQuarterFilter" onchange="loadClients()" style="height:36px;font-size:0.82rem">
               <option value="">Current Quarter</option>
-              <option value="1">Q1 (Jan–Mar)</option>
-              <option value="2">Q2 (Apr–Jun)</option>
-              <option value="3">Q3 (Jul–Sep)</option>
-              <option value="4">Q4 (Oct–Dec)</option>
+              <option value="1">Q1 (Jan to Mar)</option>
+              <option value="2">Q2 (Apr to Jun)</option>
+              <option value="3">Q3 (Jul to Sep)</option>
+              <option value="4">Q4 (Oct to Dec)</option>
             </select>
             <select id="clientYearFilter" onchange="loadClients()" style="height:36px;font-size:0.82rem">
             </select>
@@ -1343,7 +1343,7 @@ tr:hover td{background:var(--surface-2)}
 
 <script>
 /* ═══════════════════════════════════════════════════════════
-   BB GRAPHIC SYSTEM — JavaScript
+   BB GRAPHIC SYSTEM, JavaScript
    ═══════════════════════════════════════════════════════════ */
 
 // ─── CONFIG ───
@@ -1629,8 +1629,8 @@ function toast(msg, type='success'){
 }
 
 // ─── DATE HELPERS ───
-function fmtDate(d){ if(!d) return '—'; const dt=new Date(d); return dt.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); }
-function fmtDateTime(d){ if(!d) return '—'; const dt=new Date(d); return dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' '+dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}); }
+function fmtDate(d){ if(!d) return 'not set'; const dt=new Date(d); return dt.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); }
+function fmtDateTime(d){ if(!d) return 'not set'; const dt=new Date(d); return dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' '+dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}); }
 function timeAgo(d){
   if(!d) return '';
   const s=Math.floor((Date.now()-new Date(d))/1000);
@@ -2031,7 +2031,7 @@ function renderDashboard(){
     document.getElementById('dashActivity').innerHTML = emptyHTML('No recent activity');
   } else {
     document.getElementById('dashActivity').innerHTML = recent.map(h=>
-      `<div class="feed-item"><div class="feed-dot"></div><div><div class="feed-text"><strong>${esc(h.entered_by||'System')}</strong> moved project to <strong>${STAGE_LABELS[h.stage]||h.stage}</strong>${h.notes?' — '+esc(h.notes):''}</div><div class="feed-time">${timeAgo(h.entered_at)}</div></div></div>`
+      `<div class="feed-item"><div class="feed-dot"></div><div><div class="feed-text"><strong>${esc(h.entered_by||'System')}</strong> moved project to <strong>${STAGE_LABELS[h.stage]||h.stage}</strong>${h.notes?', '+esc(h.notes):''}</div><div class="feed-time">${timeAgo(h.entered_at)}</div></div></div>`
     ).join('');
   }
 
@@ -2046,7 +2046,7 @@ function renderDashboard(){
     document.getElementById('dashOverdue').innerHTML = emptyHTML('No overdue projects');
   } else {
     document.getElementById('dashOverdue').innerHTML = overdue.map(p=>
-      `<div class="feed-item" style="cursor:pointer" onclick="openProjectDetail(${p.id})"><div class="feed-dot" style="background:var(--red)"></div><div><div class="feed-text"><strong>${esc(p.title)}</strong> — ${esc(p.client_name||'No client')}</div><div class="feed-time">Due ${fmtDate(p.deadline)}</div></div></div>`
+      `<div class="feed-item" style="cursor:pointer" onclick="openProjectDetail(${p.id})"><div class="feed-dot" style="background:var(--red)"></div><div><div class="feed-text"><strong>${esc(p.title)}</strong>, ${esc(p.client_name||'No client')}</div><div class="feed-time">Due ${fmtDate(p.deadline)}</div></div></div>`
     ).join('');
   }
 }
@@ -2207,7 +2207,7 @@ function renderKCard(p){
         <span class="badge badge-type">${esc(p.type||'post')}</span>
         <span class="badge badge-priority-${p.priority||'normal'}">${esc(p.priority||'normal')}</span>
         ${p.assigned_designer?`<span class="badge badge-designer">${esc(p.assigned_designer)}</span>`:''}
-        ${p.deadline?`<span class="badge-deadline ${isOd?'overdue':''}">${isOd?'OVERDUE — ':''}${fmtDate(p.deadline)}</span>`:''}
+        ${p.deadline?`<span class="badge-deadline ${isOd?'overdue':''}">${isOd?'OVERDUE: ':''}${fmtDate(p.deadline)}</span>`:''}
       </div>
       ${window.BBAGE?BBAGE.chip(p):''}
       ${(()=>{ const i=STAGES.indexOf(p.current_stage); return (i>=0 && i<STAGES.length-1)
@@ -3258,7 +3258,7 @@ async function openProjectDetail(id){
   ).join('');
 
   const historyHTML = (Array.isArray(history)?history:[]).map(h=>
-    `<div class="history-item"><div class="history-dot"></div><div><div class="history-text"><strong>${STAGE_LABELS[h.stage]||h.stage}</strong> by ${esc(h.entered_by||'System')}${h.notes?' — '+esc(h.notes):''}</div><div class="history-time">${fmtDateTime(h.entered_at)}</div></div></div>`
+    `<div class="history-item"><div class="history-dot"></div><div><div class="history-text"><strong>${STAGE_LABELS[h.stage]||h.stage}</strong> by ${esc(h.entered_by||'System')}${h.notes?', '+esc(h.notes):''}</div><div class="history-time">${fmtDateTime(h.entered_at)}</div></div></div>`
   ).join('');
 
   const canMoveNext = stageIdx < STAGES.length-1;
@@ -3277,12 +3277,12 @@ async function openProjectDetail(id){
     <div class="stage-mover">${stageDotsHTML}</div>
 
     <div class="detail-meta">
-      <div class="meta-item"><div class="meta-label">Client</div><div class="meta-value">${esc(p.client_name||'—')}</div></div>
+      <div class="meta-item"><div class="meta-label">Client</div><div class="meta-value">${esc(p.client_name||'Not set')}</div></div>
       <div class="meta-item"><div class="meta-label">Designer</div><div class="meta-value">${esc(p.assigned_designer||'Unassigned')}</div></div>
       <div class="meta-item"><div class="meta-label">Deadline</div><div class="meta-value ${isOverdue(p)?'text-red':''}">${fmtDate(p.deadline)}</div></div>
-      <div class="meta-item"><div class="meta-label">Dimensions</div><div class="meta-value">${esc(p.dimensions||'—')}</div></div>
+      <div class="meta-item"><div class="meta-label">Dimensions</div><div class="meta-value">${esc(p.dimensions||'Not set')}</div></div>
       <div class="meta-item"><div class="meta-label">Created</div><div class="meta-value">${fmtDateTime(p.created_at)}</div></div>
-      <div class="meta-item"><div class="meta-label">Target Month</div><div class="meta-value">${p.target_month?MONTHS[p.target_month]:'—'}</div></div>
+      <div class="meta-item"><div class="meta-label">Target Month</div><div class="meta-value">${p.target_month?MONTHS[p.target_month]:'Not set'}</div></div>
       ${p.drive_link?`<div class="meta-item"><div class="meta-label">Drive Link</div><div class="meta-value"><a href="${esc(p.drive_link)}" target="_blank">Open Drive</a></div></div>`:''}
     </div>
 
@@ -3292,7 +3292,7 @@ async function openProjectDetail(id){
       ${p.image_url?`<img class="image-preview-lg" src="${esc(p.image_url)}" onclick="window.open(this.src)" title="Click to view full size">`:`<div class="no-img">No image attached</div>`}
       <div class="image-attach-zone" data-drop-host="detailImg" style="margin-top:8px">
         <input type="file" id="detailImg-file" accept="image/*" style="display:none" onchange="handleFileSelect(this,'detailImg')">
-        <span class="image-attach-hint" onclick="document.getElementById('detailImg-file').click()">📎 ${p.image_url?'Replace image':'Add post image'} — click, paste, or drag & drop</span>
+        <span class="image-attach-hint" onclick="document.getElementById('detailImg-file').click()">📎 ${p.image_url?'Replace image':'Add post image'}, click, paste, or drag & drop</span>
       </div>
       <div id="detailImg-preview"></div>
       <button class="btn btn-sm btn-accent" style="margin-top:8px;display:none" id="btnSaveDetailImg" onclick="saveDetailImage(${p.id})">Save Image</button>
@@ -3465,7 +3465,7 @@ async function loadClients(){
           <h4>${esc(c.name)}</h4>
           <div class="health-dot ${healthCls}" title="${esc(c.health||'unknown')}"></div>
         </div>
-        <div class="client-meta">${esc(c.package||'—')} &middot; ${esc(c.industry||'')}</div>
+        <div class="client-meta">${esc(c.package||'Not set')} &middot; ${esc(c.industry||'')}</div>
         <div style="display:flex;gap:8px;margin:8px 0;font-size:0.78rem">
           <span style="color:var(--accent);font-weight:600">${posts.length} posts</span>
           <span style="color:var(--pink);font-weight:600">${stories.length} stories</span>
@@ -3501,7 +3501,7 @@ async function showClientDetail(clientId, clientName){
   const MONTH_NAMES = ['','January','February','March','April','May','June','July','August','September','October','November','December'];
 
   let qHTML = `<div class="panel" style="margin-bottom:20px">
-    <h3 style="color:var(--accent);font-weight:700;margin-bottom:12px">Q${qNum} GRAPHIC PLAN — ${year}</h3>
+    <h3 style="color:var(--accent);font-weight:700;margin-bottom:12px">Q${qNum} GRAPHIC PLAN ${year}</h3>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">`;
 
   for(let i=0;i<3;i++){
@@ -3520,7 +3520,7 @@ async function showClientDetail(clientId, clientName){
     const isCurrentMonth = m===curMonth;
 
     // Readiness status
-    function readiness(done, target){ if(!target) return done>0?done+' done':'—'; if(done>=target) return '✅ Ready'; if(done>0) return '⚠️ '+done+'/'+target; return '🔴 Not started'; }
+    function readiness(done, target){ if(!target) return done>0?done+' done':'Not set'; if(done>=target) return '✅ Ready'; if(done>0) return '⚠️ '+done+'/'+target; return '🔴 Not started'; }
     const postStatus = readiness(postsDone, monthlyPosts);
     const storyStatus = readiness(storiesDone, monthlyStories);
 
@@ -3528,7 +3528,7 @@ async function showClientDetail(clientId, clientName){
       <div style="font-size:0.72rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.08em;font-weight:700;margin-bottom:8px">${MONTH_NAMES[m]} ${year}</div>
       <div style="display:flex;align-items:baseline;gap:2px;margin-bottom:10px">
         <span style="font-family:Poppins;font-size:1.8rem;font-weight:800;color:var(--text)">${totalDone}</span>
-        <span style="font-size:0.9rem;color:var(--text-3)">/${totalTarget||'—'}</span>
+        <span style="font-size:0.9rem;color:var(--text-3)">/${totalTarget||'Not set'}</span>
       </div>
       <div style="font-size:0.78rem;color:var(--text-2);line-height:1.8">
         <div style="display:flex;justify-content:space-between"><span>Posts</span><span style="font-weight:600">${postStatus}</span></div>
@@ -3897,8 +3897,8 @@ async function loadArchived(){
       <tbody>${archived.map(p=>`
         <tr>
           <td style="color:var(--text);font-weight:500">${esc(p.title)}</td>
-          <td>${esc(p.client_name||'—')}</td>
-          <td>${esc(p.assigned_designer||'—')}</td>
+          <td>${esc(p.client_name||'Not set')}</td>
+          <td>${esc(p.assigned_designer||'Not set')}</td>
           <td><span class="badge badge-type">${esc(p.type||'post')}</span></td>
           <td>${fmtDate(p.completed_at||p.updated_at)}</td>
           <td><button class="btn btn-green btn-sm" onclick="restoreProject(${p.id})">Restore</button></td>
@@ -4155,7 +4155,7 @@ async function wpLoadWeek(){
     }
   }
   const fri = new Date(wpWeekStart); fri.setDate(fri.getDate()+4);
-  label.textContent = wpFmtDate(wpWeekStart) + ' — ' + wpFmtDate(fri) + ', ' + wpWeekStart.getFullYear();
+  label.textContent = wpFmtDate(wpWeekStart) + ' to ' + wpFmtDate(fri) + ', ' + wpWeekStart.getFullYear();
 
   wpTasks = await sbGet('graphic_weekly_plan','?week_start=eq.'+ws+'&order=created_at.asc') || [];
   wpRender();
@@ -4329,7 +4329,7 @@ function wpRender(){
       <div class="wp-pending-bar">
         <h3><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> Pending (${pending.length})</h3>
         <div class="wp-pending-list">
-          ${pending.map(t=>`<div class="wp-pending-chip" onclick="wpOpenEdit(${t.id})">${esc(t.client_name)} — ${WP_TYPES[t.task_type]||t.task_type}${t.design_count>1?' &times;'+t.design_count:''}${t.notes?' ('+esc(t.notes)+')':''}</div>`).join('')}
+          ${pending.map(t=>`<div class="wp-pending-chip" onclick="wpOpenEdit(${t.id})">${esc(t.client_name)}, ${WP_TYPES[t.task_type]||t.task_type}${t.design_count>1?' &times;'+t.design_count:''}${t.notes?' ('+esc(t.notes)+')':''}</div>`).join('')}
         </div>
       </div>
     `;
@@ -4939,7 +4939,7 @@ function wpBulkAddRow(){
     <td><select class="wbk-client"><option value="">Client</option>${clientOpts}</select></td>
     <td><select class="wbk-type"><option value="post">Post</option><option value="story">Story</option><option value="reel_cover">Reel Cover</option><option value="carousel">Carousel</option><option value="logo">Logo</option><option value="banner">Banner</option><option value="other">Other</option></select></td>
     <td><input type="number" class="wbk-count" min="1" value="1" style="width:60px"></td>
-    <td><select class="wbk-designer" data-designers="—"></select></td>
+    <td><select class="wbk-designer" data-designers="Pick"></select></td>
     <td><button class="btn-rm" onclick="this.closest('tr').remove()">&times;</button></td>
   `;
   fillDesignerSelects(tr);
@@ -5008,7 +5008,7 @@ async function wpBulkSaveAll(){
 
 
 /* ════════════════════════════════════════════════════════════════════
-   SECTION 12 — SELF-TEST HARNESS (L-GFX-007)
+   SECTION 12, SELF-TEST HARNESS (L-GFX-007)
 
    runSelfTest() snapshots all state, replaces every write function with a
    recorder, exercises the real app, restores everything, and reports PASS or
@@ -7055,7 +7055,7 @@ async function renderRecap(){
 </script>
 
 <!-- ============================================================
-     BB GRAPHIC SENTINEL — boot health-check + global error capture
+     BB GRAPHIC SENTINEL, boot health-check + global error capture
      Mirrors the Video/SMM watchdog. INSERT-only into system_bug_log
      (no schema change). Hardened: network blips are filtered, core
      tables are probed with the same public key the app reads with (gBearer),
@@ -7124,7 +7124,7 @@ async function renderRecap(){
       }
       if(t.core && res.count===0){
         // Re-verify once: a single transient 0 (blip mid-auth) must not create a bug row.
-        headCount(t.name).then(function(res2){ if(res2.ok && res2.count===0){ report({severity:'warning',category:'empty_core',table_name:t.name,message:'returned 0 rows — likely a permissions (RLS) block',detail:'Core reference table should never be empty. Check RLS policy for the authenticated/anon role.'}); } });
+        headCount(t.name).then(function(res2){ if(res2.ok && res2.count===0){ report({severity:'warning',category:'empty_core',table_name:t.name,message:'returned 0 rows, likely a permissions (RLS) block',detail:'Core reference table should never be empty. Check RLS policy for the authenticated/anon role.'}); } });
       }
     }); });
   }
@@ -8651,6 +8651,7 @@ const hoCard = (function() {
     let reloadTimer = null;
     let reloading = false;
     let openFormRowId = null;
+    let openFormType = null;
 
     function stopTimer() {
       if (reloadTimer) {
@@ -8917,9 +8918,11 @@ const hoCard = (function() {
     }
 
     function openForm(rowId, type) {
-      if (openFormRowId === rowId) return;
+      // Same row and same button: leave it open. Same row, other button: swap the form.
+      if (openFormRowId === rowId && openFormType === type) return;
       closeForm();
       openFormRowId = rowId;
+      openFormType = type;
 
       const taskDiv = taskEl(rowId);
       if (!taskDiv) return;
@@ -9006,6 +9009,7 @@ const hoCard = (function() {
         }
       }
       openFormRowId = null;
+      openFormType = null;
     }
 
     function taskEl(rowId) {

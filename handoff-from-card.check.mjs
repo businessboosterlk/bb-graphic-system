@@ -88,7 +88,13 @@ for (const [size, opts] of [['phone', { viewport: { width: 390, height: 844 }, d
   pass(`${L} an unseen row is marked seen once, as FARHATH`, seen.length === 1 && seen[0].body.p_id === 901 && seen[0].body.p_who === 'FARHATH', JSON.stringify(seen.map(c => c.body)));
   /* Done with the optional line */
   let k = calls.length;
-  await card.locator('.ho-task[data-id="901"] button:has-text("Done")').click(); await p.waitForTimeout(150);
+  /* Stuck while Done is open swaps the form, and back (dead button found in BUILD 5) */
+  { const row = card.locator('.ho-task[data-id="901"]'); const ph = () => row.locator('.ho-t-form .ho-in').getAttribute('placeholder').catch(() => null);
+    await row.getByRole('button', { name: 'Done', exact: true }).click(); await p.waitForTimeout(120); const a = await ph();
+    await row.getByRole('button', { name: 'Stuck', exact: true }).click(); await p.waitForTimeout(120); const b2 = await ph();
+    await row.getByRole('button', { name: 'Done', exact: true }).click(); await p.waitForTimeout(120); const c2 = await ph();
+    pass(`${L} Stuck with Done open swaps the form, Done swaps it back`, a === 'What I did (optional)' && b2 === 'What is in the way' && c2 === 'What I did (optional)', [a, b2, c2].join(' | ')); }
+  await card.locator('.ho-task[data-id="901"]').getByRole('button', { name: 'Done', exact: true }).click(); await p.waitForTimeout(150);
   const inp = card.locator('.ho-task[data-id="901"] .ho-t-form .ho-in');
   const fs = await inp.evaluate(x => parseFloat(getComputedStyle(x).fontSize)).catch(() => 0);
   pass(`${L} Done opens a What I did line at 16px`, fs >= 16 && (await inp.getAttribute('placeholder')) === 'What I did (optional)', fs + 'px');

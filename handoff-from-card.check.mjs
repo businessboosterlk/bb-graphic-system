@@ -177,9 +177,11 @@ for (const [size, opts] of [['phone', { viewport: { width: 402, height: 874 }, i
     document.body.appendChild(box);
     const hit = (sel, n) => { const e = box.querySelectorAll(sel)[n], q = e.getBoundingClientRect(); const h = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2); return (h && h.closest(sel)) === e; };
     const out = { next1: hit('.wp-item-next', 0), next2: hit('.wp-item-next', 1), tick1: hit('.wp-item-box', 0), tick2: hit('.wp-item-box', 1) };
+    out.arrowSeen = matchMedia('(hover:none)').matches ? getComputedStyle(box.querySelector('.wp-item-next')).opacity === '1' : true;
     box.remove(); return out;
   });
   pass(`${size} weekly plan: Move to next week and the tick each hit their own row, not the next cell's`, r.next1 && r.next2 && r.tick1 && r.tick2, JSON.stringify(r));
+  pass(`${size} weekly plan: with no hover the Move to next week arrow is shown, not an invisible live button`, r.arrowSeen);
   await ctx.close();
 }
 await b.close();

@@ -74,6 +74,8 @@ th.wp-today-col{background:var(--accent-soft)}
 .wp-item-next{position:relative;flex:none;opacity:0;border:none;background:none;color:var(--text-3);
   cursor:pointer;padding:0 2px;line-height:1;border-radius:5px;transition:opacity var(--t-fast)}
 .wp-item:hover .wp-item-next{opacity:1}
+/* no hover on a phone: the arrow stayed invisible while its 44px tap area stayed live */
+@media (hover:none){.wp-item-next{opacity:1}}
 .wp-item-next:hover{color:var(--accent);background:var(--surface-3)}
 /* A 17px box is right for a dense grid but wrong for a thumb, so the tap area
    is grown invisibly rather than making the box bigger. */

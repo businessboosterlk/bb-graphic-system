@@ -172,6 +172,9 @@ for (const [size, opts] of [['phone', { viewport: { width: 402, height: 874 }, i
   await p.evaluate(() => navigateTo('pipeline')); await p.waitForTimeout(400);
   const u = await p.evaluate(() => { const e = document.getElementById('bbuPageBtn'); return { hidden: e && e.hidden, w: e ? e.getBoundingClientRect().width : -1 }; });
   pass(`${size} pipeline: Undo is not shown while there is nothing to undo`, u.hidden === true && u.w === 0, JSON.stringify(u));
+  const cut = await p.evaluate(() => [...document.querySelectorAll('.topbar button, .topbar [onclick], #section-pipeline .qa-header button, #section-pipeline .qa-header select, #section-pipeline .qa-header input')]
+    .filter(e => e.getBoundingClientRect().width > 0).filter(e => { const q = e.getBoundingClientRect(); return q.left < 0 || q.right > innerWidth; }).map(e => (e.textContent.trim() || e.id || e.getAttribute('onclick')).slice(0, 20) + ' ' + Math.round(e.getBoundingClientRect().right)));
+  pass(`${size} pipeline: every top bar and quick add control sits on the screen`, cut.length === 0, cut.join(', '));
   await ctx.close();
 }
 /* BUILD 5 click path: on the weekly plan a filled cell lost its padding, so the next cell's tick box (grown 13px for a

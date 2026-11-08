@@ -165,6 +165,15 @@ for (const [size, opts] of [['phone', { viewport: { width: 390, height: 844 }, i
   pass('BBHO.selfcheck names its checks From card and all pass when signed in', sc.length === 4 && sc.every(x => x.pass && /^From card: /.test(x.name)), sc.map(x => (x.pass ? 'ok ' : 'NO ') + x.name).join('; '));
   await ctx.close();
 }
+/* BUILD 5 click path: the pipeline Undo carries the hidden attribute when there is nothing to undo, but .btn's
+   display:inline-flex outranked it, so it showed and only said Nothing to undo. */
+for (const [size, opts] of [['phone', { viewport: { width: 402, height: 874 }, isMobile: true, hasTouch: true }], ['desk', { viewport: { width: 1440, height: 900 } }]]) {
+  const { ctx, p } = await page(b, opts, BASE);
+  await p.evaluate(() => navigateTo('pipeline')); await p.waitForTimeout(400);
+  const u = await p.evaluate(() => { const e = document.getElementById('bbuPageBtn'); return { hidden: e && e.hidden, w: e ? e.getBoundingClientRect().width : -1 }; });
+  pass(`${size} pipeline: Undo is not shown while there is nothing to undo`, u.hidden === true && u.w === 0, JSON.stringify(u));
+  await ctx.close();
+}
 /* BUILD 5 click path: on the weekly plan a filled cell lost its padding, so the next cell's tick box (grown 13px for a
    thumb) sat over this row's Move to next week arrow and the click ticked the neighbour's job. Two filled cells side by
    side, drawn by the page's own wpRenderItem and CSS: the arrow's centre must hit its own button, the tick its own box. */

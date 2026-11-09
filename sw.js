@@ -9,7 +9,7 @@
    no board, because somebody ticks a post that was already approved. Only the
    shell is cached, and only as a fallback for having no signal.
 */
-const CACHE = 'bb-graphic-v2';
+const CACHE = 'bb-graphic-v3';
 const SHELL = ['./', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

@@ -329,7 +329,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 /* `hidden` is only display:none at the browser's default weight, and .kanban
    sets display:flex, which beats it. Without this the board stays on screen
    underneath the grid. */
-.kanban[hidden],.pipe-grid[hidden]{display:none}
+.kanban[hidden],.pipe-grid[hidden],.pipe-slots[hidden]{display:none}
 .pipe-views{display:inline-flex;gap:2px;background:var(--surface-2);border:1px solid var(--border);
   border-radius:var(--r-sm);padding:2px;margin:0 0 12px}
 .pipe-view{appearance:none;border:0;background:transparent;color:var(--text-2);font:inherit;font-size:0.8rem;
@@ -338,6 +338,35 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 /* One card per design, the picture doing the work. auto-fill so the row packs
    itself at any width instead of a breakpoint guessing for it. */
 .pipe-grid{display:block;padding-bottom:12px}
+/* APPROVED POSTS (head's spec, 9 Nov 2026): one wall per client. A dashed card
+   is an empty slot a weekly task created; it fills when the designer uploads
+   the approved post and turns solid once a head approves it. */
+.pipe-slots{display:block;padding-bottom:12px}
+.slot-group{margin:0 0 22px}
+.slot-group-head{display:flex;align-items:center;gap:10px;margin:0 0 10px;padding:0 0 8px;border-bottom:1px solid var(--border)}
+.slot-group-head h4{font-size:0.9rem;font-weight:700;margin:0;color:var(--text)}
+.slot-group-count{font-size:0.74rem;font-weight:600;color:var(--text-3)}
+.slot-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.slot-card{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:8px;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-width:0}
+.slot-card.todo,.slot-card.sent{border-style:dashed;background:var(--surface-2)}
+.slot-card.approved{border-color:var(--ok,#1a7f4e)}
+.slot-img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:calc(var(--r-sm) - 2px);background:var(--surface-2);display:block}
+.slot-ph{width:100%;aspect-ratio:1/1;border-radius:calc(var(--r-sm) - 2px);border:1px dashed var(--border);
+  display:flex;align-items:center;justify-content:center;color:var(--text-3);font-size:0.72rem;text-align:center;padding:8px}
+.slot-title{font-size:0.76rem;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.slot-meta{display:flex;flex-wrap:wrap;gap:4px;min-height:14px}
+.slot-foot{margin-top:auto}
+.slot-foot .btn{width:100%}
+.slot-state{font-size:0.72rem;font-weight:700;padding:5px 0}
+.slot-state.ok{color:var(--ok,#1a7f4e)}
+.slot-state.wait{color:var(--text-3);font-weight:600}
+.slot-upload-btn{display:flex;align-items:center;justify-content:center;text-align:center}
+.pipe-slots-empty{padding:28px;text-align:center;color:var(--text-3);font-size:0.8rem}
+.wp-dl{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:99px;font-size:0.62rem;font-weight:700;
+  background:var(--surface-2);border:1px solid var(--border);color:var(--text-3);vertical-align:1px}
+.wp-dl.ontime{color:var(--ok,#1a7f4e);border-color:var(--ok,#1a7f4e)}
+.wp-dl.late{color:var(--danger,#c0392b);border-color:var(--danger,#c0392b)}
 .pg-section{margin:0 0 20px}
 .pg-sec-head{display:flex;align-items:center;gap:8px;margin:0 0 10px;padding:0 0 8px;border-bottom:1px solid var(--border)}
 .pg-sec-head h4{font-size:0.86rem;font-weight:700;margin:0;color:var(--text)}
@@ -888,12 +917,14 @@ tr:hover td{background:var(--surface-2)}
              title, so the grid leads with the design. The board stays, because a
              list with stages is a board AND another view behind one switch. -->
         <div class="pipe-views" role="tablist" aria-label="How to show the pipeline">
+          <button class="pipe-view" id="pipeViewSlots" role="tab" onclick="setPipeView('slots')">Approved Posts</button>
           <button class="pipe-view" id="pipeViewGrid"  role="tab" onclick="setPipeView('grid')">Grid</button>
           <button class="pipe-view" id="pipeViewBoard" role="tab" onclick="setPipeView('board')">Board</button>
         </div>
         <button class="btn btn-ghost btn-sm pipe-selectall" id="pipeSelectAll" onclick="bulkSelectShown()">Select all shown</button>
         <div class="kanban" id="kanbanBoard"></div>
         <div class="pipe-grid" id="pipeGrid" hidden></div>
+        <div class="pipe-slots" id="pipeSlots" hidden></div>
         <div class="bulkbar" id="bulkBar">
           <span><b id="bulkCount">0</b> selected</span>
           <select id="bulkMoveTo"><option value="">Move to…</option></select>
@@ -1132,7 +1163,7 @@ tr:hover td{background:var(--surface-2)}
       <div class="form-grid">
         <div class="form-group">
           <label>Day *</label>
-          <select id="wpDay">
+          <select id="wpDay" onchange="wpDayChanged()">
             <option value="1">Monday</option>
             <option value="2">Tuesday</option>
             <option value="3">Wednesday</option>
@@ -1142,12 +1173,17 @@ tr:hover td{background:var(--surface-2)}
         </div>
         <div class="form-group">
           <label>Client *</label>
-          <select id="wpClient"></select>
+          <select id="wpClient" onchange="wpClientChanged()"></select>
+        </div>
+        <div class="form-group full" id="wpNewClientWrap" style="display:none">
+          <label>New client's name *</label>
+          <input type="text" id="wpNewClient" placeholder="Type the new client's name">
         </div>
         <div class="form-group">
           <label>Task Type</label>
           <select id="wpTaskType">
             <option value="post">Post Design</option>
+            <option value="revision">Post Revision</option>
             <option value="story">Story Design</option>
             <option value="reel_cover">Reel Cover</option>
             <option value="carousel">Carousel</option>
@@ -1162,6 +1198,10 @@ tr:hover td{background:var(--surface-2)}
         <div class="form-group">
           <label>Design Count</label>
           <input type="number" id="wpCount" min="1" value="1">
+        </div>
+        <div class="form-group">
+          <label>Deadline</label>
+          <input type="date" id="wpDeadline" onchange="this.dataset.touched='1'">
         </div>
         <div class="form-group">
           <label>Assigned To</label>
@@ -1883,7 +1923,7 @@ function onlyMine(list){
 const CLIENT_LIST_COLS = 'id,name,package,industry,health,monthly_posts';
 /* thumb_url is deliberately NOT in this list. It is small, but 360 of them
    still add up, so the board fetches each one lazily as a card scrolls in. */
-const PROJ_LIST_COLS = 'id,title,client_id,client_name,assigned_designer,assigned_designer_id,current_stage,priority,deadline,brief_notes,drive_link,dimensions,type,target_month,target_year,is_archived,created_by,created_at,updated_at';
+const PROJ_LIST_COLS = 'id,title,client_id,client_name,assigned_designer,assigned_designer_id,current_stage,priority,deadline,brief_notes,drive_link,dimensions,type,target_month,target_year,is_archived,created_by,created_at,updated_at,plan_task_id';
 let IMG_IDS = new Set();   // ids of projects that HAVE an image
 const IMG_CACHE = {};      // id → image_url, filled on demand
 
@@ -2105,9 +2145,18 @@ function pipeDefaultMonth(){
   setMonthSelectToThisMonth('qaMonth', null);
   _pipeMonthDefaulted = true;
 }
-let PIPE_VIEW = (function(){ try{ return localStorage.getItem('bbgfx_pipe_view')==='board' ? 'board' : 'grid'; }catch(e){ return 'grid'; } })();
+let PIPE_VIEW = (function(){
+  try{
+    /* APPROVED POSTS is the pipeline's front view (head's spec, 9 Nov 2026).
+       One switchover: a view saved before this one existed was not a vote
+       against it, so everyone lands on it once; their next pick then sticks. */
+    if(!localStorage.getItem('bbgfx_seen_slots')){ localStorage.setItem('bbgfx_seen_slots','1'); localStorage.setItem('bbgfx_pipe_view','slots'); return 'slots'; }
+    const v = localStorage.getItem('bbgfx_pipe_view');
+    return (v==='board'||v==='grid'||v==='slots') ? v : 'slots';
+  }catch(e){ return 'slots'; }
+})();
 function setPipeView(v){
-  PIPE_VIEW = (v==='board') ? 'board' : 'grid';
+  PIPE_VIEW = (v==='board'||v==='grid') ? v : 'slots';
   try{ localStorage.setItem('bbgfx_pipe_view', PIPE_VIEW); }catch(e){}
   renderPipeline();
 }
@@ -2166,13 +2215,20 @@ function renderPipeline(){
   pipeDefaultMonth();
   const filtered = getFilteredProjects();
   const grid = document.getElementById('pipeGrid');
-  const bTab = document.getElementById('pipeViewBoard'), gTab = document.getElementById('pipeViewGrid');
-  const onBoard = PIPE_VIEW==='board';
+  const slots = document.getElementById('pipeSlots');
+  const bTab = document.getElementById('pipeViewBoard'), gTab = document.getElementById('pipeViewGrid'), sTab = document.getElementById('pipeViewSlots');
+  const onBoard = PIPE_VIEW==='board', onSlots = PIPE_VIEW==='slots', onGrid = !onBoard && !onSlots;
   if(bTab){ bTab.setAttribute('aria-selected', String(onBoard)); }
-  if(gTab){ gTab.setAttribute('aria-selected', String(!onBoard)); }
+  if(gTab){ gTab.setAttribute('aria-selected', String(onGrid)); }
+  if(sTab){ sTab.setAttribute('aria-selected', String(onSlots)); }
   const board = document.getElementById('kanbanBoard');
   if(board) board.hidden = !onBoard;
-  if(grid)  grid.hidden  = onBoard;
+  if(grid)  grid.hidden  = !onGrid;
+  if(slots) slots.hidden = !onSlots;
+  /* bulk select works on grid and board cards; the slot wall has no pick boxes */
+  const sAll = document.getElementById('pipeSelectAll');
+  if(sAll) sAll.style.display = onSlots ? 'none' : '';
+  if(onSlots){ renderPipeSlots(filtered); requestAnimationFrame(observeLazyThumbs); bulkBarSync(); return; }
   if(!onBoard){ renderPipeGrid(filtered); requestAnimationFrame(observeLazyThumbs); bulkBarSync(); return; }
   board.innerHTML = STAGES.map(stage=>{
     const cards = filtered.filter(p=>stageColumn(p.current_stage)===stage);
@@ -2191,6 +2247,91 @@ function renderPipeline(){
   }).join('');
   requestAnimationFrame(observeLazyThumbs);
   bulkBarSync();
+}
+
+/* ══ APPROVED POSTS — the pipeline's front view (head's spec, 9 Nov 2026) ══
+   One wall per client. Every weekly task for new designs put its empty slots
+   here; the designer uploads the WhatsApp-approved post into its slot and a
+   head or SMM approves it in place. The stages underneath are unchanged
+   (brief → head_review → approved), so decision 98, the approval trigger,
+   Team Score stars, the stage alerts and the publish tracker all keep reading
+   the same truth: this screen is only a different window onto it. */
+function slotHasImg(p){ return (p.image_url!==undefined && p.image_url!==null) || IMG_IDS.has(p.id) || !!IMG_CACHE[p.id]; }
+function slotState(p){
+  if(p.current_stage==='approved') return 'approved';
+  if(slotHasImg(p)) return 'uploaded';
+  return p.current_stage==='brief' ? 'todo' : 'sent';
+}
+function renderPipeSlots(filtered){
+  const el = document.getElementById('pipeSlots'); if(!el) return;
+  if(!filtered.length){
+    el.innerHTML = '<div class="pipe-slots-empty">Nothing here for this month. Slots appear when a task is added on the Weekly Plan, and the filters above narrow this wall too.</div>';
+    return;
+  }
+  const groups = {};
+  filtered.forEach(p=>{ const k = p.client_name||'No client'; (groups[k]=groups[k]||[]).push(p); });
+  el.innerHTML = Object.keys(groups).sort((a,b)=>a.localeCompare(b)).map(name=>{
+    const rows = groups[name];
+    const okN = rows.filter(p=>p.current_stage==='approved').length;
+    return '<div class="slot-group">'
+      + '<div class="slot-group-head"><h4>'+esc(name)+'</h4><span class="slot-group-count">'+okN+' of '+rows.length+' approved</span></div>'
+      + '<div class="slot-grid">'+rows.map(renderSlotCard).join('')+'</div>'
+      + '</div>';
+  }).join('');
+}
+function renderSlotCard(p){
+  const st = slotState(p);
+  const cachedSrc = (p.image_url!==undefined && p.image_url!==null) ? p.image_url : (IMG_CACHE[p.id]||'');
+  const pic = (st==='approved'||st==='uploaded')
+    ? '<img class="slot-img lazy-thumb" data-pid="'+p.id+'"'+(cachedSrc?' src="'+esc(cachedSrc)+'"':'')+' alt="" onerror="this.style.display=\'none\'">'
+    : '<div class="slot-ph">'+(st==='todo'?'Empty slot':'Sent for approval, waiting for the post')+'</div>';
+  const isOd = isOverdue(p);
+  let foot;
+  if(st==='approved') foot = '<div class="slot-state ok">&#10003;&#xFE0E; Approved</div>';
+  else if(st==='uploaded') foot = canApprove()
+    ? '<button class="btn btn-accent btn-sm" onclick="event.stopPropagation();quickMove('+p.id+',\'approved\')">Approve</button>'
+    : '<div class="slot-state wait">'+GFX_WAIT_LABEL+'</div>';
+  else foot = '<label class="btn '+(st==='sent'?'btn-accent':'btn-ghost')+' btn-sm slot-upload-btn" onclick="event.stopPropagation()">Upload approved post'
+    + '<input type="file" accept="image/*" style="display:none" onchange="slotUpload(this,'+p.id+')"></label>';
+  return '<div class="slot-card '+st+'" data-id="'+p.id+'" onclick="openProjectDetail('+p.id+')">'
+    + pic
+    + '<div class="slot-title" title="'+esc(p.title)+'">'+esc(p.title)+'</div>'
+    + '<div class="slot-meta">'
+    +   (p.assigned_designer?'<span class="badge badge-designer">'+esc(p.assigned_designer)+'</span>':'')
+    +   (p.deadline?'<span class="badge-deadline '+(isOd?'overdue':'')+'">'+(isOd?'OVERDUE: ':'')+fmtDate(p.deadline)+'</span>':'')
+    + '</div>'
+    + '<div class="slot-foot" onclick="event.stopPropagation()">'+foot+'</div>'
+    + '</div>';
+}
+/* Upload the WhatsApp-approved post straight into its slot. Storage first, row
+   second (decision 106: a failed upload leaves the row untouched), and a slot
+   still in To do then moves itself to Head Review, where approvals live.
+   GFX-1: every write checks its result. */
+let _slotUploading = false;
+async function slotUpload(input, id){
+  const file = input.files && input.files[0]; if(!file) return;
+  input.value = '';
+  if(_slotUploading){ toast('One upload at a time: the last one is still saving'); return; }
+  if(file.size > 15*1024*1024){ toast('Image too large (max 15 MB)','error'); return; }
+  _slotUploading = true;
+  toast('Uploading&hellip;');
+  try{
+    const dataUrl = await new Promise((res,rej)=>{ const r=new FileReader(); r.onerror=()=>rej(new Error('read')); r.onload=e=>res(e.target.result); r.readAsDataURL(file); });
+    const compressed = await compressImageDataUrl(dataUrl);
+    const thumb = await makeThumbDataUrl(dataUrl);
+    const up = await gfxUploadImage(id, compressed, thumb);
+    const ok = await sbPatch('graphic_projects','id=eq.'+id,
+      {image_url: up.image_url, thumb_url: up.thumb_url,
+       updated_at: new Date().toISOString(), updated_by:(currentUser&&currentUser.name)||null});
+    if(!ok){ toast('The picture uploaded but the post could not be saved. Try again','error'); return; }
+    IMG_IDS.add(id); IMG_CACHE[id] = up.thumb_url || up.image_url;
+    const p = (projects||[]).find(x=>x.id===id);
+    if(p){ p.image_url = up.image_url; p.thumb_url = up.thumb_url; }
+    if(p && p.current_stage==='brief') await gfxSetStage(id,'head_review','Approved post uploaded into its slot', true);
+    toast(canApprove() ? 'Uploaded. Now approve it' : 'Uploaded. A head can now approve it');
+    renderPipeline();
+  }catch(e){ gfxUploadFailed(e); }
+  finally{ _slotUploading = false; }
 }
 
 function renderKCard(p){
@@ -4075,7 +4216,7 @@ async function markAllAgentsRead(){
 // WEEKLY PLAN
 // ═══════════════════════════════════════
 const WP_DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
-const WP_TYPES = {post:'Post Design',story:'Story Design',reel_cover:'Reel Cover',carousel:'Carousel',logo:'Logo',banner:'Banner',flyer:'Flyer',brochure:'Brochure',template:'Template',other:'Other'};
+const WP_TYPES = {post:'Post Design',revision:'Post Revision',story:'Story Design',reel_cover:'Reel Cover',carousel:'Carousel',logo:'Logo',banner:'Banner',flyer:'Flyer',brochure:'Brochure',template:'Template',other:'Other'};
 let wpWeekStart = null;
 let wpTasks = [];
 let wpEditId = null;
@@ -4344,11 +4485,24 @@ function wpRenderItem(t){
   const done = t.status==='done';
   const label = (t.client_name||'No client') + (t.design_count>1?' '+t.design_count:'');
   const sub = (WP_TYPES[t.task_type]||t.task_type||'') + (t.notes?' &middot; '+esc(t.notes):'');
+  /* The deadline verdict (head's spec, 9 Nov 2026): a ticked task says On time
+     or Late from its done_at against the deadline; an unticked one past its
+     date says Past due. Old ticks with no done_at say nothing, honestly. */
+  let dl = '';
+  if(t.deadline){
+    if(done && t.done_at){
+      const late = new Date(t.done_at) > new Date(t.deadline+'T23:59:59');
+      dl = '<span class="wp-dl '+(late?'late':'ontime')+'">'+(late?'Late':'On time')+'</span>';
+    } else if(!done){
+      const over = new Date() > new Date(t.deadline+'T23:59:59');
+      dl = '<span class="wp-dl'+(over?' late':'')+'">'+(over?'Past due':'Due '+wpFmtDate(new Date(t.deadline+'T00:00:00')))+'</span>';
+    }
+  }
   return '<div class="wp-item'+(done?' done':'')+'">'
     + '<span class="wp-item-box" title="'+(done?'Mark not done':'Mark done')+'" onclick="event.stopPropagation();wpToggleTask('+t.id+')">'
     +   '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>'
     + '</span>'
-    + '<span class="wp-item-txt" onclick="wpOpenEdit('+t.id+')">'+esc(label)
+    + '<span class="wp-item-txt" onclick="wpOpenEdit('+t.id+')">'+esc(label)+dl
     +   (sub?'<span class="wp-item-sub">'+sub+'</span>':'')
     + '</span>'
     + '<button class="wp-item-next" title="Move to next week" onclick="event.stopPropagation();wpMoveNextWeek('+t.id+')">'
@@ -4361,8 +4515,17 @@ async function wpToggleTask(id){
   const next = t.status==='done' ? 'planned' : 'done';
   t.status = next;                                   /* paint immediately */
   wpRender();
-  const ok = await sbPatch('graphic_weekly_plan','id=eq.'+id,{status:next, updated_at:new Date().toISOString()});
-  if(!ok){ t.status = next==='done'?'planned':'done'; wpRender(); toast('Could not save that tick','error'); }
+  const doneAt = next==='done' ? new Date().toISOString() : null;
+  const ok = await sbPatch('graphic_weekly_plan','id=eq.'+id,{status:next, done_at:doneAt, updated_at:new Date().toISOString()});
+  if(!ok){ t.status = next==='done'?'planned':'done'; wpRender(); toast('Could not save that tick','error'); return; }
+  t.done_at = doneAt;
+  wpRender();
+  /* The tick means "sent on the WhatsApp group" (head's spec, 9 Nov 2026), so
+     the task's slots move to Head Review; unticking pulls back only the ones
+     nobody has uploaded into. */
+  if(t.task_type!=='revision'){
+    if(next==='done') await wpSlotsSent(id); else await wpSlotsUnsent(id);
+  }
 }
 
 async function wpMoveNextWeek(id){
@@ -4469,10 +4632,28 @@ function wpRenderTask(t){
 
 function wpPopulateClients(){
   const sel = document.getElementById('wpClient');
-  sel.innerHTML = '<option value="">Select Client</option>';
+  sel.innerHTML = '<option value="">Select Client</option><option value="__new__">+ New Client</option>';
   if(Array.isArray(clients)){
     clients.forEach(c=>{ sel.innerHTML+=`<option value="${esc(c.name)}">${esc(c.name)}</option>`; });
   }
+}
+/* NEW CLIENT on the weekly plan (head's spec, 9 Nov 2026): a client not yet in
+   the list is typed by name. The task and its slots carry that name; the client
+   row itself is still made in Clients, as always. */
+function wpClientChanged(){
+  const w = document.getElementById('wpNewClientWrap');
+  if(w) w.style.display = document.getElementById('wpClient').value==='__new__' ? '' : 'none';
+}
+/* The deadline defaults to the task's own day in the open week and follows the
+   day until somebody types a date of their own (dataset.touched). */
+function wpDeadlineFor(day){
+  const d = new Date(wpWeekStart);
+  d.setDate(d.getDate() + ((day||1)-1));
+  return wpYmd(d);
+}
+function wpDayChanged(){
+  const dl = document.getElementById('wpDeadline');
+  if(dl && !dl.dataset.touched) dl.value = wpDeadlineFor(parseInt(document.getElementById('wpDay').value)||1);
 }
 
 function wpOpenAdd(prefillDay){
@@ -4482,8 +4663,13 @@ function wpOpenAdd(prefillDay){
   wpPopulateClients();
   document.getElementById('wpDay').value = prefillDay || new Date().getDay() || 1;
   document.getElementById('wpClient').value = '';
+  document.getElementById('wpNewClient').value = '';
+  wpClientChanged();
   document.getElementById('wpTaskType').value = 'post';
   document.getElementById('wpCount').value = 1;
+  const dlA = document.getElementById('wpDeadline');
+  dlA.dataset.touched = '';
+  dlA.value = wpDeadlineFor(parseInt(document.getElementById('wpDay').value)||1);
   document.getElementById('wpAssigned').value = '';
   document.getElementById('wpStatus').value = 'planned';
   document.getElementById('wpNotes').value = '';
@@ -4498,9 +4684,21 @@ function wpOpenEdit(id){
   document.getElementById('wpDeleteBtn').style.display = '';
   wpPopulateClients();
   document.getElementById('wpDay').value = t.day_of_week;
-  document.getElementById('wpClient').value = t.client_name||'';
+  const cSel = document.getElementById('wpClient');
+  cSel.value = t.client_name||'';
+  /* A client typed as New Client has no row in the list yet; without this the
+     select falls back to "Select Client" and a save would blank the name. */
+  if(t.client_name && cSel.value!==t.client_name){
+    cSel.innerHTML += '<option value="'+esc(t.client_name)+'">'+esc(t.client_name)+'</option>';
+    cSel.value = t.client_name;
+  }
+  document.getElementById('wpNewClient').value = '';
+  wpClientChanged();
   document.getElementById('wpTaskType').value = t.task_type||'post';
   document.getElementById('wpCount').value = t.design_count||1;
+  const dlE = document.getElementById('wpDeadline');
+  dlE.value = t.deadline||'';
+  dlE.dataset.touched = t.deadline ? '1' : '';
   document.getElementById('wpAssigned').value = t.assigned_to||'';
   document.getElementById('wpStatus').value = t.status||'planned';
   document.getElementById('wpNotes').value = t.notes||'';
@@ -4536,45 +4734,143 @@ function wpSameMessage(d, same){
 }
 async function wpSaveTask(){
   if(_wpSaving) return;
-  const clientName = document.getElementById('wpClient').value;
-  if(!clientName){ toast('Select a client','error'); return; }
+  let clientName = document.getElementById('wpClient').value;
+  if(clientName==='__new__') clientName = (document.getElementById('wpNewClient').value||'').trim();
+  if(!clientName){ toast('Select a client, or type the new client\'s name','error'); return; }
+  const prev = wpEditId ? (wpTasks||[]).find(x=>x.id===wpEditId) : null;
   const data = {
     week_start: wpKey(wpWeekStart),
     day_of_week: parseInt(document.getElementById('wpDay').value),
     client_name: clientName,
     task_type: document.getElementById('wpTaskType').value,
     design_count: parseInt(document.getElementById('wpCount').value)||1,
+    deadline: document.getElementById('wpDeadline').value||null,
     assigned_to: document.getElementById('wpAssigned').value||null,
     status: document.getElementById('wpStatus').value,
     notes: document.getElementById('wpNotes').value||null,
     updated_at: new Date().toISOString()
   };
+  /* done_at follows status, but only when status actually CHANGES: an edit of a
+     task already done must not re-stamp the time its tick was earned. */
+  if(data.status==='done' && (!prev || prev.status!=='done')) data.done_at = new Date().toISOString();
+  if(data.status!=='done') data.done_at = null;
   _wpSaving = true;
   try{
     if(wpEditId){
       const ok = await sbPatch('graphic_weekly_plan','id=eq.'+wpEditId, data);
       if(!ok){ toast('Could not save that task. Try again','error'); return; }
+      await wpSyncSlots(Object.assign({id: wpEditId}, data));
       toast('Task updated');
+      loadAll();
     } else {
       const same = wpSameTasks(data);
       if(same.length && !confirm(wpSameMessage(data, same))) return;
       data.created_by = currentUser.name;
       const res = await sbPost('graphic_weekly_plan', data);
       if(!Array.isArray(res)){ toast('Could not add that task. Try again','error'); return; }
-      toast(same.length ? 'Added as another '+(WP_TYPES[data.task_type]||data.task_type) : 'Task added');
+      /* THE TASK MAKES ITS SLOTS (head's spec, 9 Nov 2026): a non-revision task
+         for n designs creates n empty slots in the pipeline under the client.
+         A revision is work on a post that already has a slot, so none. */
+      if(data.task_type==='revision'){
+        toast(same.length ? 'Added as another '+(WP_TYPES[data.task_type]||data.task_type) : 'Task added. A revision makes no new slots');
+      } else {
+        const made = (res[0] && res[0].id) ? await wpMakeSlots(Object.assign({}, data, {id: res[0].id}), data.design_count, 0) : 0;
+        if(made===data.design_count) toast('Task added. '+made+' slot'+(made!==1?'s':'')+' ready in Approved Posts');
+        else toast('Task saved, but only '+made+' of '+data.design_count+' slots were created. Check the Pipeline','error');
+        loadAll();
+      }
     }
     closeModal('modalWpTask');
     wpLoadWeek();
   } finally { _wpSaving = false; }
 }
 
+/* ══ WEEKLY TASK ⇄ PIPELINE SLOTS (head's spec, 9 Nov 2026) ══
+   One weekly task for n new designs owns n slots in graphic_projects, tied by
+   plan_task_id. Rules, in one place:
+   - revisions never make slots;
+   - a slot holding an image, or moved past To do, is work in flight: never
+     deleted, never retyped, only ever ARCHIVED with its task (Supabase hygiene:
+     live data is archived, not deleted);
+   - count edits adjust only EMPTY To-do slots;
+   - the tick on the weekly plan means "sent on the WhatsApp group", so the
+     task's To-do slots move to Head Review; unticking pulls back only slots
+     nobody has uploaded into (image_url is null, checked server side so the
+     base64 column never travels). */
+const WP_PROJ_TYPE = {post:'post',story:'story',reel_cover:'reel_cover',carousel:'carousel',logo:'logo',banner:'banner',flyer:'flyer',brochure:'brochure',template:'other',other:'other'};
+async function wpMakeSlots(task, count, existing){
+  const c = (clients||[]).find(x=>x.name===task.client_name);
+  const des = DESIGNERS.find(d=>d.label===task.assigned_to);
+  const base = task.deadline ? new Date(task.deadline+'T00:00:00') : new Date(wpWeekStart||Date.now());
+  const month = base.getMonth()+1;
+  const total = (existing||0) + count;
+  const rows = [];
+  for(let i=(existing||0)+1; i<=total; i++) rows.push({
+    title: task.client_name+' '+(WP_TYPES[task.task_type]||task.task_type)+' '+i+' of '+total,
+    type: WP_PROJ_TYPE[task.task_type]||'other',
+    client_id: c ? c.id : null,
+    client_name: task.client_name,
+    assigned_designer: task.assigned_to||null,
+    assigned_designer_id: des ? des.team_member_id : null,
+    priority: 'normal',
+    deadline: task.deadline||null,
+    target_month: month,
+    target_year: gfxTargetYear(month),
+    current_stage: 'brief',
+    plan_task_id: task.id,
+    created_by: (currentUser && currentUser.name) || null,
+    updated_at: new Date().toISOString()
+  });
+  if(!rows.length) return 0;
+  const made = await sbPost('graphic_projects', rows, 'id');
+  return Array.isArray(made) ? made.length : 0;
+}
+async function wpSyncSlots(task){
+  if(task.task_type==='revision') return;
+  const all = await sbGet('graphic_projects','?plan_task_id=eq.'+task.id+'&is_archived=eq.false&select=id');
+  if(!Array.isArray(all)) return;
+  const want = Math.max(1, task.design_count||1);
+  if(all.length < want){
+    const made = await wpMakeSlots(task, want-all.length, all.length);
+    if(made < want-all.length) toast('Only '+made+' of the extra slots were created','error');
+  } else if(all.length > want){
+    const empty = await sbGet('graphic_projects','?plan_task_id=eq.'+task.id+'&is_archived=eq.false&current_stage=eq.brief&image_url=is.null&select=id&order=id.desc');
+    const surplus = (Array.isArray(empty)?empty:[]).slice(0, all.length-want).map(r=>r.id);
+    if(surplus.length) await sbPatch('graphic_projects','id=in.('+surplus.join(',')+')',{is_archived:true, updated_at:new Date().toISOString()});
+    if(all.length - surplus.length > want) toast('Some slots already hold work, so only the empty ones were removed');
+  }
+  /* the still-empty To-do slots follow the task's deadline and designer */
+  const des = DESIGNERS.find(d=>d.label===task.assigned_to);
+  await sbPatch('graphic_projects','plan_task_id=eq.'+task.id+'&is_archived=eq.false&current_stage=eq.brief&image_url=is.null',
+    {deadline: task.deadline||null, assigned_designer: task.assigned_to||null,
+     assigned_designer_id: des?des.team_member_id:null, client_name: task.client_name,
+     updated_at: new Date().toISOString()});
+}
+async function wpSlotsSent(taskId){
+  const rows = await sbGet('graphic_projects','?plan_task_id=eq.'+taskId+'&is_archived=eq.false&current_stage=eq.brief&select=id');
+  if(!Array.isArray(rows) || !rows.length) return;
+  for(const r of rows) await gfxSetStage(r.id,'head_review','Weekly plan ticked: sent on the WhatsApp group', true);
+  toast(rows.length+' slot'+(rows.length!==1?'s':'')+' moved to Head Review');
+  loadAll();
+}
+async function wpSlotsUnsent(taskId){
+  const rows = await sbGet('graphic_projects','?plan_task_id=eq.'+taskId+'&is_archived=eq.false&current_stage=eq.head_review&image_url=is.null&select=id');
+  if(!Array.isArray(rows) || !rows.length) return;
+  for(const r of rows) await gfxSetStage(r.id,'brief','Weekly plan tick removed', true);
+  loadAll();
+}
+
 async function wpDeleteTask(){
   if(!wpEditId) return;
-  if(!confirm('Delete this task?')) return;
+  if(!confirm('Delete this task? Its empty pipeline slots go with it; uploaded or moved posts stay.')) return;
+  /* only its empty, untouched slots leave with it, and by archive, not delete */
+  await sbPatch('graphic_projects','plan_task_id=eq.'+wpEditId+'&is_archived=eq.false&current_stage=eq.brief&image_url=is.null',
+    {is_archived:true, updated_at:new Date().toISOString()});
   await sbDel('graphic_weekly_plan','id=eq.'+wpEditId);
   toast('Task deleted');
   closeModal('modalWpTask');
   wpLoadWeek();
+  loadAll();
 }
 
 // ═══════════════════════════════════════
@@ -4983,22 +5279,33 @@ async function wpBulkSaveAll(){
   }
   _wpBulkRunning=true;
   if(btn){ btn.disabled=true; btn.style.opacity='0.6'; btn.style.pointerEvents='none'; }
-  let count=0, left=0, failed=0;
+  let count=0, left=0, failed=0, slotsMade=0, slotsWanted=0;
   try{
     for(const row of rows){
       const d = read(row);
       if(!addMatching && matching.indexOf(row)>-1){ left++; continue; }
-      const data = Object.assign(d, { status:'planned', created_by: currentUser.name, updated_at: new Date().toISOString() });
+      const data = Object.assign(d, { status:'planned', deadline: wpDeadlineFor(d.day_of_week),
+        created_by: currentUser.name, updated_at: new Date().toISOString() });
       if(btn) btn.textContent='Saving '+(count+1)+'\u2026';
       let res=null;
       try{ res = await sbPost('graphic_weekly_plan', data); }catch(e){ res=null; }
-      if(Array.isArray(res)){ row.remove(); count++; } else { failed++; }
+      if(Array.isArray(res)){
+        row.remove(); count++;
+        /* a bulk-added task makes its slots too (head's spec, 9 Nov 2026) */
+        if(data.task_type!=='revision' && res[0] && res[0].id){
+          try{ slotsMade += await wpMakeSlots(Object.assign({}, data, {id: res[0].id}), data.design_count, 0); }catch(e){}
+          slotsWanted += data.design_count;
+        }
+      } else { failed++; }
     }
     let msg = count+' task'+(count!==1?'s':'')+' added';
+    if(slotsWanted) msg += ', '+slotsMade+' slot'+(slotsMade!==1?'s':'')+' ready in Approved Posts';
+    if(slotsWanted && slotsMade<slotsWanted) msg += ' ('+(slotsWanted-slotsMade)+' slot'+(slotsWanted-slotsMade!==1?'s':'')+' FAILED)';
     if(left) msg += ', '+left+' already on the plan left out';
     if(failed) msg += ', '+failed+' FAILED to save. Press Save All again to retry only those';
-    toast(msg, failed?'error':'success');
+    toast(msg, (failed||slotsMade<slotsWanted)?'error':'success');
     if(!failed) closeModal('modalWpBulk');
+    if(slotsMade) loadAll();
     wpLoadWeek();
   } finally {
     _wpBulkRunning=false;
@@ -5700,10 +6007,14 @@ async function runSelfTest(opts){
        same client on the same day. A match must ASK, not refuse. Every write
        and every dialog is stubbed here, so nothing reaches the database. */
     {
-      const keep={post:sbPost, conf:window.confirm, tasks:wpTasks, edit:wpEditId, ws:wpWeekStart};
+      const keep={post:sbPost, conf:window.confirm, tasks:wpTasks, edit:wpEditId, ws:wpWeekStart, load:loadAll};
       const posted=[]; let asked=0, answer=true;
       try{
-        sbPost = async (t,d)=>{ posted.push(d); return [{id:-77}]; };
+        /* the save now also writes the task's slots (graphic_projects) and
+           refreshes; count only the weekly plan writes, and still the slot
+           insert gets a believable id per row so the slot path runs whole */
+        sbPost = async (t,d)=>{ if(t==='graphic_weekly_plan') posted.push(d); return Array.isArray(d)? d.map((x,i)=>({id:-900-i})) : [{id:-77}]; };
+        loadAll = async ()=>{};
         window.confirm = ()=>{ asked++; return answer; };
         wpWeekStart = wpGetMonday(new Date()); wpEditId=null;
         const ws=wpKey(wpWeekStart), CL='SELFTEST CARRIER';
@@ -5738,7 +6049,7 @@ async function runSelfTest(opts){
 
         /* Bulk: two identical rows in one sheet are both meant, and each row
            leaves the sheet as it saves so a retry only resends what failed. */
-        sbPost = async (t,d)=>{ posted.push(d); return [{id:-78}]; };
+        sbPost = async (t,d)=>{ if(t==='graphic_weekly_plan') posted.push(d); return Array.isArray(d)? d.map((x,i)=>({id:-910-i})) : [{id:-78}]; };
         posted.length=0; asked=0; answer=true;
         const holder=document.getElementById('wpBulkRows'); const had=holder?holder.innerHTML:'';
         if(holder && typeof wpBulkAddRow==='function'){
@@ -5759,7 +6070,7 @@ async function runSelfTest(opts){
           ok('Weekly plan bulk: the sheet exists to test', false, 'no #wpBulkRows or wpBulkAddRow');
         }
       } finally {
-        sbPost=keep.post; window.confirm=keep.conf; wpTasks=keep.tasks; wpEditId=keep.edit; wpWeekStart=keep.ws;
+        sbPost=keep.post; window.confirm=keep.conf; wpTasks=keep.tasks; wpEditId=keep.edit; wpWeekStart=keep.ws; loadAll=keep.load;
         try{ closeModal('modalWpTask'); closeModal('modalWpBulk'); }catch(e){}
       }
     }

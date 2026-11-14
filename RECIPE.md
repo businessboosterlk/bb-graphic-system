@@ -2,7 +2,7 @@
 Kind: system
 Live: https://businessboosterlk.github.io/bb-graphic-system/
 Live commit: 9940ef2
-Last verified: 2026-11-09, GRAPHIC WEEKLY SLOTS 1
+Last verified: 2026-11-14, GRAPHIC UPLOAD ALL 1
 
 Checked by `python3 ~/bb-systems/qa/recipe-check.py <this folder>`. A fresh chat rebuilds from this file
 alone. Anything that lives only in a chat is lost: write it here or it did not happen.
@@ -43,7 +43,7 @@ an index on graphic_projects(plan_task_id).
 ```bash
 open "http://localhost:8761/index.html?selftest"
 ```
-Sign in, read the selftest panel: 197 of 197 PASS, including "Harness: ZERO writes reached the
+Sign in, read the selftest panel: every check PASS (201 of 201 on 14 Nov; run it ONCE per page load, two overlapping runs fail timing checks), including "Harness: ZERO writes reached the
 database". Run it with the browser pane visible: a hidden 0x0 pane skips every width check.
 
 ## 5. Deliver or deploy
@@ -60,6 +60,7 @@ time, or the team's phones keep serving the old build.
 - The tick means sent on the WhatsApp group: done_at stamps it and the badge says On time or Late | why: head's spec point 3 | held by: index.html#done_at
 - The duplicate-task question still ASKS, never refuses, with slot writes in the save path | why: L-GFX-074, Farhath's second carousel | held by: index.html#CARRIER
 - Bulk-added tasks make slots and get the day's deadline too | why: the head lays whole weeks in bulk, the rule must not silently skip them | held by: index.html#slotsWanted
+- Upload all fills only EMPTY slots, in slot number order, files sorted 1, 2, 10; extra files are left out after a confirm; one shared path slotPutFile for single and bulk | why: Farhath 14 Nov, twelve story posts were twelve uploads | held by: index.html#slotUploadAll
 - New Client saves the typed name as-is with client_id null | why: Thulaib 9 Nov, scheduling before the client row exists | held by: index.html#__new__
 
 ## 7. Cast a copy

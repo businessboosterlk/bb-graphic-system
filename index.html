@@ -346,6 +346,14 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .slot-group-head{display:flex;align-items:center;gap:10px;margin:0 0 10px;padding:0 0 8px;border-bottom:1px solid var(--border)}
 .slot-group-head h4{font-size:0.9rem;font-weight:700;margin:0;color:var(--text)}
 .slot-group-count{font-size:0.74rem;font-weight:600;color:var(--text-3)}
+.slot-task{margin:0 0 14px;padding:10px;border:1px dashed transparent;border-radius:12px;transition:border-color .15s,background .15s}
+.slot-task.drop{border-color:var(--accent);background:var(--accent-soft)}
+.slot-task-head{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;margin:0 0 6px}
+.slot-task-name{font-size:0.82rem;font-weight:600;color:var(--text)}
+.slot-task-count{font-size:0.74rem;color:var(--text-3)}
+.slot-all-btn{margin-left:auto;min-height:36px}
+.slot-task-hint{font-size:0.72rem;color:var(--text-3);margin:0 0 8px}
+@media (max-width:600px){.slot-all-btn{margin-left:0;width:100%;justify-content:center;min-height:44px}}
 .slot-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
 .slot-card{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);
   padding:8px;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-width:0}
@@ -2273,11 +2281,90 @@ function renderPipeSlots(filtered){
   el.innerHTML = Object.keys(groups).sort((a,b)=>a.localeCompare(b)).map(name=>{
     const rows = groups[name];
     const okN = rows.filter(p=>p.current_stage==='approved').length;
+    /* Farhath, 14 Nov 2026: one weekly task's slots sit together under their
+       own line with ONE "Upload all" button, so twelve story posts go in with
+       one pick instead of twelve. Slots with no task keep the plain grid. */
+    const tasks = {}, order = [];
+    rows.forEach(p=>{ const k = p.plan_task_id ? String(p.plan_task_id) : ''; if(!tasks[k]){ tasks[k]=[]; order.push(k); } tasks[k].push(p); });
     return '<div class="slot-group">'
       + '<div class="slot-group-head"><h4>'+esc(name)+'</h4><span class="slot-group-count">'+okN+' of '+rows.length+' approved</span></div>'
-      + '<div class="slot-grid">'+rows.map(renderSlotCard).join('')+'</div>'
+      + order.map(k=>renderSlotTask(k, tasks[k].slice().sort(slotOrder))).join('')
       + '</div>';
   }).join('');
+}
+/* Slot "3 of 12" sorts before "10 of 12"; untitled slots fall back to id. */
+function slotNum(p){ const m = /(\d+) of \d+\s*$/.exec(p.title||''); return m ? +m[1] : 1e6 + (p.id||0); }
+function slotOrder(a,b){ return slotNum(a)-slotNum(b) || (a.id||0)-(b.id||0); }
+/* The slots of one task still waiting for their picture, in slot order. */
+function slotEmptiesOf(taskId){
+  return (projects||[]).filter(p=>String(p.plan_task_id)===String(taskId) && !p.is_archived
+    && (slotState(p)==='todo' || slotState(p)==='sent')).sort(slotOrder);
+}
+function renderSlotTask(k, list){
+  const grid = '<div class="slot-grid">'+list.map(renderSlotCard).join('')+'</div>';
+  if(!k) return grid;
+  const label = String(list[0].title||'').replace(/\s*\d+ of \d+\s*$/,'') || 'Weekly task';
+  const empties = list.filter(p=>{ const s = slotState(p); return s==='todo' || s==='sent'; }).length;
+  const inN = list.length - empties;
+  const btn = empties > 1
+    ? '<label class="btn btn-accent btn-sm slot-all-btn">Upload all '+empties+' posts'
+      + '<input type="file" accept="image/*" multiple style="display:none" onchange="slotUploadAllPick(this,'+Number(k)+')"></label>'
+    : '';
+  return '<div class="slot-task" data-task="'+Number(k)+'" ondragover="slotDragOver(event,this)" ondragleave="this.classList.remove(\'drop\')" ondrop="slotDrop(event,this,'+Number(k)+')">'
+    + '<div class="slot-task-head"><span class="slot-task-name">'+esc(label)+'</span>'
+    + '<span class="slot-task-count">'+inN+' of '+list.length+' uploaded</span>'+btn+'</div>'
+    + (empties > 1 ? '<div class="slot-task-hint">Pick or drop all the pictures at once. They go in by file name: 1, 2, 3 and so on.</div>' : '')
+    + grid + '</div>';
+}
+function slotDragOver(ev, el){
+  if(!ev.dataTransfer || Array.from(ev.dataTransfer.types||[]).indexOf('Files')===-1) return;
+  ev.preventDefault(); el.classList.add('drop');
+}
+function slotDrop(ev, el, taskId){
+  if(!ev.dataTransfer || !ev.dataTransfer.files || !ev.dataTransfer.files.length) return;
+  ev.preventDefault(); el.classList.remove('drop');
+  slotUploadAll(Array.from(ev.dataTransfer.files), taskId);
+}
+function slotUploadAllPick(input, taskId){
+  const files = Array.from(input.files||[]); input.value = '';
+  if(files.length) slotUploadAll(files, taskId);
+}
+/* Fill a task's empty slots in one go. Files sort by name the way a person
+   reads them (2 before 10) and fill the slots in order. Three at a time, each
+   one through the same storage-first path as a single upload, and the count at
+   the end says exactly what landed and what did not. */
+async function slotUploadAll(files, taskId){
+  if(_slotUploading){ toast('An upload is still saving. Try again in a moment'); return; }
+  const pics = files.filter(f=>/^image\//.test(f.type||'') || /\.(jpe?g|png|webp|gif|heic)$/i.test(f.name||''))
+    .sort((a,b)=>String(a.name).localeCompare(String(b.name), undefined, {numeric:true, sensitivity:'base'}));
+  if(!pics.length){ toast('Those files are not pictures','error'); return; }
+  const empties = slotEmptiesOf(taskId);
+  if(!empties.length){ toast('Every slot in this task already has its post'); return; }
+  let use = pics;
+  if(pics.length > empties.length){
+    if(!confirm('You picked '+pics.length+' pictures but only '+empties.length+' slots are empty.\n\nPut the first '+empties.length+' in (by file name) and leave the other '+(pics.length-empties.length)+' out?')) return;
+    use = pics.slice(0, empties.length);
+  }
+  const jobs = use.map((f,i)=>({file:f, id:empties[i].id}));
+  _slotUploading = true;
+  let done = 0, failed = 0, next = 0;
+  toast('Uploading 0 of '+jobs.length+'…');
+  const worker = async ()=>{
+    while(next < jobs.length){
+      const j = jobs[next++];
+      let okOne = false;
+      try{ okOne = await slotPutFile(j.file, j.id); }catch(e){ console.error('slot bulk upload', e); }
+      if(okOne) done++; else failed++;
+      toast('Uploading '+(done+failed)+' of '+jobs.length+'…');
+    }
+  };
+  try{ await Promise.all([worker(), worker(), worker()]); }
+  finally{ _slotUploading = false; }
+  renderPipeline();
+  const left = empties.length - done;
+  if(failed) toast(done+' uploaded, '+failed+' did not go in. Press Upload all again for the rest','error');
+  else toast(done+' post'+(done!==1?'s':'')+' uploaded'+(left>0?'. '+left+' slot'+(left!==1?'s':'')+' still empty':'')+(canApprove()?'. Now approve them':''));
+  return {done, failed};
 }
 function renderSlotCard(p){
   const st = slotState(p);
@@ -2314,24 +2401,32 @@ async function slotUpload(input, id){
   if(_slotUploading){ toast('One upload at a time: the last one is still saving'); return; }
   if(file.size > 15*1024*1024){ toast('Image too large (max 15 MB)','error'); return; }
   _slotUploading = true;
-  toast('Uploading&hellip;');
+  toast('Uploading…');
   try{
-    const dataUrl = await new Promise((res,rej)=>{ const r=new FileReader(); r.onerror=()=>rej(new Error('read')); r.onload=e=>res(e.target.result); r.readAsDataURL(file); });
-    const compressed = await compressImageDataUrl(dataUrl);
-    const thumb = await makeThumbDataUrl(dataUrl);
-    const up = await gfxUploadImage(id, compressed, thumb);
-    const ok = await sbPatch('graphic_projects','id=eq.'+id,
-      {image_url: up.image_url, thumb_url: up.thumb_url,
-       updated_at: new Date().toISOString(), updated_by:(currentUser&&currentUser.name)||null});
-    if(!ok){ toast('The picture uploaded but the post could not be saved. Try again','error'); return; }
-    IMG_IDS.add(id); IMG_CACHE[id] = up.thumb_url || up.image_url;
-    const p = (projects||[]).find(x=>x.id===id);
-    if(p){ p.image_url = up.image_url; p.thumb_url = up.thumb_url; }
-    if(p && p.current_stage==='brief') await gfxSetStage(id,'head_review','Approved post uploaded into its slot', true);
+    if(!(await slotPutFile(file, id))){ toast('The picture uploaded but the post could not be saved. Try again','error'); return; }
     toast(canApprove() ? 'Uploaded. Now approve it' : 'Uploaded. A head can now approve it');
     renderPipeline();
   }catch(e){ gfxUploadFailed(e); }
   finally{ _slotUploading = false; }
+}
+/* The one path a picture takes into a slot, used by the single button and by
+   Upload all. Returns false when the row could not be saved; throws when the
+   file could not be read or stored (nothing is written then). */
+async function slotPutFile(file, id){
+  if(file.size > 15*1024*1024) return false;
+  const dataUrl = await new Promise((res,rej)=>{ const r=new FileReader(); r.onerror=()=>rej(new Error('read')); r.onload=e=>res(e.target.result); r.readAsDataURL(file); });
+  const compressed = await compressImageDataUrl(dataUrl);
+  const thumb = await makeThumbDataUrl(dataUrl);
+  const up = await gfxUploadImage(id, compressed, thumb);
+  const ok = await sbPatch('graphic_projects','id=eq.'+id,
+    {image_url: up.image_url, thumb_url: up.thumb_url,
+     updated_at: new Date().toISOString(), updated_by:(currentUser&&currentUser.name)||null});
+  if(!ok) return false;
+  IMG_IDS.add(id); IMG_CACHE[id] = up.thumb_url || up.image_url;
+  const p = (projects||[]).find(x=>x.id===id);
+  if(p){ p.image_url = up.image_url; p.thumb_url = up.thumb_url; }
+  if(p && p.current_stage==='brief') await gfxSetStage(id,'head_review','Approved post uploaded into its slot', true);
+  return true;
 }
 
 function renderKCard(p){
@@ -5849,6 +5944,39 @@ async function runSelfTest(opts){
       try{ await bulkSaveAll(); } finally { sbPost=keepPost; gfxUploadImage=keepUp; holder.innerHTML=had; }
       ok('Decision 106: a failed image upload writes no row', writes.length===0, writes.length+' writes after a refused upload, 0 expected');
     }catch(e){ ok('Decision 106: a failed image upload writes no row', false, e && e.message); }
+
+    /* ── Farhath, 14 Nov 2026 · Upload all fills a task's empty slots in one pick ──
+       Files sort as a person reads them (1, 2, 10), fill only the EMPTY slots in
+       slot order, a filled slot is never overwritten and extra files are left
+       out after asking. Writes are stubbed: nothing reaches the database. */
+    {
+      const keepPut=slotPutFile, keepConfirm=window.confirm, keepRender=renderPipeline;
+      const T=-770014, put=[];
+      const fakes=[
+        {id:-770003, title:'SELFTEST Story 3 of 3', plan_task_id:T, current_stage:'brief', is_archived:false},
+        {id:-770001, title:'SELFTEST Story 1 of 3', plan_task_id:T, current_stage:'head_review', is_archived:false},
+        {id:-770002, title:'SELFTEST Story 2 of 3', plan_task_id:T, current_stage:'brief', is_archived:false, image_url:'https://selftest.invalid/x.jpg'}
+      ];
+      try{
+        slotPutFile = async (f,id)=>{ put.push(f.name+'>'+id); return true; };
+        window.confirm = ()=>true; renderPipeline = ()=>{};
+        fakes.forEach(f=>projects.push(f));
+        const files=['10.jpg','2.jpg','1.jpg'].map(n=>new File(['x'], n, {type:'image/jpeg'}));
+        const r = await slotUploadAll(files, T);
+        const got = put.slice().sort().join(' ');
+        ok('Upload all: pictures fill the empty slots in file-name order', got==='1.jpg>-770001 2.jpg>-770003',
+           got+' (expected 1.jpg into slot 1, 2.jpg into slot 3)');
+        ok('Upload all: a slot that already has its post is never overwritten', put.every(x=>x.indexOf('-770002')===-1), put.join(' '));
+        ok('Upload all: extra pictures are left out, not forced in', r && r.done===2 && put.indexOf('10.jpg>-770001')===-1 && put.length===2,
+           (r?r.done:'?')+' uploaded of 3 picked into 2 empty slots');
+        ok('Upload all and the single button share one upload path',
+           String(slotUpload).indexOf('slotPutFile(')>-1 && String(slotUploadAll).indexOf('slotPutFile(')>-1, '');
+      }catch(e){ ok('Upload all: pictures fill the empty slots in file-name order', false, e && e.message); }
+      finally{
+        slotPutFile=keepPut; window.confirm=keepConfirm; renderPipeline=keepRender; _slotUploading=false;
+        fakes.forEach(f=>{ const i=projects.indexOf(f); if(i>-1) projects.splice(i,1); });
+      }
+    }
 
     /* ── Decision 98, 7 Oct 2026 · Approved needs Head Review and a head or an SMM ── */
     {

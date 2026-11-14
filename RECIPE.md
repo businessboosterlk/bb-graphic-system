@@ -1,7 +1,7 @@
 # RECIPE: BB Graphic System
 Kind: system
 Live: https://businessboosterlk.github.io/bb-graphic-system/
-Live commit: 9940ef2
+Live commit: a84f09b
 Last verified: 2026-11-14, GRAPHIC UPLOAD ALL 1
 
 Checked by `python3 ~/bb-systems/qa/recipe-check.py <this folder>`. A fresh chat rebuilds from this file

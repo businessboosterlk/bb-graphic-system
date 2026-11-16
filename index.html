@@ -924,7 +924,11 @@ tr:hover td{background:var(--surface-2)}
              manage." A graphic team recognises its work by the picture, not the
              title, so the grid leads with the design. The board stays, because a
              list with stages is a board AND another view behind one switch. -->
-        <div class="pipe-views" role="tablist" aria-label="How to show the pipeline">
+        <!-- Farhath, 16 Nov 2026: Grid and Board are not needed, Approved Posts does
+             it all. The switch is hidden (inline display, because .pipe-views sets
+             its own display and hidden alone would lose); the code underneath stays
+             so the stages, selftest and a quick bring-back are untouched. -->
+        <div class="pipe-views" role="tablist" aria-label="How to show the pipeline" style="display:none">
           <button class="pipe-view" id="pipeViewSlots" role="tab" onclick="setPipeView('slots')">Approved Posts</button>
           <button class="pipe-view" id="pipeViewGrid"  role="tab" onclick="setPipeView('grid')">Grid</button>
           <button class="pipe-view" id="pipeViewBoard" role="tab" onclick="setPipeView('board')">Board</button>
@@ -2159,12 +2163,13 @@ let PIPE_VIEW = (function(){
        One switchover: a view saved before this one existed was not a vote
        against it, so everyone lands on it once; their next pick then sticks. */
     if(!localStorage.getItem('bbgfx_seen_slots')){ localStorage.setItem('bbgfx_seen_slots','1'); localStorage.setItem('bbgfx_pipe_view','slots'); return 'slots'; }
-    const v = localStorage.getItem('bbgfx_pipe_view');
-    return (v==='board'||v==='grid'||v==='slots') ? v : 'slots';
+    /* 16 Nov 2026: Grid and Board are retired from the screen, so a saved
+       'grid' or 'board' from before is not honoured: everyone lands on Approved Posts. */
+    return 'slots';
   }catch(e){ return 'slots'; }
 })();
 function setPipeView(v){
-  PIPE_VIEW = (v==='board'||v==='grid') ? v : 'slots';
+  PIPE_VIEW = 'slots';
   try{ localStorage.setItem('bbgfx_pipe_view', PIPE_VIEW); }catch(e){}
   renderPipeline();
 }
@@ -2278,7 +2283,12 @@ function renderPipeSlots(filtered){
   }
   const groups = {};
   filtered.forEach(p=>{ const k = p.client_name||'No client'; (groups[k]=groups[k]||[]).push(p); });
-  el.innerHTML = Object.keys(groups).sort((a,b)=>a.localeCompare(b)).map(name=>{
+  /* Farhath, 16 Nov 2026: newest on top, not A to Z. A client wall rises with
+     its newest slot; inside it the newest weekly task comes first. The slots
+     INSIDE one task keep their 1, 2, 3 order, because Upload all fills them by
+     file name against that order. */
+  const newest = rows => rows.reduce((m,p)=>Math.max(m, slotStamp(p)), 0);
+  el.innerHTML = Object.keys(groups).sort((a,b)=>newest(groups[b])-newest(groups[a]) || a.localeCompare(b)).map(name=>{
     const rows = groups[name];
     const okN = rows.filter(p=>p.current_stage==='approved').length;
     /* Farhath, 14 Nov 2026: one weekly task's slots sit together under their
@@ -2286,6 +2296,7 @@ function renderPipeSlots(filtered){
        one pick instead of twelve. Slots with no task keep the plain grid. */
     const tasks = {}, order = [];
     rows.forEach(p=>{ const k = p.plan_task_id ? String(p.plan_task_id) : ''; if(!tasks[k]){ tasks[k]=[]; order.push(k); } tasks[k].push(p); });
+    order.sort((a,b)=>newest(tasks[b])-newest(tasks[a]) || (+b||0)-(+a||0));
     return '<div class="slot-group">'
       + '<div class="slot-group-head"><h4>'+esc(name)+'</h4><span class="slot-group-count">'+okN+' of '+rows.length+' approved</span></div>'
       + order.map(k=>renderSlotTask(k, tasks[k].slice().sort(slotOrder))).join('')
@@ -2294,6 +2305,7 @@ function renderPipeSlots(filtered){
 }
 /* Slot "3 of 12" sorts before "10 of 12"; untitled slots fall back to id. */
 function slotNum(p){ const m = /(\d+) of \d+\s*$/.exec(p.title||''); return m ? +m[1] : 1e6 + (p.id||0); }
+function slotStamp(p){ return Date.parse(p.created_at) || (p.id||0); }
 function slotOrder(a,b){ return slotNum(a)-slotNum(b) || (a.id||0)-(b.id||0); }
 /* The slots of one task still waiting for their picture, in slot order. */
 function slotEmptiesOf(taskId){

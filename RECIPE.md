@@ -61,6 +61,8 @@ time, or the team's phones keep serving the old build.
 - The duplicate-task question still ASKS, never refuses, with slot writes in the save path | why: L-GFX-074, Farhath's second carousel | held by: index.html#CARRIER
 - Bulk-added tasks make slots and get the day's deadline too | why: the head lays whole weeks in bulk, the rule must not silently skip them | held by: index.html#slotsWanted
 - Upload all fills only EMPTY slots, in slot number order, files sorted 1, 2, 10; extra files are left out after a confirm; one shared path slotPutFile for single and bulk | why: Farhath 14 Nov, twelve story posts were twelve uploads | held by: index.html#slotUploadAll
+- Approved Posts lists clients and tasks NEWEST FIRST (by created_at); slots inside a task stay 1, 2, 3 | why: Farhath 16 Nov, new slots were buried by A to Z; Upload all fills by slot number | held by: index.html#slotStamp
+- Grid and Board tabs are hidden, Approved Posts is the only pipeline view; the grid and board code stays so the selftest and a bring-back still work, and a saved grid or board choice is ignored | why: Farhath 16 Nov | held by: index.html#bbgfx_seen_slots
 - New Client saves the typed name as-is with client_id null | why: Thulaib 9 Nov, scheduling before the client row exists | held by: index.html#__new__
 
 ## 7. Cast a copy

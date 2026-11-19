@@ -2034,3 +2034,41 @@ paged, named columns, never image_url, one person, only the weeks shown. **Lesso
 `#sidebar`, so `#appShell` stayed clickable behind the sheet; MS_APP.behind names it and the sheet sets and clears inert itself.
 `.content section` is display:none, so the block holds no `<section>`. Checks: `node ~/bb-systems/team-score/checks/myscore-recount.mjs`
 (PASS, `--plant` FAILS) and `node ~/bb-systems/team-score/checks/myscore-click.mjs --only g`.
+
+## L-GFX-079 · the dashboard counted every slot ever made, so it read 836 active, 239 To do and 105 Head Review · BUILT 2026-11-18 (Thulaib: "made 0", count only work created from today)
+The five stat cards, the Pipeline Overview strip, Recent Activity and the Overdue list now count only work created on or after
+`DASH_COUNT_FROM` (`'2026-11-18'`, read as 00:00 Colombo, `DASH_COUNT_FROM_MS`), through one helper `dashCounted(p)` in `renderDashboard`.
+To move the line, change that ONE constant. Display only: the Pipeline page, Approved Posts, Team Score, decision 98's gate (`gfx_guard_approved`)
+and the stage alerts do not read it. Check: `node dash-count-from.check.mjs <this url> <main url>` (63 of 63 on the branch, 23 of 28 FAIL on the old
+code, pressed 8 touchpoints at 390 and 1440, nothing cut off at 375, 390, 768 and 1440, zero writes).
+**Facts found before any delete (read only, 18 Nov 2026).** 836 active rows; 365 are weekly-plan slots (`plan_task_id` set) and 53 more are archived.
+Empty slots (no `image_url` or `thumb_url`): 239 in To do and 105 in Head Review, all 344 made since 10 Nov; the Head Review ones are slots the tick moved.
+9 Head Review slots HOLD an image (12 to 13 Nov): a designer's real work. 59 slots point at a weekly task that no longer exists (45 archived, 14 active).
+Deleting a slot CASCADES to its `graphic_stage_history` rows (`graphic_project_comments` has none on slots). `bb_guard_mass_delete` refuses more than 25 rows
+in one request for the app's roles. Archiving (`is_archived=true`) removes a row from the dashboard, the Pipeline and the Command Centre alike
+(`loadAll` and the CC both read `is_archived=eq.false`), it is reversible, and Team Score reads it as "cancelled, shown and never scored".
+**Left alone on purpose.** (1) `isOverdue` parses a date-only deadline as UTC midnight, so work due TODAY reads overdue from 05:30 Colombo; it feeds other
+screens too, so it is a separate change. (2) A section change (`navigateTo`) adds no history entry, so Back on the Pipeline leaves the app rather than returning
+to the dashboard; a sheet opened from it closes on one Back and the next Back leaves. (3) Once empty slots are removed, a weekly task has no slot to upload
+into until it is saved or edited (`wpSyncSlots` remakes the missing ones); no standalone "make slots" button was found.
+**Clean-up DONE 2026-11-18 (Thulaib: "do what you think is right"; the recommendation was archive, so nothing was deleted).** All 344 empty weekly slots
+(239 To do, 105 Head Review) were ARCHIVED in 14 batches of 25 or fewer, each guarded by `plan_task_id is not null and image_url is null and not is_archived`. Read back:
+344 archived, 0 empty slots active, 21 image slots and 8 empty non-slot posts untouched, 492 active rows left, 0 active rows created from today, 1,167 stage-history rows unchanged.
+Archiving fires no alert (the triggers watch `current_stage` and `assigned_designer_id` only). Every row carries `updated_by = 'CLAUDE CLEAN-UP 18 NOV'`, so one statement undoes it:
+`update graphic_projects set is_archived=false, updated_at=now() where updated_by='CLAUDE CLEAN-UP 18 NOV' and is_archived;` (id list in the side-session notes folder).
+Not cleared, on purpose: the 21 slots holding an image and the 8 empty posts made on 28 Oct (Sastho 1451, Square 1 Ai 1494 to 1496, Auto Museum 1514 to 1517).
+**Lesson.** A dashboard that counts everything since the day a table was made cannot be started afresh by deleting rows: it needs a start line of its own.
+
+## L-GFX-080 · Farhath's three changes: carousel slots take many pictures, filters survive a change, a task picks its target month · BUILT 2026-11-18 (live sha: set at deploy)
+**(1) Many pictures in one carousel slot.** A carousel slot now holds `graphic_projects.image_urls` (jsonb, `[{image_url, thumb_url},...]`, 20 at most, `GFX_MAX_SLIDES`);
+`image_url` and `thumb_url` always mirror slide 1, so every older reader (Team Score, Command Centre, archive) still sees one picture. Posts stay one image per slot.
+Files go in by natural name order (1, 2, 10), uploads APPEND, and the row is written ONCE after every picture has stored (one failed picture saves nothing). Approved carousels are locked.
+**The column does not exist yet** (migration `migrations/2026-11-18-image-urls.sql`, additive, waits on Thulaib's yes). `gfxLoadProjectList()` asks for it once; a 42703 reply sets `GFX_HAS_SLIDES=false`
+and a carousel slot behaves as one picture, exactly as before. Deploy and migration can go in either order. It does NOT break L-GFX-001: `image_urls` carries thumbnails and links, never read in lists beyond `PROJ_LIST_COLS` plus the one flag read.
+**(2) Filters were cleared on every change.** `loadAll` rebuilt the client dropdowns with `populateClientDropdowns()`, which reset the Pipeline client, stage and type filters to their first option. It now keeps each value and puts it back; a client that no longer exists falls back to All Clients.
+**(3) Target month.** Add Task has a Target Month (12 months); until the designer touches it, it follows the Deadline month. The month is stored on the SLOTS (`target_month`, `target_year`), so no schema change; Edit reads it back from the slots and changing it moves the still-empty ones. Bulk add keeps the deadline month.
+**Faults found while pressing it (phone, 18 Nov).** (a) Uploading from inside an EMPTY carousel sheet left the sheet saying "No slides yet": the empty-strip input called `slotUploadSlides`, which only redraws the board behind. It now uses `slideAddPick` for every state (check "from an empty carousel sheet, Upload slides redraws the sheet").
+(b) Pipeline Quick add: the Type, Client and Month words were cut on a phone (16px words in a 34px box, Client squeezed to 38px). Phone CSS gives the selects 42px and Client its own line (checks "Quick add shows the words..." and "Client box has a line of its own"). The bug is older than this change.
+**Left alone, pre-existing.** The selftest line "No full-screen element is unknown to the freeze layer" fails at phone widths on HEAD too, because stacked toasts make `#toastWrap` taller than the screen; it is a false alarm of the test, not a trapped screen. clipAudit also reads "SIDEWAYS by 10px" on the Weekly Plan right after a sheet has closed at 768 and 1440 (HEAD does the same; gone on a second visit).
+Selftest at 375: 245 checks, 244 pass, the one failure is the toast line above (HEAD: 204 total, same one failure). Checks added: 41 under "Farhath, 18 Nov 2026".
+**Lesson.** A fix proven from the card is not proven from inside the sheet: press the same button from the empty state and from the filled one.

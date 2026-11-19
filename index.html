@@ -370,6 +370,20 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .slot-state.ok{color:var(--ok,#1a7f4e)}
 .slot-state.wait{color:var(--text-3);font-weight:600}
 .slot-upload-btn{display:flex;align-items:center;justify-content:center;text-align:center}
+/* CAROUSEL SLOTS, Farhath 18 Nov 2026: one slot holds all the slides of one carousel */
+.slot-card.drop{border-color:var(--accent);background:var(--accent-soft)}
+.slot-pic{position:relative}
+.slot-count{position:absolute;right:6px;bottom:6px;padding:2px 8px;border-radius:99px;font-size:0.68rem;font-weight:700;background:rgba(0,0,0,.72);color:#fff}
+.slides-head{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 8px;margin:0 0 8px;font-size:0.85rem;font-weight:700}
+.slides-head span{font-size:0.74rem;font-weight:600;color:var(--text-3)}
+.slides-strip{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:10px;margin:0 0 10px}
+.slide-tile{position:relative;display:flex;flex-direction:column;gap:6px;padding:6px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);min-width:0}
+.detail-slides .slide-tile img{width:100%;aspect-ratio:1/1;max-height:none;object-fit:cover;border:0;cursor:pointer;border-radius:calc(var(--r-sm) - 2px)}
+.slide-n{position:absolute;left:10px;top:10px;min-width:22px;height:22px;padding:0 6px;border-radius:99px;background:rgba(0,0,0,.72);color:#fff;font-size:0.7rem;font-weight:700;display:flex;align-items:center;justify-content:center}
+.slide-tools{display:flex;gap:4px}
+.slide-tools .btn{flex:1;min-width:0;min-height:36px;padding:0 6px;justify-content:center}
+.slides-add{display:inline-flex;align-items:center;justify-content:center;min-height:36px}
+@media (max-width:600px){.slide-tools .btn,.slides-add{min-height:44px}}
 .pipe-slots-empty{padding:28px;text-align:center;color:var(--text-3);font-size:0.8rem}
 .wp-dl{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:99px;font-size:0.62rem;font-weight:700;
   background:var(--surface-2);border:1px solid var(--border);color:var(--text-3);vertical-align:1px}
@@ -450,6 +464,14 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
   .qa-bar input{flex:1 1 100%;min-width:0}
   .qa-bar select{flex:1 1 0;width:auto;min-width:0}
 }
+/* Phone (Farhath's screen, 18 Nov 2026): four boxes on one line left Client and Month about 80px wide, so the
+   page read "Clien" and "Nove". Client takes a line of its own; Type, Month and Add share the one under it. */
+@media(max-width:600px){
+  .qa-bar select{height:42px}   /* 16px words (iOS will not zoom) in a 34px box lost the tail of the p and the brackets */
+  .qa-bar #qaClient{order:1;flex:1 1 100%}
+  .qa-bar #qaType,.qa-bar #qaMonth{order:2}
+  .qa-bar > .btn{order:3;flex:0 0 auto}
+}
 /* Phone: with Bulk Add and Add Post in the top bar the greeting pushed the theme switch off the screen */
 @media(max-width:600px){.topbar-actions:not(:empty)+#topbarGreeting{display:none}}
 .k-advance{margin-top:8px;width:100%;background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent);border-radius:var(--r-sm);padding:7px;font-size:0.76rem;font-weight:700;cursor:pointer;transition:all .15s}
@@ -466,10 +488,6 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .gfx-rev-label{display:block;font-size:0.82rem;font-weight:600;color:var(--text-2);margin-bottom:6px}
 .gfx-rev-reason{width:100%;min-height:104px;resize:vertical;font:inherit;font-size:16px;line-height:1.4;padding:10px 12px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--surface-2);color:var(--text);box-sizing:border-box}
 .gfx-rev-hint{font-size:0.76rem;color:var(--text-3);margin:6px 0 0;min-height:1.2em}
-.gfx-stars{display:flex;justify-content:center;gap:4px}
-.gfx-star{min-width:52px;min-height:52px;display:inline-flex;align-items:center;justify-content:center;background:none;border:none;border-radius:var(--r-sm);font-size:30px;line-height:1;color:var(--text-3);cursor:pointer;-webkit-tap-highlight-color:transparent}
-.gfx-star.on{color:#f5a524}
-.gfx-star:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .gfx-rev-bar{display:flex;flex-direction:column;gap:8px;padding:16px 20px calc(16px + var(--sab,0px))}
 .gfx-rev-bar .btn{width:100%;justify-content:center;min-height:48px;font-size:0.92rem}
 .gfx-rev-bar .btn[disabled]{opacity:.45;cursor:not-allowed}
@@ -1213,7 +1231,18 @@ tr:hover td{background:var(--surface-2)}
         </div>
         <div class="form-group">
           <label>Deadline</label>
-          <input type="date" id="wpDeadline" onchange="this.dataset.touched='1'">
+          <input type="date" id="wpDeadline" onchange="this.dataset.touched='1';wpMonthFollow()">
+        </div>
+        <!-- Farhath, 18 Nov 2026: the designer picks the month the slots are made for.
+             It follows the deadline's month until it is changed by hand. -->
+        <div class="form-group">
+          <label for="wpTargetMonth">Target Month</label>
+          <select id="wpTargetMonth" onchange="this.dataset.touched='1'" title="The pipeline month this task's slots are made for">
+            <option value="1">January</option><option value="2">February</option><option value="3">March</option>
+            <option value="4">April</option><option value="5">May</option><option value="6">June</option>
+            <option value="7">July</option><option value="8">August</option><option value="9">September</option>
+            <option value="10">October</option><option value="11">November</option><option value="12">December</option>
+          </select>
         </div>
         <div class="form-group">
           <label>Assigned To</label>
@@ -1945,9 +1974,27 @@ const IMG_CACHE = {};      // id → image_url, filled on demand
    said to the user. It hit the team twice (2026-06-22, 2026-08-10).
    Now: each list is assigned only on its OWN success, everything else keeps its
    last known good value, and a failed read is announced instead of swallowed. */
+/* Farhath, 18 Nov 2026: a carousel slot holds many pictures in graphic_projects.image_urls
+   (jsonb: [{image_url, thumb_url}, ...] in slide order; image_url and thumb_url keep
+   the FIRST slide so everything else that reads them is untouched). The column is
+   added by migrations/2026-11-18-image-urls.sql. Until it exists the list is read
+   without it, GFX_HAS_SLIDES stays false and a carousel slot behaves as it always did
+   (one picture), so the page and the database can ship in either order. */
+let GFX_HAS_SLIDES = false, _slidesMissing = false;
+async function gfxLoadProjectList(){
+  const q = cols => '?order=created_at.desc&is_archived=eq.false&select='+cols;
+  if(!_slidesMissing){
+    const r = await sbGet('graphic_projects', q(PROJ_LIST_COLS+',image_urls'));
+    if(Array.isArray(r)){ GFX_HAS_SLIDES = true; return r; }
+    if(!(r && r.code==='42703')) return r;       // some other failure: report it, do not guess
+    _slidesMissing = true;                       // undefined column: the migration has not run
+  }
+  GFX_HAS_SLIDES = false;
+  return sbGet('graphic_projects', q(PROJ_LIST_COLS));
+}
 async function loadAll(){
   const res = await Promise.allSettled([
-    sbGet('graphic_projects','?order=created_at.desc&is_archived=eq.false&select='+PROJ_LIST_COLS),
+    gfxLoadProjectList(),
     sbGet('clients','?order=name.asc&select='+CLIENT_LIST_COLS),
     sbGet('graphic_stage_history','?order=entered_at.desc&limit=50'),
     sbGet('graphic_projects','?is_archived=eq.false&image_url=not.is.null&select=id')
@@ -2034,11 +2081,23 @@ function renderCurrentPage(){
   if(page==='agents') renderAgents();
 }
 
+/* Farhath, 18 Nov 2026: "the filters are being cleared everytime I make a change in
+   the pipeline". Almost every write ends in loadAll(), and so does the 3 minute
+   refresh, and loadAll() calls this, which rebuilt each client select from nothing
+   and so put it back on "All Clients". The value is read BEFORE the rebuild and put
+   back AFTER it, only when that client is still in the list. The same goes for the
+   quick add and the post form, so a form half filled does not blank on a refresh. */
 function populateClientDropdowns(){
+  const keep = (id, html) => {
+    const el = document.getElementById(id); if(!el) return;
+    const was = el.value;
+    el.innerHTML = html;
+    if(was && Array.prototype.some.call(el.options, o => o.value === was)) el.value = was;
+  };
   const opts = clients.map(c=>`<option value="${c.id}" data-name="${esc(c.name)}">${esc(c.name)}</option>`).join('');
-  document.getElementById('projClient').innerHTML = '<option value="">Select Client</option>'+opts;
-  const qa=document.getElementById('qaClient'); if(qa) qa.innerHTML='<option value="">Client (optional)</option>'+opts;
-  document.getElementById('filterClient').innerHTML = '<option value="">All Clients</option>'+clients.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
+  keep('projClient', '<option value="">Select Client</option>'+opts);
+  keep('qaClient', '<option value="">Client (optional)</option>'+opts);
+  keep('filterClient', '<option value="">All Clients</option>'+clients.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join(''));
 }
 
 // ─── ESCAPE HTML ───
@@ -2051,14 +2110,24 @@ function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 // ═══════════════════════════════════════
 // DASHBOARD
 // ═══════════════════════════════════════
+/* DASH_COUNT_FROM, 18 Nov 2026 (Thulaib): the dashboard numbers (the five stat cards, the Pipeline
+   Overview strip, Recent Activity and the Overdue list) count only work CREATED on or after this
+   Colombo date, so they start from a clean 0. Older work is untouched: it stays in the Pipeline, Approved
+   Posts and Team Score; it just stops feeding the dashboard. This is the ONE place to move the line.
+   Display only: nothing here reads or writes a stage, so decision 98's gate, the stars and the alerts
+   are not involved. */
+const DASH_COUNT_FROM = '2026-11-18';
+const DASH_COUNT_FROM_MS = new Date(DASH_COUNT_FROM+'T00:00:00+05:30').getTime();
+function dashCounted(p){ return !!(p && p.created_at) && new Date(p.created_at).getTime() >= DASH_COUNT_FROM_MS; }
+
 function renderDashboard(){
   const now = new Date();
   const thisMonth = now.getMonth()+1;
   const thisYear = now.getFullYear();
-  const active = scopedProjects(projects.filter(p=>!p.is_archived));
+  const active = scopedProjects(projects.filter(p=>!p.is_archived && dashCounted(p)));
   const inProgress = active.filter(p=>p.current_stage==='in_progress');
   const pendingReview = active.filter(p=>['head_review','sent_to_client'].includes(p.current_stage));
-  const completedMonth = scopedProjects(projects).filter(p=>p.current_stage==='approved' && p.completed_at && new Date(p.completed_at).getMonth()+1===thisMonth && new Date(p.completed_at).getFullYear()===thisYear);
+  const completedMonth = scopedProjects(projects.filter(dashCounted)).filter(p=>p.current_stage==='approved' && p.completed_at && new Date(p.completed_at).getMonth()+1===thisMonth && new Date(p.completed_at).getFullYear()===thisYear);
   const overdue = active.filter(isOverdue);
 
   document.getElementById('dashStats').innerHTML = `
@@ -2078,7 +2147,8 @@ function renderDashboard(){
   ).join('');
 
   // Activity feed
-  const recent = stageHistory.slice(0,10);
+  const countedIds = new Set(projects.filter(dashCounted).map(p=>p.id));
+  const recent = stageHistory.filter(h=>countedIds.has(h.graphic_project_id)).slice(0,10);
   if(recent.length===0){
     document.getElementById('dashActivity').innerHTML = emptyHTML('No recent activity');
   } else {
@@ -2318,14 +2388,19 @@ function renderSlotTask(k, list){
   const label = String(list[0].title||'').replace(/\s*\d+ of \d+\s*$/,'') || 'Weekly task';
   const empties = list.filter(p=>{ const s = slotState(p); return s==='todo' || s==='sent'; }).length;
   const inN = list.length - empties;
-  const btn = empties > 1
+  /* Farhath, 18 Nov 2026: a carousel slot is ONE carousel, so Upload all (one
+     picture per slot) is the wrong tool there and is not offered. */
+  const carousel = list.some(slotMulti);
+  const btn = (empties > 1 && !carousel)
     ? '<label class="btn btn-accent btn-sm slot-all-btn">Upload all '+empties+' posts'
       + '<input type="file" accept="image/*" multiple style="display:none" onchange="slotUploadAllPick(this,'+Number(k)+')"></label>'
     : '';
   return '<div class="slot-task" data-task="'+Number(k)+'" ondragover="slotDragOver(event,this)" ondragleave="this.classList.remove(\'drop\')" ondrop="slotDrop(event,this,'+Number(k)+')">'
     + '<div class="slot-task-head"><span class="slot-task-name">'+esc(label)+'</span>'
     + '<span class="slot-task-count">'+inN+' of '+list.length+' uploaded</span>'+btn+'</div>'
-    + (empties > 1 ? '<div class="slot-task-hint">Pick or drop all the pictures at once. They go in by file name: 1, 2, 3 and so on.</div>' : '')
+    + (carousel
+        ? (empties ? '<div class="slot-task-hint">'+(list.length>1 ? 'Each slot is one carousel. Pick or drop all of a carousel\'s slides onto its slot.' : 'Pick or drop all the slides of this carousel at once.')+' They go in by file name: 1, 2, 3 and so on.</div>' : '')
+        : (empties > 1 ? '<div class="slot-task-hint">Pick or drop all the pictures at once. They go in by file name: 1, 2, 3 and so on.</div>' : ''))
     + grid + '</div>';
 }
 function slotDragOver(ev, el){
@@ -2335,7 +2410,16 @@ function slotDragOver(ev, el){
 function slotDrop(ev, el, taskId){
   if(!ev.dataTransfer || !ev.dataTransfer.files || !ev.dataTransfer.files.length) return;
   ev.preventDefault(); el.classList.remove('drop');
-  slotUploadAll(Array.from(ev.dataTransfer.files), taskId);
+  const files = Array.from(ev.dataTransfer.files);
+  const mine = (projects||[]).filter(p=>String(p.plan_task_id)===String(taskId) && !p.is_archived);
+  if(mine.some(slotMulti)){
+    /* a carousel task: its slides belong to ONE slot, never one picture per slot */
+    const open = mine.filter(p=>p.current_stage!=='approved');
+    if(open.length===1) slotSlidesRun(files, open[0].id);
+    else toast(open.length ? 'Drop the slides onto the carousel they belong to' : 'Every carousel in this task is approved, so it is locked');
+    return;
+  }
+  slotUploadAll(files, taskId);
 }
 function slotUploadAllPick(input, taskId){
   const files = Array.from(input.files||[]); input.value = '';
@@ -2381,18 +2465,28 @@ async function slotUploadAll(files, taskId){
 function renderSlotCard(p){
   const st = slotState(p);
   const cachedSrc = (p.image_url!==undefined && p.image_url!==null) ? p.image_url : (IMG_CACHE[p.id]||'');
-  const pic = (st==='approved'||st==='uploaded')
+  const multi = slotMulti(p);
+  let pic = (st==='approved'||st==='uploaded')
     ? '<img class="slot-img lazy-thumb" data-pid="'+p.id+'"'+(cachedSrc?' src="'+esc(cachedSrc)+'"':'')+' alt="" onerror="this.style.display=\'none\'">'
     : '<div class="slot-ph">'+(st==='todo'?'Empty slot':'Sent for approval, waiting for the post')+'</div>';
+  if(multi && (st==='approved'||st==='uploaded')){
+    const n = slidesOf(p).length || 1;
+    pic = '<div class="slot-pic">'+pic+'<span class="slot-count">'+n+' slide'+(n!==1?'s':'')+'</span></div>';
+  }
   const isOd = isOverdue(p);
   let foot;
   if(st==='approved') foot = '<div class="slot-state ok">&#10003;&#xFE0E; Approved</div>';
   else if(st==='uploaded') foot = canApprove()
     ? '<button class="btn btn-accent btn-sm" onclick="event.stopPropagation();quickMove('+p.id+',\'approved\')">Approve</button>'
     : '<div class="slot-state wait">'+GFX_WAIT_LABEL+'</div>';
-  else foot = '<label class="btn '+(st==='sent'?'btn-accent':'btn-ghost')+' btn-sm slot-upload-btn" onclick="event.stopPropagation()">Upload approved post'
-    + '<input type="file" accept="image/*" style="display:none" onchange="slotUpload(this,'+p.id+')"></label>';
-  return '<div class="slot-card '+st+'" data-id="'+p.id+'" onclick="openProjectDetail('+p.id+')">'
+  else foot = multi
+    ? '<label class="btn '+(st==='sent'?'btn-accent':'btn-ghost')+' btn-sm slot-upload-btn" onclick="event.stopPropagation()">Upload slides'
+      + '<input type="file" accept="image/*" multiple style="display:none" onchange="slotUploadSlides(this,'+p.id+')"></label>'
+    : '<label class="btn '+(st==='sent'?'btn-accent':'btn-ghost')+' btn-sm slot-upload-btn" onclick="event.stopPropagation()">Upload approved post'
+      + '<input type="file" accept="image/*" style="display:none" onchange="slotUpload(this,'+p.id+')"></label>';
+  const dropOn = (multi && st!=='approved')
+    ? ' ondragover="slotCardOver(event,this)" ondragleave="this.classList.remove(\'drop\')" ondrop="slotCardDrop(event,this,'+p.id+')"' : '';
+  return '<div class="slot-card '+st+'" data-id="'+p.id+'"'+dropOn+' onclick="openProjectDetail('+p.id+')">'
     + pic
     + '<div class="slot-title" title="'+esc(p.title)+'">'+esc(p.title)+'</div>'
     + '<div class="slot-meta">'
@@ -2424,12 +2518,15 @@ async function slotUpload(input, id){
 /* The one path a picture takes into a slot, used by the single button and by
    Upload all. Returns false when the row could not be saved; throws when the
    file could not be read or stored (nothing is written then). */
-async function slotPutFile(file, id){
-  if(file.size > 15*1024*1024) return false;
+async function slotStoreFile(file, id){
   const dataUrl = await new Promise((res,rej)=>{ const r=new FileReader(); r.onerror=()=>rej(new Error('read')); r.onload=e=>res(e.target.result); r.readAsDataURL(file); });
   const compressed = await compressImageDataUrl(dataUrl);
   const thumb = await makeThumbDataUrl(dataUrl);
-  const up = await gfxUploadImage(id, compressed, thumb);
+  return gfxUploadImage(id, compressed, thumb);
+}
+async function slotPutFile(file, id){
+  if(file.size > 15*1024*1024) return false;
+  const up = await slotStoreFile(file, id);
   const ok = await sbPatch('graphic_projects','id=eq.'+id,
     {image_url: up.image_url, thumb_url: up.thumb_url,
      updated_at: new Date().toISOString(), updated_by:(currentUser&&currentUser.name)||null});
@@ -2439,6 +2536,163 @@ async function slotPutFile(file, id){
   if(p){ p.image_url = up.image_url; p.thumb_url = up.thumb_url; }
   if(p && p.current_stage==='brief') await gfxSetStage(id,'head_review','Approved post uploaded into its slot', true);
   return true;
+}
+
+/* ══ CAROUSEL SLOTS: MANY PICTURES IN ONE SLOT (Farhath, 18 Nov 2026) ══
+   "When a carousel is added to the weekly plan, the single slot that is
+   automatically created in the pipeline should allow to upload multiple images.
+   For posts it's only one image per slot." So a slot whose type is carousel takes
+   all its slides in one pick (or drop), in file name order, and the slide strip in
+   the post's detail adds, reorders and removes them. A carousel task for n designs
+   is still n slots: one slot is one carousel. A post slot is unchanged.
+   The slides live in image_urls (see loadAll); image_url and thumb_url always mirror
+   slide 1, so the Command Centre, Team Score, the stage alerts and every older
+   reader keep working with no change. Meta carousels hold 20 slides at most. */
+const GFX_MAX_SLIDES = 20;
+function isCarouselSlot(p){ return !!p && String(p.type||'').toLowerCase()==='carousel'; }
+/* carousel slots take many pictures only when the database can hold them */
+function slotMulti(p){ return GFX_HAS_SLIDES && isCarouselSlot(p); }
+/* The slides the page already knows about (no network): the stored list, else the
+   one picture a slot from before this change has. */
+function slidesOf(p){
+  const a = (p && Array.isArray(p.image_urls)) ? p.image_urls.filter(s=>s && s.image_url) : [];
+  if(a.length) return a;
+  const one = (p && p.image_url) || '';
+  return one ? [{image_url: one, thumb_url: p.thumb_url || null}] : [];
+}
+/* The same, but fetches the picture of an older single-image slot when the board
+   list did not carry it (the list never reads image_url, see PROJ_LIST_COLS). */
+async function gfxSlidesFor(p){
+  const have = slidesOf(p);
+  if(have.length || !p || !IMG_IDS.has(p.id)) return have;
+  const r = await sbGet('graphic_projects','?id=eq.'+p.id+'&select=image_url,thumb_url');
+  const row = (Array.isArray(r) && r[0]) ? r[0] : null;
+  return (row && row.image_url) ? [{image_url: row.image_url, thumb_url: row.thumb_url || null}] : [];
+}
+function gfxIsPicture(f){ return /^image\//.test(f.type||'') || /\.(jpe?g|png|webp|gif|heic)$/i.test(f.name||''); }
+function gfxByName(a,b){ return String(a.name).localeCompare(String(b.name), undefined, {numeric:true, sensitivity:'base'}); }
+/* Write a slide set: the list, and slide 1 into image_url/thumb_url. An empty set
+   puts the slot back to empty. Memory is updated only after the row saved. */
+async function slotWriteSlides(p, slides){
+  const first = slides[0] || null;
+  const ok = await sbPatch('graphic_projects','id=eq.'+p.id,
+    {image_urls: slides.length ? slides : null,
+     image_url: first ? first.image_url : null, thumb_url: first ? (first.thumb_url || first.image_url) : null,
+     updated_at: new Date().toISOString(), updated_by:(currentUser&&currentUser.name)||null});
+  if(!ok) return false;
+  p.image_urls = slides.length ? slides : null;
+  p.image_url = first ? first.image_url : null;
+  p.thumb_url = first ? (first.thumb_url || first.image_url) : null;
+  if(first){ IMG_IDS.add(p.id); IMG_CACHE[p.id] = p.thumb_url || p.image_url; }
+  else { IMG_IDS.delete(p.id); delete IMG_CACHE[p.id]; }
+  return true;
+}
+/* Upload files into a carousel slot. The new slides always go AFTER the ones it
+   already has, so a pick or a drop can never wipe a finished carousel (removing a
+   slide is its own button, with a confirm). All or nothing: if one picture fails to
+   store, no row is written and nothing half done is left behind (the files are
+   named by their hash, so a retry reuses what already went up).
+   Returns the slide count now in the slot, or 0 on failure. */
+async function slotPutSlides(files, id){
+  const p = (projects||[]).find(x=>x.id===id); if(!p) return 0;
+  const pics = (files||[]).filter(gfxIsPicture).sort(gfxByName);
+  if(!pics.length){ toast('Those files are not pictures','error'); return 0; }
+  if(pics.some(f=>f.size > 15*1024*1024)){ toast('A picture is over 15 MB. Shrink it and try again','error'); return 0; }
+  const have = await gfxSlidesFor(p);
+  if(have.length + pics.length > GFX_MAX_SLIDES){
+    toast('A carousel holds '+GFX_MAX_SLIDES+' slides at most'+(have.length?' and this one has '+have.length:'')+'. You picked '+pics.length,'error'); return 0;
+  }
+  const out = new Array(pics.length);
+  let next = 0, bad = 0;
+  const worker = async ()=>{
+    while(next < pics.length){
+      const i = next++;
+      try{ const up = await slotStoreFile(pics[i], id); out[i] = {image_url: up.image_url, thumb_url: up.thumb_url}; }
+      catch(e){ console.error('slide upload', e); bad++; }
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+  if(bad){ toast(bad+' of '+pics.length+' pictures did not upload, so nothing was saved. Press Upload again','error'); return 0; }
+  const slides = have.concat(out);
+  if(!(await slotWriteSlides(p, slides))){ toast('The pictures uploaded but the post could not be saved. Try again','error'); return 0; }
+  if(p.current_stage==='brief') await gfxSetStage(id,'head_review','Approved post uploaded into its slot', true);
+  return slides.length;
+}
+async function slotSlidesRun(files, id){
+  if(_slotUploading){ toast('One upload at a time: the last one is still saving'); return 0; }
+  _slotUploading = true;
+  toast('Uploading '+files.length+' picture'+(files.length!==1?'s':'')+'…');
+  let n = 0;
+  try{ n = await slotPutSlides(files, id); }
+  catch(e){ gfxUploadFailed(e); }
+  finally{ _slotUploading = false; }
+  if(n){
+    toast(n+' slide'+(n!==1?'s':'')+' in the carousel'+(canApprove()?'. Now approve it':'. A head can now approve it'));
+    renderPipeline();
+  }
+  return n;
+}
+async function slotUploadSlides(input, id){
+  const files = Array.from(input.files||[]); input.value = '';
+  if(files.length) await slotSlidesRun(files, id);
+}
+function slotCardOver(ev, el){
+  if(!ev.dataTransfer || Array.from(ev.dataTransfer.types||[]).indexOf('Files')===-1) return;
+  ev.preventDefault(); ev.stopPropagation(); el.classList.add('drop');
+}
+function slotCardDrop(ev, el, id){
+  el.classList.remove('drop');
+  if(!ev.dataTransfer || !ev.dataTransfer.files || !ev.dataTransfer.files.length) return;
+  ev.preventDefault(); ev.stopPropagation();
+  const p = (projects||[]).find(x=>x.id===id);
+  if(!p || p.current_stage==='approved'){ toast('That carousel is approved, so it is locked'); return; }
+  slotSlidesRun(Array.from(ev.dataTransfer.files), id);
+}
+/* The slide strip in a carousel post's detail: add, move earlier or later, remove. */
+async function slideMove(id, i, dir){
+  const p = (projects||[]).find(x=>x.id===id); if(!p) return;
+  const s = (await gfxSlidesFor(p)).slice(), j = i + dir;
+  if(j<0 || j>=s.length) return;
+  const t = s[i]; s[i] = s[j]; s[j] = t;
+  if(!(await slotWriteSlides(p, s))){ toast('Could not reorder the slides. Try again','error'); return; }
+  closeModal('modalDetail'); openProjectDetail(id); renderPipeline();
+}
+async function slideRemove(id, i){
+  const p = (projects||[]).find(x=>x.id===id); if(!p) return;
+  const s = (await gfxSlidesFor(p)).slice();
+  if(i<0 || i>=s.length) return;
+  if(!confirm('Remove slide '+(i+1)+' of '+s.length+' from this carousel?'+(s.length===1?'\n\nIt is the last one, so the slot goes back to empty.':''))) return;
+  s.splice(i,1);
+  if(!(await slotWriteSlides(p, s))){ toast('Could not remove that slide. Try again','error'); return; }
+  toast('Slide removed');
+  closeModal('modalDetail'); openProjectDetail(id); renderPipeline();
+}
+async function slideAddPick(input, id){
+  const files = Array.from(input.files||[]); input.value = '';
+  if(!files.length) return;
+  const n = await slotSlidesRun(files, id);
+  if(n){ closeModal('modalDetail'); openProjectDetail(id); }
+}
+/* the detail panel for a carousel post; the plain image block stays for every other type */
+async function slidesPanelHTML(p){
+  const s = await gfxSlidesFor(p);
+  const locked = p.current_stage==='approved';
+  const tiles = s.map((x,i)=>
+    '<div class="slide-tile"><span class="slide-n">'+(i+1)+'</span>'
+    + '<img src="'+esc(x.thumb_url||x.image_url)+'" alt="Slide '+(i+1)+'" onclick="window.open(\''+esc(x.image_url)+'\')" title="Click to view full size" onerror="this.style.display=\'none\'">'
+    + (locked ? '' : '<div class="slide-tools">'
+      + '<button class="btn btn-ghost btn-sm" '+(i===0?'disabled ':'')+'onclick="slideMove('+p.id+','+i+',-1)" title="Move earlier" aria-label="Move slide '+(i+1)+' earlier">&#9664;&#xFE0E;</button>'
+      + '<button class="btn btn-ghost btn-sm" '+(i===s.length-1?'disabled ':'')+'onclick="slideMove('+p.id+','+i+',1)" title="Move later" aria-label="Move slide '+(i+1)+' later">&#9654;&#xFE0E;</button>'
+      + '<button class="btn btn-ghost btn-sm" onclick="slideRemove('+p.id+','+i+')" title="Remove this slide" aria-label="Remove slide '+(i+1)+'">Remove</button></div>')
+    + '</div>').join('');
+  return '<div class="detail-image detail-slides" id="detailSlides">'
+    + '<div class="slides-head">Slides<span>'+s.length+' of '+GFX_MAX_SLIDES+(locked?', approved, so locked':'')+'</span></div>'
+    + (s.length ? '<div class="slides-strip">'+tiles+'</div>' : '<div class="no-img">No slides yet</div>')
+    + (locked ? '' : '<label class="btn btn-accent btn-sm slides-add">'+(s.length?'Add slides':'Upload slides')
+      /* slideAddPick, never slotUploadSlides, even when the strip is empty: slotUploadSlides only redraws the board
+         behind, so the sheet went on saying "No slides yet" after the pictures had saved (phone click-path, 18 Nov) */
+      + '<input type="file" accept="image/*" multiple style="display:none" onchange="slideAddPick(this,'+p.id+')"></label>')
+    + '</div>';
 }
 
 function renderKCard(p){
@@ -2529,27 +2783,15 @@ async function bulkMoveSelected(){
   if(!ids.length) return;
   /* Decision 98, 7 Oct 2026: said once, before anything moves. */
   if(to==='approved' && !canApprove()){ toast('Only a head or an SMM can approve a post. Move it to Head Review instead','error'); return; }
-  /* Team Score, 6 Nov 2026: a bulk approval asks for stars once, in place of the
-     confirm. The same stars are recorded on each post that is approved. */
-  let bulkStars = 0;
-  if(to==='approved'){
-    const a = await gfxAskReview('approve', ids.length===1 ? projects.find(x=>x.id===ids[0]) : null, ids.length);
-    if(!a) return;
-    bulkStars = a.stars;
-  } else if(!confirm('Move '+ids.length+' post'+(ids.length!==1?'s':'')+' to '+STAGE_LABELS[to]+'?')) return;
-  let unrated = 0;
+  /* Thulaib, 19 Nov 2026: a bulk approval no longer asks for stars, so it takes the
+     same plain confirm as every other bulk move (L-GFX-081). */
+  if(!confirm('Move '+ids.length+' post'+(ids.length!==1?'s':'')+' to '+STAGE_LABELS[to]+'?')) return;
   /* Review fix, 7 Oct 2026: a history read that failed was counted as "not been
      through Head Review". The two reasons are counted apart (L-GFX-061). */
   let moved=0, blocked=0, unread=0;
   BBU.batch=[];                       /* many moves, ONE undo */
   for(const id of ids){
-    const pre = projects.find(x=>x.id===id), snap = pre ? Object.assign({}, pre) : null;
-    const wasThere = !!(pre && pre.current_stage===to);
-    if(await gfxSetStage(id, to, 'Moved in bulk', true)){
-      moved++;
-      if(bulkStars && snap && !wasThere
-         && !(await gfxReviewEvent(snap, 'rating', { stars:bulkStars, from_stage:snap.current_stage, to_stage:'approved' }))) unrated++;
-    }
+    if(await gfxSetStage(id, to, 'Moved in bulk', true)) moved++;
     else if(GFX_STAGE_BLOCK===GFX_MSG.read) unread++;
     else if(GFX_STAGE_BLOCK) blocked++;
   }
@@ -2560,8 +2802,7 @@ async function bulkMoveSelected(){
               ? 'the review could not be recorded, try again'
               : (blocked===1?'it has':'they have')+' not been through Head Review'):'')
         +(unread?'. '+unread+' not moved: '+(unread===1?'its':'their')+' history could not be read, try again':'')
-        +(unrated?'. The stars were not recorded on '+unrated:''),
-        (moved===ids.length && !unrated)?'success':'error');
+        ,moved===ids.length?'success':'error');
   BULK_PICKED.clear(); await loadAll(); bulkBarSync();
 }
 /* Archive in bulk: reversible, so a plain confirm is enough. Every designer
@@ -2702,7 +2943,9 @@ async function gfxSetStage(id, newStage, note, quiet, undo){
   return true;
 }
 
-/* ══ TEAM SCORE: SEND BACK AND STARS (gfx-review-events-1440) ══════════════
+/* ══ TEAM SCORE: SEND BACK (gfx-review-events-1440) ══════════════
+   19 Nov 2026, Thulaib: the stars on Approve are gone (L-GFX-081). Approve moves
+   the post with no sheet and writes no rating; Send back below is unchanged.
    Thulaib approved the Team Score on 6 Nov 2026 (bb_pending 1440). A head who
    reviews a post either sends it back with a reason or approves it with 1 to 5
    stars. Both land in bb_review_events (insert only, created_at is the
@@ -2718,7 +2961,7 @@ async function gfxSetStage(id, newStage, note, quiet, undo){
    before BBF can close the detail underneath (Back once closes the sheet, Back
    twice closes the detail, the page stays). */
 const GFX_REV_MARK = 'gfx-review-events-1440';
-let GFX_REV = null;          /* the open sheet: {mode, stars, resolve, pushed} */
+let GFX_REV = null;          /* the open sheet: {mode, resolve, pushed} */
 let GFX_REV_SWALLOW = 0;     /* pops this sheet asked for itself */
 let GFX_REV_WAITERS = [];
 function gfxRevEl(){
@@ -2749,7 +2992,7 @@ window.addEventListener('popstate', function(e){
     gfxRevClose(false);
   }
 }, true);
-/* Opens the sheet and resolves {stars} or {reason} on confirm, null on Cancel or
+/* Opens the Send back sheet and resolves {reason} on confirm, null on Cancel or
    Back. It resolves only once the sheet is shut and its history entry is gone,
    so the caller's own moves and reopened screens never race the Back stack. */
 function gfxAskReview(mode, p, count){
@@ -2773,27 +3016,13 @@ function gfxAskReview(mode, p, count){
           <button class="btn gfx-rev-cancel" data-close onclick="gfxRevClose(false)">Cancel</button>
         </div>
       </div>`
-    : `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="gfxRevTitle">
-        <div class="gfx-rev-body">
-          <h3 class="gfx-rev-title" id="gfxRevTitle">${many ? 'Approve '+count+' posts' : 'Approve this post'}</h3>
-          <p class="gfx-rev-sub">${sub}</p>
-          <span class="gfx-rev-label" id="gfxRevStarsLbl">How good is the work?${many ? ' The stars go on each post.' : ''}</span>
-          <div class="gfx-stars" role="radiogroup" aria-labelledby="gfxRevStarsLbl">
-            ${[1,2,3,4,5].map(n=>`<button type="button" class="gfx-star" role="radio" aria-checked="false" aria-label="${n} star${n>1?'s':''}" data-star="${n}" onclick="gfxRevStar(${n})">&#9733;&#xFE0E;</button>`).join('')}
-          </div>
-          <p class="gfx-rev-hint" id="gfxRevHint" style="text-align:center">Tap a star to approve</p>
-        </div>
-        <div class="gfx-rev-bar">
-          <button class="btn btn-accent" id="gfxRevGo" disabled onclick="gfxRevConfirm()">Approve</button>
-          <button class="btn gfx-rev-cancel" data-close onclick="gfxRevClose(false)">Cancel</button>
-        </div>
-      </div>`;
+    : '';
   return new Promise(resolve=>{
-    GFX_REV = { mode:mode, stars:0, resolve:resolve, pushed:false };
+    GFX_REV = { mode:mode, resolve:resolve, pushed:false };
     el.removeAttribute('inert'); el.removeAttribute('aria-hidden');   /* BBF shielded it if the detail opened first */
     el.classList.add('open');
     if(nested){ try{ history.pushState({gfxRev:1},''); GFX_REV.pushed = true; }catch(e){} }
-    const f = el.querySelector(mode==='send_back' ? '#gfxRevReason' : '.gfx-star');
+    const f = el.querySelector('#gfxRevReason');
     if(f){ try{ f.focus({preventScroll:true}); }catch(e){} }
   });
 }
@@ -2804,21 +3033,7 @@ function gfxRevSync(){
     go.disabled = n < 3;
     const h = document.getElementById('gfxRevHint');
     if(h) h.textContent = n < 3 ? 'Write at least 3 characters' : ' ';
-  } else {
-    go.disabled = !(GFX_REV.stars >= 1 && GFX_REV.stars <= 5);
   }
-}
-function gfxRevStar(n){
-  if(!GFX_REV) return;
-  GFX_REV.stars = n;
-  document.querySelectorAll('#gfxReviewSheet .gfx-star').forEach(b=>{
-    const v = Number(b.dataset.star);
-    b.classList.toggle('on', v<=n);
-    b.setAttribute('aria-checked', v===n ? 'true' : 'false');
-  });
-  const h = document.getElementById('gfxRevHint');
-  if(h) h.textContent = n+' of 5';
-  gfxRevSync();
 }
 function gfxRevConfirm(){
   if(!GFX_REV) return;
@@ -2826,9 +3041,6 @@ function gfxRevConfirm(){
     const reason = (document.getElementById('gfxRevReason').value||'').trim();
     if(reason.length < 3) return;
     gfxRevClose({ reason: reason });
-  } else {
-    if(!(GFX_REV.stars >= 1 && GFX_REV.stars <= 5)) return;
-    gfxRevClose({ stars: GFX_REV.stars });
   }
 }
 async function gfxRevClose(result){
@@ -2862,8 +3074,7 @@ async function gfxReviewEvent(p, kind, extra){
   return ok;
 }
 const GFX_REV_MSG = {
-  reason: 'Saved. The reason was not recorded.',
-  stars:  'Saved. The stars were not recorded.'
+  reason: 'Saved. The reason was not recorded.'
 };
 function gfxCanSendBack(p){ return !!p && p.current_stage==='head_review' && canApprove(); }
 function gfxSendBackHTML(p, cls){
@@ -2883,21 +3094,6 @@ async function gfxSendBack(id){
   toast(okEv ? 'Sent back to To do' : GFX_REV_MSG.reason, okEv ? 'success' : 'error');
   if(fromDetail){ closeModal('modalDetail'); await loadAll(); openProjectDetail(id); }
   else await loadAll();
-  return true;
-}
-/* Every approval asks for stars first, then moves, then rates. Returns true when
-   the post is Approved. Designers never see this: gfxSetStage refuses them. */
-async function gfxApproveWithStars(id, note, quiet){
-  const p = projects.find(x=>x.id===id);
-  if(!p) return false;
-  if(!canApprove()) return gfxSetStage(id, 'approved', note, quiet);
-  const a = await gfxAskReview('approve', p);
-  if(!a){ GFX_STAGE_BLOCK = 'cancelled'; return false; }
-  const snap = Object.assign({}, p);
-  const okMove = await gfxSetStage(id, 'approved', note, quiet);
-  if(!okMove) return false;
-  const okEv = await gfxReviewEvent(snap, 'rating', { stars:a.stars, from_stage:snap.current_stage, to_stage:'approved' });
-  if(!okEv) toast(GFX_REV_MSG.stars, 'error');
   return true;
 }
 
@@ -3035,8 +3231,8 @@ async function onDrop(e,el){
   if(!proj || proj.current_stage===newStage) return;
   /* Decision 98, 7 Oct 2026: a refused move said "Moved" anyway. The card now
      goes back to its column and the reason is shown by gfxSetStage. */
-  /* Team Score, 6 Nov 2026: a drop on Approved (straight from To do too, L-GFX-076) asks for stars first. */
-  const okMove = newStage==='approved' ? await gfxApproveWithStars(dragId) : await gfxSetStage(dragId, newStage);
+  /* Thulaib, 19 Nov 2026: an approval no longer asks for stars (L-GFX-081). */
+  const okMove = await gfxSetStage(dragId, newStage);
   if(okMove) toast('Moved to '+STAGE_LABELS[newStage]);
   else if(!GFX_STAGE_BLOCK) toast('Could not move the post. Check your connection and try again','error');
   renderPipeline();
@@ -3383,6 +3579,12 @@ async function saveProject(){
     /* GFX-3, 6 Oct 2026: an edit rewrote target_year to this year. It is left
        out, so the year the post was filed under stays as it is. */
     if(imgChanged){ data.image_url = newImg; data.thumb_url = newThumb; }   // omit when unchanged → preserves existing image and thumbnail
+    /* a carousel's picture is its slide 1: replace that slide, keep the rest, so the
+       cover and the slides never disagree (Farhath, 18 Nov 2026) */
+    if(imgChanged){
+      const ed = (projects||[]).find(x=>x.id===editingProjectId);
+      if(slotMulti(ed)) data.image_urls = [{image_url: newImg, thumb_url: newThumb || newImg}].concat(slidesOf(ed).slice(1));
+    }
     const okPatch = await sbPatch('graphic_projects','id=eq.'+editingProjectId, data);
     if(!okPatch){ saveFailed('the changes'); return; }
     if(imgChanged){ IMG_IDS.add(editingProjectId); IMG_CACHE[editingProjectId] = newThumb || newImg; }
@@ -3511,6 +3713,10 @@ async function openProjectDetail(id){
 
   const canMoveNext = stageIdx < STAGES.length-1;
   const canMovePrev = stageIdx > 0;
+  /* Farhath, 18 Nov 2026: a carousel post shows its slides, one tile each, with
+     add, move and remove. Every other type keeps the single picture block. */
+  const carouselPanel = slotMulti(p);
+  const slidesBlock = carouselPanel ? await slidesPanelHTML(p) : '';
 
   document.getElementById('detailBody').innerHTML = `
     <div class="detail-actions">
@@ -3536,7 +3742,7 @@ async function openProjectDetail(id){
 
     ${p.brief_notes?`<div class="panel"><h3>Brief Notes</h3><p style="font-size:0.88rem;color:var(--text-2);line-height:1.5">${esc(p.brief_notes)}</p></div>`:''}
 
-    <div class="detail-image">
+    ${carouselPanel ? slidesBlock : `<div class="detail-image">
       ${p.image_url?`<img class="image-preview-lg" src="${esc(p.image_url)}" onclick="window.open(this.src)" title="Click to view full size">`:`<div class="no-img">No image attached</div>`}
       <div class="image-attach-zone" data-drop-host="detailImg" style="margin-top:8px">
         <input type="file" id="detailImg-file" accept="image/*" style="display:none" onchange="handleFileSelect(this,'detailImg')">
@@ -3548,7 +3754,7 @@ async function openProjectDetail(id){
         <input type="text" id="detailImageInput" placeholder="Or paste image URL..." style="flex:1;height:32px;font-size:0.82rem" value="${esc(p.image_url||'')}">
         <button class="btn btn-ghost btn-sm" onclick="updateImage(${p.id})">Update</button>
       </div>
-    </div>
+    </div>`}
 
     <div class="panel">
       <h3>Comments (${(Array.isArray(comments)?comments:[]).length})</h3>
@@ -3572,8 +3778,7 @@ async function openProjectDetail(id){
     </div>
   `;
   openModal('modalDetail');
-  clearPendingImg('detailImg');
-  setupImageHost('detailImg', null);
+  if(!carouselPanel){ clearPendingImg('detailImg'); setupImageHost('detailImg', null); }
   clearPendingImg('detailComment');
   setupImageHost('detailComment', 'commentText');
 }
@@ -3586,8 +3791,8 @@ async function moveStage(id, dir){
   if(newIdx<0||newIdx>=STAGES.length) return;
   const newStage = STAGES[newIdx];
   /* Decision 98, 7 Oct 2026: stay on the post when the move is refused.
-     Team Score, 6 Nov 2026: an approval asks for stars first (gfxApproveWithStars). */
-  const okMove = newStage==='approved' ? await gfxApproveWithStars(id) : await gfxSetStage(id, newStage);
+     Thulaib, 19 Nov 2026: an approval no longer asks for stars (L-GFX-081). */
+  const okMove = await gfxSetStage(id, newStage);
   if(!okMove){ if(!GFX_STAGE_BLOCK) toast('Could not move the post. Check your connection and try again','error'); return; }
   toast('Moved to '+STAGE_LABELS[newStage]);
   closeModal('modalDetail');
@@ -3875,10 +4080,9 @@ async function quickMove(id, newStage){
   const p = projects.find(x=>x.id===id);
   if(!p) return;
   /* Decision 98, 7 Oct 2026: a refused move no longer says "Moved".
-     Team Score, 6 Nov 2026: an approval asks for stars first; Cancel moves nothing. */
-  const okMove = newStage==='approved' ? await gfxApproveWithStars(id) : await gfxSetStage(id, newStage);
+     Thulaib, 19 Nov 2026: an approval no longer asks for stars (L-GFX-081). */
+  const okMove = await gfxSetStage(id, newStage);
   if(okMove) toast('Moved to '+STAGE_LABELS[newStage]);
-  else if(GFX_STAGE_BLOCK==='cancelled') return;
   else if(!GFX_STAGE_BLOCK) toast('Could not move the post. Check your connection and try again','error');
   await loadAll();
 }
@@ -4761,6 +4965,19 @@ function wpDeadlineFor(day){
 function wpDayChanged(){
   const dl = document.getElementById('wpDeadline');
   if(dl && !dl.dataset.touched) dl.value = wpDeadlineFor(parseInt(document.getElementById('wpDay').value)||1);
+  wpMonthFollow();
+}
+/* Farhath, 18 Nov 2026: "when adding a task, it should let the designer select the
+   target month so that the pipeline creates slots for that month". The Target Month
+   select starts on the deadline's month and follows the deadline (and the day)
+   until somebody picks a month by hand (dataset.touched), the same way the deadline
+   follows the day. The month is NOT a column on the weekly plan: it goes straight
+   onto the slots, and an edit reads it back from them (wpOpenEdit). */
+function wpMonthFollow(){
+  const m = document.getElementById('wpTargetMonth');
+  if(!m || m.dataset.touched) return;
+  const dl = document.getElementById('wpDeadline').value;
+  m.value = String(dl ? new Date(dl+'T00:00:00').getMonth()+1 : new Date().getMonth()+1);
 }
 
 function wpOpenAdd(prefillDay){
@@ -4777,6 +4994,8 @@ function wpOpenAdd(prefillDay){
   const dlA = document.getElementById('wpDeadline');
   dlA.dataset.touched = '';
   dlA.value = wpDeadlineFor(parseInt(document.getElementById('wpDay').value)||1);
+  document.getElementById('wpTargetMonth').dataset.touched = '';
+  wpMonthFollow();
   document.getElementById('wpAssigned').value = '';
   document.getElementById('wpStatus').value = 'planned';
   document.getElementById('wpNotes').value = '';
@@ -4806,6 +5025,11 @@ function wpOpenEdit(id){
   const dlE = document.getElementById('wpDeadline');
   dlE.value = t.deadline||'';
   dlE.dataset.touched = t.deadline ? '1' : '';
+  /* the month its slots already sit in; a task with no slots follows its deadline */
+  const tmE = document.getElementById('wpTargetMonth');
+  const sl = (projects||[]).find(p=>String(p.plan_task_id)===String(t.id) && !p.is_archived && p.target_month);
+  tmE.dataset.touched = sl ? '1' : '';
+  if(sl) tmE.value = String(sl.target_month); else wpMonthFollow();
   document.getElementById('wpAssigned').value = t.assigned_to||'';
   document.getElementById('wpStatus').value = t.status||'planned';
   document.getElementById('wpNotes').value = t.notes||'';
@@ -4861,12 +5085,15 @@ async function wpSaveTask(){
      task already done must not re-stamp the time its tick was earned. */
   if(data.status==='done' && (!prev || prev.status!=='done')) data.done_at = new Date().toISOString();
   if(data.status!=='done') data.done_at = null;
+  /* Target Month, 18 Nov 2026: goes to the slots only, never into `data`, because
+     graphic_weekly_plan has no such column and a stray field would fail the save. */
+  const tm = parseInt(document.getElementById('wpTargetMonth').value) || null;
   _wpSaving = true;
   try{
     if(wpEditId){
       const ok = await sbPatch('graphic_weekly_plan','id=eq.'+wpEditId, data);
       if(!ok){ toast('Could not save that task. Try again','error'); return; }
-      await wpSyncSlots(Object.assign({id: wpEditId}, data));
+      await wpSyncSlots(Object.assign({id: wpEditId}, data, {target_month: tm}));
       toast('Task updated');
       loadAll();
     } else {
@@ -4881,8 +5108,13 @@ async function wpSaveTask(){
       if(data.task_type==='revision'){
         toast(same.length ? 'Added as another '+(WP_TYPES[data.task_type]||data.task_type) : 'Task added. A revision makes no new slots');
       } else {
-        const made = (res[0] && res[0].id) ? await wpMakeSlots(Object.assign({}, data, {id: res[0].id}), data.design_count, 0) : 0;
-        if(made===data.design_count) toast('Task added. '+made+' slot'+(made!==1?'s':'')+' ready in Approved Posts');
+        const made = (res[0] && res[0].id) ? await wpMakeSlots(Object.assign({}, data, {id: res[0].id, target_month: tm}), data.design_count, 0) : 0;
+        /* Say which month the slots went to, and when the Pipeline is showing a
+           different month, say so: the filters are kept as they are now, so the
+           new slots would otherwise look as if they had not been made. */
+        const fm = parseInt((document.getElementById('filterMonth')||{}).value) || 0;
+        const monthNote = tm ? ' for '+MONTHS[tm] + ((fm && fm!==tm) ? '. The Pipeline is on '+MONTHS[fm]+', pick '+MONTHS[tm]+' to see them' : '') : '';
+        if(made===data.design_count) toast('Task added. '+made+' slot'+(made!==1?'s':'')+' ready in Approved Posts'+monthNote);
         else toast('Task saved, but only '+made+' of '+data.design_count+' slots were created. Check the Pipeline','error');
         loadAll();
       }
@@ -4909,7 +5141,9 @@ async function wpMakeSlots(task, count, existing){
   const c = (clients||[]).find(x=>x.name===task.client_name);
   const des = DESIGNERS.find(d=>d.label===task.assigned_to);
   const base = task.deadline ? new Date(task.deadline+'T00:00:00') : new Date(wpWeekStart||Date.now());
-  const month = base.getMonth()+1;
+  /* Farhath, 18 Nov 2026: a month picked on the task wins; with none (the bulk
+     add) the slots keep the deadline's month, as before. */
+  const month = Number(task.target_month) || base.getMonth()+1;
   const total = (existing||0) + count;
   const rows = [];
   for(let i=(existing||0)+1; i<=total; i++) rows.push({
@@ -4946,12 +5180,14 @@ async function wpSyncSlots(task){
     if(surplus.length) await sbPatch('graphic_projects','id=in.('+surplus.join(',')+')',{is_archived:true, updated_at:new Date().toISOString()});
     if(all.length - surplus.length > want) toast('Some slots already hold work, so only the empty ones were removed');
   }
-  /* the still-empty To-do slots follow the task's deadline and designer */
+  /* the still-empty To-do slots follow the task's deadline, designer and, since
+     18 Nov 2026, its target month (a slot holding work stays in the month it has) */
   const des = DESIGNERS.find(d=>d.label===task.assigned_to);
-  await sbPatch('graphic_projects','plan_task_id=eq.'+task.id+'&is_archived=eq.false&current_stage=eq.brief&image_url=is.null',
-    {deadline: task.deadline||null, assigned_designer: task.assigned_to||null,
+  const follow = {deadline: task.deadline||null, assigned_designer: task.assigned_to||null,
      assigned_designer_id: des?des.team_member_id:null, client_name: task.client_name,
-     updated_at: new Date().toISOString()});
+     updated_at: new Date().toISOString()};
+  if(task.target_month){ follow.target_month = Number(task.target_month); follow.target_year = gfxTargetYear(task.target_month); }
+  await sbPatch('graphic_projects','plan_task_id=eq.'+task.id+'&is_archived=eq.false&current_stage=eq.brief&image_url=is.null', follow);
 }
 async function wpSlotsSent(taskId){
   const rows = await sbGet('graphic_projects','?plan_task_id=eq.'+taskId+'&is_archived=eq.false&current_stage=eq.brief&select=id');
@@ -5988,6 +6224,248 @@ async function runSelfTest(opts){
         slotPutFile=keepPut; window.confirm=keepConfirm; renderPipeline=keepRender; _slotUploading=false;
         fakes.forEach(f=>{ const i=projects.indexOf(f); if(i>-1) projects.splice(i,1); });
       }
+    }
+
+    /* ── Farhath, 18 Nov 2026 · three changes ──
+       (b) the Pipeline filters stay put, (c) a task carries its target month to
+       its slots, (a) a carousel slot takes many pictures and a post still takes
+       one. Every write is stubbed: nothing reaches the database. */
+    {
+      /* (b) a reload of the lists must not wipe the filter a person chose */
+      const sel=document.getElementById('filterClient'), keepClients=clients, was=sel?sel.value:'';
+      try{
+        clients=[{id:-1,name:'SELFTEST CLIENT A'},{id:-2,name:'SELFTEST CLIENT B'}];
+        populateClientDropdowns();
+        sel.value='SELFTEST CLIENT B';
+        populateClientDropdowns();          /* loadAll does this after every write and every 180 s */
+        ok('Farhath 18 Nov: the Pipeline client filter survives a reload of the lists',
+           sel.value==='SELFTEST CLIENT B', 'after a rebuild it read "'+sel.value+'" (blank means every change in the Pipeline wipes the filter)');
+        clients=[{id:-1,name:'SELFTEST CLIENT A'}];
+        populateClientDropdowns();
+        ok('Farhath 18 Nov: a filter whose client has gone falls back to All Clients',
+           sel.value==='' && sel.selectedIndex===0, 'read "'+sel.value+'" at option '+sel.selectedIndex);
+      }catch(e){ ok('Farhath 18 Nov: the Pipeline client filter survives a reload of the lists', false, e && e.message); }
+      finally{ clients=keepClients; populateClientDropdowns(); if(sel && was && Array.prototype.some.call(sel.options,o=>o.value===was)) sel.value=was; }
+    }
+    {
+      /* (c) the target month goes from the task to its slots */
+      const keepPost=sbPost, keepGet=sbGet, keepPatch=sbPatch;
+      const tmSel=document.getElementById('wpTargetMonth'), dlEl=document.getElementById('wpDeadline');
+      const keepDl=dlEl?dlEl.value:'', keepTm=tmSel?tmSel.value:'', keepTouch=tmSel?(tmSel.dataset.touched||''):'';
+      try{
+        const posted=[], patched=[];
+        sbPost = async (t,d)=>{ posted.push(d); return d.map((_,i)=>({id:-(i+1)})); };
+        const base = {id:-772001, client_name:'SELFTEST CLIENT', task_type:'carousel', assigned_to:null, deadline:'2026-03-04'};
+        await wpMakeSlots(Object.assign({}, base, {target_month:12}), 2, 0);
+        ok('Farhath 18 Nov: slots are made for the month the designer picked, not the deadline month',
+           posted[0] && posted[0].length===2 && posted[0].every(r=>r.target_month===12 && r.target_year===gfxTargetYear(12)),
+           JSON.stringify((posted[0]||[]).map(r=>[r.target_month,r.target_year])));
+        posted.length=0;
+        await wpMakeSlots(base, 1, 0);
+        ok('Farhath 18 Nov: with no month picked (the bulk add) slots keep the deadline month',
+           posted[0] && posted[0][0].target_month===3, 'month '+(posted[0]&&posted[0][0].target_month));
+        sbGet = async ()=>[{id:-1}];
+        sbPatch = async (t,q,d)=>{ patched.push({q,d}); return true; };
+        await wpSyncSlots({id:-772002, client_name:'SELFTEST CLIENT', task_type:'carousel', design_count:1, assigned_to:null, deadline:null, target_month:9});
+        const f1=patched[patched.length-1];
+        ok('Farhath 18 Nov: editing a task moves its still-empty slots to the new month',
+           !!f1 && f1.d.target_month===9 && f1.d.target_year===gfxTargetYear(9) && /plan_task_id=eq\.-772002/.test(f1.q),
+           f1?JSON.stringify(f1.d):'no patch');
+        patched.length=0;
+        await wpSyncSlots({id:-772003, client_name:'SELFTEST CLIENT', task_type:'carousel', design_count:1, assigned_to:null, deadline:null});
+        ok('Farhath 18 Nov: a task with no month leaves its slots month alone',
+           patched.length===1 && !('target_month' in patched[0].d), patched[0]?Object.keys(patched[0].d).join(','):'no patch');
+        ok('Farhath 18 Nov: the Add Task form has a Target Month of twelve months',
+           !!tmSel && tmSel.options.length===12 && tmSel.options[0].value==='1' && tmSel.options[11].value==='12', tmSel?tmSel.options.length+' options':'missing');
+        ok('Farhath 18 Nov: the save passes the month to the slot maker and the slot sync',
+           /wpTargetMonth/.test(String(wpSaveTask)) && (String(wpSaveTask).match(/target_month: ?tm/g)||[]).length>=2,
+           'wpSaveTask must read wpTargetMonth and hand target_month to wpMakeSlots and wpSyncSlots');
+        if(tmSel && dlEl){
+          tmSel.dataset.touched=''; dlEl.value='2026-07-15'; wpMonthFollow();
+          ok('Farhath 18 Nov: until picked, the month follows the deadline', tmSel.value==='7', 'read '+tmSel.value);
+          tmSel.value='2'; tmSel.dataset.touched='1'; dlEl.value='2026-09-01'; wpMonthFollow();
+          ok('Farhath 18 Nov: a month the designer picked is not overwritten by the deadline', tmSel.value==='2', 'read '+tmSel.value);
+        }
+      }catch(e){ ok('Farhath 18 Nov: slots are made for the month the designer picked, not the deadline month', false, e && e.message); }
+      finally{
+        sbPost=keepPost; sbGet=keepGet; sbPatch=keepPatch;
+        if(dlEl) dlEl.value=keepDl; if(tmSel){ tmSel.value=keepTm; tmSel.dataset.touched=keepTouch; }
+      }
+    }
+    {
+      /* (a) a carousel slot takes many pictures, a post still takes one */
+      const keepHas=GFX_HAS_SLIDES, keepMiss=_slidesMissing, keepStore=slotStoreFile, keepPatch=sbPatch, keepGet=sbGet,
+            keepSet=gfxSetStage, keepRender=renderPipeline, keepOpen=openProjectDetail, keepRun=slotSlidesRun,
+            keepConfirm=window.confirm, keepBusy=_slotUploading;
+      const TC=-771000, TP=-771003, TC2=-771006;
+      const fakes=[
+        {id:-771001, title:'SELFTEST Carousel 1 of 1', type:'carousel', plan_task_id:TC, current_stage:'brief', is_archived:false},
+        {id:-771002, title:'SELFTEST Post 1 of 2', type:'post', plan_task_id:TP, current_stage:'brief', is_archived:false},
+        {id:-771004, title:'SELFTEST Post 2 of 2', type:'post', plan_task_id:TP, current_stage:'brief', is_archived:false},
+        {id:-771005, title:'SELFTEST Carousel 1 of 2', type:'carousel', plan_task_id:TC2, current_stage:'brief', is_archived:false},
+        {id:-771007, title:'SELFTEST Carousel 2 of 2', type:'carousel', plan_task_id:TC2, current_stage:'brief', is_archived:false}
+      ];
+      const [C1,P1,P2,C2,C3]=fakes;
+      const stored=[], patches=[], stages=[], ran=[];
+      const png=n=>new File(['x'], n, {type:'image/jpeg'});
+      const U='https://selftest.invalid/';
+      try{
+        slotStoreFile = async (f)=>{ stored.push(f.name); if(f.name==='bad.jpg') throw new Error('selftest, store refused'); return {image_url:U+f.name, thumb_url:U+'t-'+f.name}; };
+        sbPatch = async (t,q,d)=>{ patches.push({t,q,d}); return true; };
+        gfxSetStage = async (id,s)=>{ stages.push(id+'>'+s); return true; };
+        renderPipeline = ()=>{}; openProjectDetail = ()=>{}; window.confirm = ()=>true;
+        fakes.forEach(f=>projects.push(f));
+
+        GFX_HAS_SLIDES=false;
+        ok('Farhath 18 Nov: until the database has image_urls a carousel slot stays one picture',
+           slotMulti(C1)===false && /Upload approved post/.test(renderSlotCard(C1)) && !/multiple/.test(renderSlotCard(C1)), 'a half shipped carousel button would write a column that is not there');
+        GFX_HAS_SLIDES=true;
+        ok('Farhath 18 Nov: a carousel slot is the only slot that takes many pictures',
+           slotMulti(C1)===true && slotMulti(P1)===false && slotMulti({type:'story'})===false, '');
+        const cardC=renderSlotCard(C1), cardP=renderSlotCard(P1);
+        ok('Farhath 18 Nov: the carousel slot card says Upload slides and its picker takes many files',
+           /Upload slides/.test(cardC) && /type="file"[^>]*multiple/.test(cardC) && /slotUploadSlides\(/.test(cardC), cardC.slice(cardC.indexOf('slot-foot'), cardC.indexOf('slot-foot')+160));
+        ok('Farhath 18 Nov: a post slot is still one image per slot',
+           /Upload approved post/.test(cardP) && !/multiple/.test(cardP) && /slotUpload\(/.test(cardP), '');
+        ok('Farhath 18 Nov: a carousel task offers no Upload all, a post task still does',
+           !/Upload all/.test(renderSlotTask(String(TC2), [C2,C3])) && !/Upload all/.test(renderSlotTask(String(TC), [C1]))
+             && /Upload all 2 posts/.test(renderSlotTask(String(TP), [P1,P2])), '');
+
+        /* a pick of three, out of order: one write, slide 1 mirrored, stage moved once */
+        let n = await slotPutSlides([png('10.jpg'),png('2.jpg'),png('1.jpg')], C1.id);
+        const w1 = patches[patches.length-1];
+        ok('Farhath 18 Nov: many pictures go into one carousel slot in file-name order, in ONE write',
+           n===3 && patches.length===1 && w1.q==='id=eq.'+C1.id && w1.d.image_urls.map(s=>s.image_url).join('|')===[U+'1.jpg',U+'2.jpg',U+'10.jpg'].join('|'),
+           n+' slides, '+patches.length+' writes, '+(w1?w1.d.image_urls.map(s=>s.image_url.replace(U,'')).join(','):'none'));
+        ok('Farhath 18 Nov: image_url and thumb_url mirror slide 1, so every older reader still works',
+           w1.d.image_url===U+'1.jpg' && w1.d.thumb_url===U+'t-1.jpg' && C1.image_url===U+'1.jpg', w1.d.image_url+' / '+w1.d.thumb_url);
+        ok('Farhath 18 Nov: the first upload moves a To do slot to Head Review, once',
+           stages.join(',')===C1.id+'>head_review', stages.join(',')||'no stage move');
+        /* more slides add to the end, never replace */
+        n = await slotPutSlides([png('4.jpg')], C1.id);
+        const w2 = patches[patches.length-1];
+        ok('Farhath 18 Nov: a second pick adds to the end and never replaces the slides it has',
+           n===4 && w2.d.image_urls.map(s=>s.image_url.replace(U,'')).join(',')==='1.jpg,2.jpg,10.jpg,4.jpg', n+' slides');
+        /* all or nothing */
+        const nBefore=patches.length, sBefore=stored.length, had=C1.image_urls.length;
+        n = await slotPutSlides([png('ok.jpg'),png('bad.jpg')], C1.id);
+        ok('Farhath 18 Nov: if one picture fails to upload nothing is saved',
+           n===0 && patches.length===nBefore && C1.image_urls.length===had, n+' slides, '+(patches.length-nBefore)+' new writes');
+        n = await slotPutSlides(Array.from({length:17},(_,i)=>png('x'+i+'.jpg')), C1.id);
+        ok('Farhath 18 Nov: a carousel holds 20 slides at most and says so before uploading anything',
+           n===0 && patches.length===nBefore && stored.length===sBefore+2, n+' slides, '+(stored.length-sBefore-2)+' extra files stored');
+        n = await slotPutSlides([new File(['x'],'notes.txt',{type:'text/plain'})], C1.id);
+        ok('Farhath 18 Nov: files that are not pictures are refused', n===0 && patches.length===nBefore, '');
+
+        /* the slide strip: move, remove, and the last slide empties the slot */
+        await slideMove(C1.id, 0, 1);
+        const w3 = patches[patches.length-1];
+        ok('Farhath 18 Nov: a slide moves later and the cover follows slide 1',
+           w3.d.image_urls[0].image_url===U+'2.jpg' && w3.d.image_urls[1].image_url===U+'1.jpg' && w3.d.image_url===U+'2.jpg', w3.d.image_url);
+        const nm=patches.length; await slideMove(C1.id, 0, -1);
+        ok('Farhath 18 Nov: the first slide cannot move earlier', patches.length===nm, '');
+        await slideRemove(C1.id, 0);
+        const w4 = patches[patches.length-1];
+        ok('Farhath 18 Nov: removing a slide keeps the others in order and moves the cover on',
+           w4.d.image_urls.length===3 && w4.d.image_url===U+'1.jpg', w4.d.image_urls.length+' slides, cover '+w4.d.image_url);
+        for(let i=0;i<3;i++) await slideRemove(C1.id, 0);
+        const w5 = patches[patches.length-1];
+        ok('Farhath 18 Nov: removing the last slide puts the slot back to empty',
+           w5.d.image_urls===null && w5.d.image_url===null && C1.image_urls===null && slotState(C1)!=='uploaded', 'cover '+w5.d.image_url);
+
+        /* an older single-picture slot is read as slide 1 */
+        ok('Farhath 18 Nov: a slot from before this change reads as one slide',
+           slidesOf({image_url:'a',thumb_url:'b'}).length===1 && slidesOf({image_url:'a',thumb_url:'b'})[0].thumb_url==='b' && slidesOf({}).length===0 && slidesOf(null).length===0, '');
+
+        /* the detail panel */
+        C1.image_urls=[{image_url:U+'a.jpg',thumb_url:U+'t-a.jpg'},{image_url:U+'b.jpg',thumb_url:U+'t-b.jpg'}]; C1.image_url=U+'a.jpg';
+        let h = await slidesPanelHTML(C1);
+        ok('Farhath 18 Nov: the post detail lists every slide with move and remove, and adds more',
+           (h.match(/class="slide-tile"/g)||[]).length===2 && (h.match(/Remove/g)||[]).length>=2 && /Add slides/.test(h) && /type="file"[^>]*multiple/.test(h)
+             && /disabled onclick="slideMove\(-771001,0,-1\)"/.test(h), (h.match(/class="slide-tile"/g)||[]).length+' tiles');
+        /* phone click-path, 18 Nov: from inside an EMPTY carousel's sheet, Upload slides saved the pictures and the sheet kept
+           saying "No slides yet". Both the empty and the filled panel must hand the pick to the one that redraws the sheet. */
+        const hEmpty = await slidesPanelHTML({id:-771009, type:'carousel', current_stage:'brief', image_urls:null, image_url:null});
+        ok('Farhath 18 Nov: from an empty carousel sheet, Upload slides redraws the sheet, so the new slides show',
+           /No slides yet/.test(hEmpty) && /onchange="slideAddPick\(this,-771009\)"/.test(hEmpty) && !/slotUploadSlides/.test(hEmpty)
+             && /onchange="slideAddPick\(this,-771001\)"/.test(h), 'empty sheet input: '+((hEmpty.match(/onchange="[^"]*"/)||['none'])[0]));
+        C1.current_stage='approved'; h = await slidesPanelHTML(C1); C1.current_stage='brief';
+        ok('Farhath 18 Nov: an approved carousel is locked: no add, move or remove',
+           !/Remove|Add slides|type="file"|slideMove/.test(h) && /locked/.test(h), '');
+
+        /* drops: a task with one carousel slot fills it, a task with two asks which */
+        slotSlidesRun = async (files,id)=>{ ran.push(id); return files.length; };
+        const ev = n=>({dataTransfer:{files:Array.from({length:n},(_,i)=>png(i+'.jpg')), types:['Files']}, preventDefault(){}, stopPropagation(){}});
+        const el = {classList:{remove(){}, add(){}}};
+        slotDrop(ev(3), el, TC);
+        ok('Farhath 18 Nov: dropping on a task with ONE carousel slot puts every picture in that slot, not one each',
+           ran.join()===String(C1.id), ran.join()||'nothing ran');
+        ran.length=0; slotDrop(ev(3), el, TC2);
+        ok('Farhath 18 Nov: dropping on a task with two carousel slots does not guess which', ran.length===0, ran.join());
+        slotCardDrop(ev(2), el, C3.id);
+        ok('Farhath 18 Nov: dropping on one carousel slot puts the pictures in that slot', ran.join()===String(C3.id), ran.join()||'nothing ran');
+        ran.length=0; C3.current_stage='approved'; slotCardDrop(ev(2), el, C3.id); C3.current_stage='brief';
+        ok('Farhath 18 Nov: an approved carousel takes no drop', ran.length===0, '');
+        slotSlidesRun = keepRun;
+      }catch(e){ ok('Farhath 18 Nov: many pictures go into one carousel slot in file-name order, in ONE write', false, e && e.message); }
+      finally{
+        slotStoreFile=keepStore; sbPatch=keepPatch; sbGet=keepGet; gfxSetStage=keepSet; renderPipeline=keepRender; openProjectDetail=keepOpen;
+        slotSlidesRun=keepRun; window.confirm=keepConfirm; GFX_HAS_SLIDES=keepHas; _slidesMissing=keepMiss; _slotUploading=keepBusy;
+        fakes.forEach(f=>{ const i=projects.indexOf(f); if(i>-1) projects.splice(i,1); });
+        delete IMG_CACHE[C1.id]; IMG_IDS.delete(C1.id);
+      }
+    }
+    {
+      /* the list read asks for image_urls, never for the heavy image_url, and copes with the column not existing yet */
+      const keepGet=sbGet, keepHas=GFX_HAS_SLIDES, keepMiss=_slidesMissing, calls=[];
+      try{
+        _slidesMissing=false;
+        sbGet = async (t,q)=>{ calls.push(String(q)); return String(q).indexOf('image_urls')>-1 ? {code:'42703', message:'column graphic_projects.image_urls does not exist'} : [{id:1}]; };
+        const r1 = await gfxLoadProjectList();
+        const r2 = await gfxLoadProjectList();
+        ok('Farhath 18 Nov: before the column exists the board loads without it, and asks only once',
+           Array.isArray(r1) && Array.isArray(r2) && GFX_HAS_SLIDES===false && calls.filter(q=>q.indexOf('image_urls')>-1).length===1 && calls.length===3, calls.length+' reads');
+        _slidesMissing=false; calls.length=0;
+        sbGet = async (t,q)=>{ calls.push(String(q)); return [{id:1, image_urls:[]}]; };
+        const r3 = await gfxLoadProjectList();
+        ok('Farhath 18 Nov: once the column exists the board reads it', Array.isArray(r3) && GFX_HAS_SLIDES===true && calls.length===1, '');
+        ok('L-GFX-001 holds: the board list never selects the heavy image_url column',
+           calls.every(q=>!/(^|[=,])image_url(,|$)/.test(q.split('select=')[1]||'')), calls[0]||'');
+        sbGet = async ()=>({code:'PGRST301', message:'JWT'});
+        const r4 = await gfxLoadProjectList();
+        ok('Farhath 18 Nov: any other read failure is passed on, not swallowed as a missing column',
+           !Array.isArray(r4) && r4.code==='PGRST301' && _slidesMissing===false, '');
+      }catch(e){ ok('Farhath 18 Nov: before the column exists the board loads without it, and asks only once', false, e && e.message); }
+      finally{ sbGet=keepGet; GFX_HAS_SLIDES=keepHas; _slidesMissing=keepMiss; }
+      ok('Farhath 18 Nov: replacing the cover of a carousel in Edit keeps slide 1 in step',
+         /data\.image_urls/.test(String(saveProject)) && /slotMulti\(ed\)/.test(String(saveProject)), 'saveProject must rewrite slide 1 when it replaces image_url');
+    }
+    {
+      /* click-path 4b: the Quick add selects showed "Clien" and "Nove" on a 375px phone (already so on the 14 Nov build).
+         Measured the way ~/bb-systems/qa/clip.mjs measures a select: the chosen words against the room inside the box. */
+      const keepSec=document.querySelector('.content section.active'), keepPage=keepSec ? keepSec.id.replace('section-','') : 'dashboard';
+      try{
+        navigateTo('pipeline');
+        const usable = innerWidth>=200 && innerHeight>=200;
+        const cut=[];
+        ['qaType','qaClient','qaMonth'].forEach(id=>{
+          const e=document.getElementById(id); if(!e || !e.offsetWidth) return;
+          const o=e.options[e.selectedIndex]; if(!o) return;
+          const c=getComputedStyle(e), cx=document.createElement('canvas').getContext('2d');
+          cx.font=c.fontStyle+' '+c.fontWeight+' '+c.fontSize+' '+c.fontFamily;
+          const need=cx.measureText(o.text).width, room=e.clientWidth-parseFloat(c.paddingLeft)-parseFloat(c.paddingRight);
+          if(need>room+1) cut.push(id+' "'+o.text+'" needs '+Math.round(need)+'px in '+Math.round(room));
+          /* the other way it was cut: a box 34px tall with 16px words shaves the tail off p, ( and ) */
+          const roomH=e.clientHeight-parseFloat(c.paddingTop)-parseFloat(c.paddingBottom), fs=parseFloat(c.fontSize);
+          if(roomH < fs*1.15) cut.push(id+' is '+Math.round(roomH)+'px of room for '+Math.round(fs)+'px words');
+        });
+        ok('Farhath 18 Nov: Quick add shows the words in its Type, Client and Month boxes', usable && cut.length===0,
+           usable ? (cut.join('; ') || 'all three fit at '+innerWidth+'px') : innerWidth+'x'+innerHeight+', a hidden pane proves nothing');
+        ok('Farhath 18 Nov: on a phone the Quick add Client box has a line of its own',
+           innerWidth>600 || (document.getElementById('qaClient').offsetWidth >= document.getElementById('qaTitle').offsetWidth-2),
+           'Client '+document.getElementById('qaClient').offsetWidth+'px against the title box '+document.getElementById('qaTitle').offsetWidth+'px');
+      }catch(e){ ok('Farhath 18 Nov: Quick add shows the words in its Type, Client and Month boxes', false, e && e.message); }
+      finally{ try{ navigateTo(keepPage); }catch(e){} }
     }
 
     /* ── Decision 98, 7 Oct 2026 · Approved needs Head Review and a head or an SMM ── */
@@ -8906,7 +9384,7 @@ function msCoach(s, sh) {
   var parts = [['c', msLost(s.completionPct, 0.5)], ['o', msLost(s.ontimePct, 0.3)], ['q', msLost(s.qualityPct, 0.2)]].filter(function (x) { return x[1] !== null; });
   parts.sort(function (a, b) { return b[1] - a[1]; });
   var top = parts[0];
-  if (!top || top[1] === 0) return s.ratingCount === 0 ? 'Ask the head to give stars on approval, so quality can be read.' : 'Nothing lost this week. Keep it there.';
+  if (!top || top[1] === 0) return s.ratingCount === 0 ? 'Approvals no longer take stars, so quality is not scored here.' : 'Nothing lost this week. Keep it there.';
   if (top[0] === 'c') return 'Close the open jobs first: ' + (s.cohort - s.completed) + ' of ' + s.cohort + ' due this week are not completed.';
   if (top[0] === 'o') return 'Hand work in by the deadline: ' + (s.ontimeD - s.ontimeN) + ' of ' + s.ontimeD + ' completed jobs went in late.';
   return 'Fewer send-backs: each one takes 5 points off quality.';

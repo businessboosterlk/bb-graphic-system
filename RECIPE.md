@@ -2,7 +2,7 @@
 Kind: system
 Live: https://businessboosterlk.github.io/bb-graphic-system/
 Live commit: a84f09b
-Last verified: 2026-11-14, GRAPHIC UPLOAD ALL 1
+Last verified: 2026-11-18, GRAPHIC PIPELINE 2 (Farhath's three changes) and GRAPHIC COUNTERS 1 (dashboard from today), merged, not yet pushed
 
 Checked by `python3 ~/bb-systems/qa/recipe-check.py <this folder>`. A fresh chat rebuilds from this file
 alone. Anything that lives only in a chat is lost: write it here or it did not happen.
@@ -43,8 +43,13 @@ an index on graphic_projects(plan_task_id).
 ```bash
 open "http://localhost:8761/index.html?selftest"
 ```
-Sign in, read the selftest panel: every check PASS (201 of 201 on 14 Nov; run it ONCE per page load, two overlapping runs fail timing checks), including "Harness: ZERO writes reached the
+Sign in, read the selftest panel: every check PASS (245 of 245 expected on 18 Nov; at a phone width the one toast line fails on old and new code alike, see L-GFX-080; run it ONCE per page load, two overlapping runs fail timing checks), including "Harness: ZERO writes reached the
 database". Run it with the browser pane visible: a hidden 0x0 pane skips every width check.
+
+The dashboard cut-off has its own standing check, writes faked, safe to run any time (second url is origin/main, where it must FAIL):
+```bash
+node dash-count-from.check.mjs http://localhost:8761/index.html <main-url>
+```
 
 ## 5. Deliver or deploy
 ```bash
@@ -64,6 +69,16 @@ time, or the team's phones keep serving the old build.
 - Approved Posts lists clients and tasks NEWEST FIRST (by created_at); slots inside a task stay 1, 2, 3 | why: Farhath 16 Nov, new slots were buried by A to Z; Upload all fills by slot number | held by: index.html#slotStamp
 - Grid and Board tabs are hidden, Approved Posts is the only pipeline view; the grid and board code stays so the selftest and a bring-back still work, and a saved grid or board choice is ignored | why: Farhath 16 Nov | held by: index.html#bbgfx_seen_slots
 - New Client saves the typed name as-is with client_id null | why: Thulaib 9 Nov, scheduling before the client row exists | held by: index.html#__new__
+- A carousel slot takes many pictures (image_urls jsonb, 20 at most, name order, uploads append, one write after every picture stored); image_url and thumb_url mirror slide 1; a post slot stays one picture; until the column exists the carousel slot behaves as one picture | why: Farhath 18 Nov, one carousel is one slot with many images | held by: index.html#GFX_HAS_SLIDES
+- Uploading into an EMPTY carousel sheet redraws that sheet through slideAddPick, never slotUploadSlides | why: phone click-path 18 Nov, the sheet kept saying No slides yet after the pictures saved | held by: index.html#slideAddPick
+- The Pipeline filters (client, stage, type) survive every change and a reload of the lists; a client that has gone falls back to All Clients | why: Farhath 18 Nov, loadAll reset them | held by: index.html#populateClientDropdowns
+- Add Task has a Target Month that follows the Deadline month until touched; slots are made for that month and Edit moves the still-empty ones | why: Farhath 18 Nov | held by: index.html#wpTargetMonth
+- Pipeline Quick add selects show their full words on a phone: 42px high, Client on its own line | why: 18 Nov click-path, the Type, Client and Month words were cut | held by: index.html#qaClient
+- The dashboard (five stat cards, Pipeline Overview, Recent Activity, Overdue) counts only work created on or after DASH_COUNT_FROM, Colombo midnight, so it starts from 0; the Pipeline, Approved Posts and Team Score still hold older work | why: Thulaib 18 Nov, a clean start without deleting history | held by: index.html#DASH_COUNT_FROM
+
+## 6b. Database change that waits on a yes (18 Nov 2026)
+`migrations/2026-11-18-image-urls.sql` adds `graphic_projects.image_urls jsonb` (additive, rollback in the file). Until it is applied the app runs
+as before: a carousel slot takes one picture (feature detection in `gfxLoadProjectList`). After it is applied, carousel slots take up to 20 pictures.
 
 ## 7. Cast a copy
 This is BB's own internal system, never cast for a client. If a client ever needs one, start from
